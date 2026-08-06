@@ -1,0 +1,109 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SALES ORDER FORM — dark mode, sub-desktop only
+   ───────────────────────────────────────────────────────────────────────────
+   SalesOrderForm.css hard-codes a light palette (#FFFFFF surfaces, #E2E6EC
+   borders, #1B2430 ink) and defines no .dark variants at all, so in dark mode
+   the form renders as a white card. That is true on desktop today as well.
+
+   Fixing it globally would change the desktop rendering, which is out of scope
+   for the responsive work, so this file is capped at 1023.98px — it covers the
+   phone sheet and the tablet dialog only. The desktop dark-mode fix is a
+   separate, deliberate change.
+
+   Palette mapping, matching the tokens in mobile.css:
+     #FFFFFF surface   -> #1D1B24      #E2E6EC border  -> #2A2833
+     #EFF3F9 subtle    -> #17161D      #CBD3DE dashed  -> #2A2833
+     #1B2430 ink       -> #F5F4F2      #6B7684 muted   -> #A9A5A0
+     #9AA4B2 faint     -> #78747A      #2B5A9E accent  -> #7EA9DC
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1023.98px) {
+
+  /* ── Shell ── */
+  .dark .kbi-so-card { background: #17161D; }
+  .dark .kbi-so-card-header,
+  .dark .kbi-so-card-footer,
+  .dark .kbi-so-grand-total-row { border-color: #2A2833; }
+  .dark .kbi-so-col-left { border-right-color: #2A2833; border-bottom-color: #2A2833; }
+  .dark .kbi-so-card-title { color: #F5F4F2; }
+  .dark .kbi-so-icon-btn { color: #A9A5A0; }
+  .dark .kbi-so-col-heading { color: #7EA9DC; }
+  .dark .kbi-so-label { color: #A9A5A0; }
+
+  /* ── Inputs and controls ── */
+  .dark .kbi-so-ledger-input,
+  .dark .kbi-so-copy-btn,
+  .dark .kbi-so-btn-outline,
+  .dark .kbi-so-item-card,
+  .dark .kbi-so-buyer-type-toggle button {
+    background: #1D1B24;
+    border-color: #2A2833;
+    color: #F5F4F2;
+  }
+  .dark .kbi-so-ledger-input::placeholder { color: #78747A; }
+  .dark .kbi-so-copy-btn,
+  .dark .kbi-so-buyer-type-toggle button { color: #A9A5A0; }
+  .dark .kbi-so-btn-outline { color: #7EA9DC; border-color: #7EA9DC; }
+  .dark .kbi-so-btn-ghost { color: #A9A5A0; }
+  .dark .kbi-so-btn-ghost:hover { background: #1D1B24; }
+
+  .dark .kbi-so-qty-stepper button {
+    background: #1D1B24;
+    border-color: #2A2833;
+    color: #F5F4F2;
+  }
+  .dark .kbi-so-qty-stepper span,
+  .dark .kbi-so-item-line-total,
+  .dark .kbi-so-item-title { color: #F5F4F2; }
+
+  /* Active buyer-type stays tinted, but the tint has to darken or the dark
+     text on it becomes the only legible thing in the row. */
+  .dark .kbi-so-buyer-type-toggle button.active.bt-langsung {
+    background: rgba(43, 90, 158, .22); border-color: #7EA9DC; color: #A9C9EC;
+  }
+  .dark .kbi-so-buyer-type-toggle button.active.bt-reseller {
+    background: rgba(107, 76, 154, .24); border-color: #B79BE0; color: #C9B4EC;
+  }
+  .dark .kbi-so-buyer-type-toggle button.active.bt-marketplace {
+    background: rgba(19, 115, 51, .22); border-color: #6FCB8C; color: #94DCA9;
+  }
+
+  /* ── Dropdowns ── */
+  .dark .kbi-so-suggestions,
+  .dark .kbi-so-reseller-suggestions {
+    background: #1D1B24;
+    border-color: #2A2833;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .55);
+  }
+  .dark .kbi-so-suggestion-row,
+  .dark .kbi-so-reseller-row { color: #F5F4F2; }
+  .dark .kbi-so-suggestion-row:hover,
+  .dark .kbi-so-reseller-row:hover { background: #17161D; }
+  .dark .kbi-so-suggestion-price,
+  .dark .kbi-so-suggestion-meta { color: #A9A5A0; }
+  .dark .kbi-so-reseller-row.reseller-new { border-top-color: #2A2833; color: #C9B4EC; }
+
+  /* ── Empty / upload / summary ── */
+  .dark .kbi-so-empty-items {
+    color: #78747A;
+    border-color: #2A2833;
+  }
+  .dark .kbi-so-upload-box {
+    background: #1D1B24;
+    border-color: #2A2833;
+    color: #A9A5A0;
+  }
+  .dark .kbi-so-upload-preview img { border-color: #2A2833; }
+  .dark .kbi-so-summary-block { border-top-color: #2A2833; }
+  .dark .kbi-so-summary-row { color: #A9A5A0; }
+  .dark .kbi-so-grand-total-label,
+  .dark .kbi-so-grand-total-value { color: #F5F4F2; }
+  .dark .kbi-so-search-wrap svg.search-icon { color: #78747A; }
+
+  .dark .kbi-so-reseller-chip {
+    background: rgba(107, 76, 154, .24);
+    border-color: #B79BE0;
+  }
+  .dark .kbi-so-reseller-chip,
+  .dark .kbi-so-reseller-chip button { color: #C9B4EC; }
+}

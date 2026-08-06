@@ -1,0 +1,619 @@
+.income-page {
+  --blue-900:#064e3b;
+  --blue-800:#065f46;
+  --blue-700:#047857;
+  --blue-600:#059669;
+  --blue-100:#d1fae5;
+  --blue-50:#ecfdf5;
+
+  --ink:#1c2431;
+  --ink-soft:#5f6b7d;
+  --ink-mute:#9aa4b2;
+
+  --paper:#f6f8fb;
+  --surface:#ffffff;
+  --line:#e4e9f1;
+
+  --amber:#a8701f;
+  --amber-bg:#faf3e2;
+  --teal:#0f7c8c;
+  --teal-bg:#e3f4f6;
+  --green:#1e7f5c;
+  --green-bg:#e7f4ee;
+  --red:#b0473d;
+  --red-bg:#faedec;
+
+  --r-lg:16px;
+  --r-md:12px;
+  --r-sm:9px;
+
+  background:transparent;
+  color:var(--ink);
+  font-family:'Lexend', system-ui, sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+.income-page * { box-sizing:border-box; }
+
+.income-page .num{ font-family:'Inter', sans-serif; font-variant-numeric:tabular-nums; }
+
+.income-page .page-container {
+  width: 100%;
+  padding: 0;
+}
+
+/* ---------- header ---------- */
+.income-page .page-head{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:var(--r-lg);
+  padding:22px 26px;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+  margin-bottom:20px;
+}
+
+.income-page .page-head .eyebrow{
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  color:var(--ink-mute);
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:6px;
+}
+.income-page .page-head .eyebrow::before{
+  content:"";
+  width:16px; height:1.5px;
+  background:var(--blue-700);
+}
+
+.income-page .page-head h1{
+  font-size:24px;
+  font-weight:700;
+  margin:0 0 6px;
+  letter-spacing:-0.3px;
+}
+.income-page .page-head p{
+  margin:0;
+  font-size:13px;
+  color:var(--ink-soft);
+  max-width:520px;
+  line-height:1.5;
+}
+
+.income-page .btn-bulk{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  background:var(--blue-700);
+  color:#fff;
+  border:none;
+  border-radius:var(--r-sm);
+  padding:12px 20px;
+  font-family:'Lexend', sans-serif;
+  font-weight:600;
+  font-size:13.5px;
+  cursor:pointer;
+  transition:background .12s ease, transform .12s ease;
+  flex:none;
+}
+.income-page .btn-bulk:hover{ background:var(--blue-800); }
+.income-page .btn-bulk svg{ width:16px; height:16px; }
+
+/* ---------- platform cards ---------- */
+.income-page .cards-row{
+  display:grid;
+  grid-template-columns:1.15fr repeat(4, 1fr);
+  gap:12px;
+  margin-bottom:22px;
+}
+
+.income-page .p-card{
+  background:var(--surface);
+  border:1.5px solid var(--line);
+  border-radius:var(--r-md);
+  padding:16px 18px;
+  cursor:pointer;
+  text-align:left;
+  transition:border-color .14s ease, box-shadow .14s ease, transform .1s ease;
+  position:relative;
+  overflow:hidden;
+}
+.income-page .p-card:hover{ transform:translateY(-1px); box-shadow:0 8px 20px rgba(6,78,59,0.08); }
+.income-page .p-card.active{
+  border-color:var(--blue-700);
+  box-shadow:0 8px 22px rgba(4,120,87,0.14);
+}
+
+.income-page .p-card .icon{
+  width:32px; height:32px;
+  border-radius:9px;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--blue-100);
+  color:var(--blue-700);
+  margin-bottom:12px;
+}
+.income-page .p-card .icon svg{ width:16px; height:16px; }
+
+.income-page .p-card .label{
+  font-size:12px;
+  font-weight:600;
+  color:var(--ink-soft);
+  margin-bottom:4px;
+}
+
+.income-page .p-card .amount{
+  font-family:'Inter', sans-serif;
+  font-variant-numeric:tabular-nums;
+  font-size:20px;
+  font-weight:700;
+  color:var(--ink);
+  line-height:1.15;
+}
+
+.income-page .p-card .sub{
+  font-size:11px;
+  color:var(--ink-mute);
+  margin-top:4px;
+  font-family:'Inter', sans-serif;
+}
+
+.income-page .p-card.total{
+  background:linear-gradient(135deg, var(--blue-900), var(--blue-700));
+  border-color:transparent;
+}
+.income-page .p-card.total .icon{ background:rgba(255,255,255,0.16); color:#fff; }
+.income-page .p-card.total .label{ color:rgba(255,255,255,0.75); }
+.income-page .p-card.total .amount{ color:#fff; }
+.income-page .p-card.total .sub{ color:rgba(255,255,255,0.6); }
+.income-page .p-card.total.active{ box-shadow:0 10px 26px rgba(6,78,59,0.3); }
+
+/* ---------- table card ---------- */
+.income-page .table-card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:var(--r-lg);
+  overflow:hidden;
+}
+
+.income-page .table-card-head{
+  padding:18px 22px 14px;
+  border-bottom:1px solid var(--line);
+}
+.income-page .table-card-head h2{
+  font-size:15px;
+  font-weight:600;
+  margin:0 0 3px;
+}
+.income-page .table-card-head p{
+  margin:0;
+  font-size:12px;
+  color:var(--ink-soft);
+}
+
+.income-page .table-scroll{ overflow-x:auto; }
+
+.income-page table{ width:100%; border-collapse:collapse; min-width:920px; }
+
+.income-page thead th{
+  text-align:left;
+  font-size:10.5px;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+  color:var(--ink-soft);
+  background:var(--blue-50);
+  padding:11px 16px;
+  border-bottom:1px solid var(--line);
+  white-space:nowrap;
+}
+.income-page thead th.ta-r{ text-align:right; }
+.income-page thead th.ta-c{ text-align:center; }
+
+.income-page tbody td{
+  padding:14px 16px;
+  border-bottom:1px solid var(--line);
+  font-size:13px;
+  vertical-align:middle;
+  white-space:nowrap;
+}
+.income-page tbody tr:last-child td{ border-bottom:none; }
+.income-page tbody tr:hover{ background:var(--blue-50); }
+
+.income-page .order-code{ font-family:'Inter', sans-serif; font-weight:700; font-size:12.5px; color:var(--blue-700); }
+.income-page .cust-name{ font-weight:600; font-size:12.5px; }
+.income-page .cust-sub{ display:block; font-size:11px; color:var(--ink-soft); margin-top:2px; }
+
+.income-page td.ta-r{ text-align:right; }
+.income-page td.ta-c{ text-align:center; }
+
+.income-page .val-billed{ font-weight:600; font-size:12.5px; }
+.income-page .val-paid{ font-weight:600; font-size:12.5px; color:var(--green); }
+.income-page .val-outstanding{ font-weight:700; font-size:13px; color:var(--blue-700); }
+.income-page .val-outstanding.zero{ color:var(--ink-mute); font-weight:500; }
+
+.income-page .status-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:11px;
+  font-weight:600;
+  padding:4px 11px;
+  border-radius:999px;
+  background:var(--sb);
+  color:var(--sc);
+}
+.income-page .status-badge::before{ content:""; width:6px; height:6px; border-radius:50%; background:var(--sc); }
+
+.income-page .btn-row{
+  font-family:'Lexend', sans-serif;
+  font-weight:600;
+  font-size:11.5px;
+  color:#fff;
+  background:var(--blue-700);
+  border:none;
+  border-radius:7px;
+  padding:8px 14px;
+  cursor:pointer;
+  transition:background .12s ease;
+}
+.income-page .btn-row:hover{ background:var(--blue-800); }
+.income-page .btn-row:disabled{ background:var(--ink-mute); cursor:not-allowed; }
+
+.income-page .empty-state{ padding:44px 20px; text-align:center; color:var(--ink-soft); font-size:13px; }
+
+/* ============================================================
+   MODAL: Terima Semua Piutang
+   ============================================================ */
+.income-page .overlay{
+  position:fixed; inset:0;
+  background:rgba(6,78,59,0.3);
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+  padding:34px 16px;
+  z-index:100;
+  overflow-y:auto;
+}
+
+.income-page .modal{
+  background:var(--surface);
+  border-radius:18px;
+  width:100%;
+  max-width:760px;
+  overflow:hidden;
+  box-shadow:0 30px 80px rgba(6,78,59,0.25);
+}
+
+.income-page .modal-head{
+  background:linear-gradient(135deg, var(--blue-900), var(--blue-700));
+  color:#fff;
+  padding:22px 24px;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+.income-page .modal-head h2{ font-size:18px; font-weight:700; margin:0 0 3px; }
+.income-page .modal-head p{ margin:0; font-size:12px; color:rgba(255,255,255,0.75); }
+
+.income-page .modal-close{
+  background:rgba(255,255,255,0.16);
+  border:none; color:#fff;
+  width:32px; height:32px; border-radius:9px;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+  flex:none;
+}
+.income-page .modal-close:hover{ background:rgba(255,255,255,0.28); }
+
+.income-page .modal-body{ padding:20px 24px 4px; }
+
+/* summary boxes */
+.income-page .summary-pair{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-bottom:16px;
+}
+.income-page .summary-box{
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  padding:14px 16px;
+}
+.income-page .summary-box.recv{ background:var(--green-bg); border-color:#cfe9dd; }
+.income-page .summary-box.total{ background:var(--blue-50); border-color:var(--blue-100); }
+
+.income-page .summary-box .lbl{
+  font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px;
+  color:var(--ink-soft); margin-bottom:5px;
+}
+.income-page .summary-box .val{
+  font-family:'Inter', sans-serif; font-variant-numeric:tabular-nums;
+  font-size:20px; font-weight:700;
+}
+.income-page .summary-box.recv .val{ color:var(--green); }
+.income-page .summary-box.total .val{ color:var(--blue-700); }
+
+.income-page .grid-help{
+  font-size:11.5px;
+  color:var(--ink-soft);
+  margin-bottom:10px;
+  line-height:1.5;
+}
+
+.income-page .grid-wrap{
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  overflow:hidden;
+}
+
+.income-page .grid-header-row, .income-page .grid-row{
+  display:grid;
+  grid-template-columns:32px 1fr 1fr 26px;
+  gap:0;
+}
+
+.income-page .grid-header-row{
+  background:var(--blue-700);
+  border-bottom:2px solid var(--blue-800);
+}
+.income-page .grid-header-row span{
+  font-family:'Lexend', sans-serif;
+  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;
+  color:rgba(255,255,255,0.92);
+  padding:10px 9px;
+  display:flex; align-items:center;
+}
+
+.income-page .grid-scroll{ max-height:380px; overflow-y:auto; }
+
+.income-page .grid-row{ border-bottom:1px solid var(--line); align-items:center; background:var(--surface); }
+.income-page .grid-row:nth-child(even){ background:var(--blue-50); }
+.income-page .grid-row:last-child{ border-bottom:none; }
+
+.income-page .grid-row.success{ background:var(--green-bg); box-shadow:inset 3px 0 0 var(--green); }
+.income-page .grid-row.partial{ background:var(--teal-bg); box-shadow:inset 3px 0 0 var(--teal); }
+.income-page .grid-row.error{ background:var(--red-bg); box-shadow:inset 3px 0 0 var(--red); }
+
+.income-page .row-num{
+  text-align:center; font-size:11px; color:var(--ink-mute);
+  font-family:'Inter', sans-serif; border-right:1px solid var(--line);
+}
+
+.income-page .grid-row input{
+  width:100%; border:none; background:transparent;
+  padding:9px 10px;
+  font-family:'Inter', sans-serif; font-size:12.5px; color:var(--ink);
+  border-right:1px solid var(--line);
+}
+.income-page .grid-row input::placeholder{ font-family:'Lexend', sans-serif; color:var(--ink-mute); }
+.income-page .grid-row input:focus{ outline:2px solid var(--blue-700); outline-offset:-2px; background:var(--surface); }
+.income-page .grid-row input:disabled{ color:var(--ink-soft); background:transparent; }
+.income-page .grid-row input.cell-selected{
+  background:rgba(4,120,87,0.10);
+  box-shadow:inset 0 0 0 1.5px var(--blue-700);
+}
+
+.income-page .row-status{ display:flex; align-items:center; justify-content:center; }
+.income-page .row-status svg{ width:14px; height:14px; }
+.income-page .row-status.success{ color:var(--green); }
+.income-page .row-status.partial{ color:var(--teal); }
+.income-page .row-status.error{ color:var(--red); }
+
+.income-page .modal-foot{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; padding:16px 24px; border-top:1px solid var(--line); background:var(--paper);
+}
+.income-page .grid-status-text{ font-family:'Inter', sans-serif; font-size:11.5px; color:var(--ink-soft); }
+.income-page .modal-foot-actions{ display:flex; gap:10px; }
+
+.income-page .btn-cancel{
+  background:var(--surface); color:var(--ink-soft); border:1px solid var(--line);
+  font-family:'Lexend', sans-serif; font-weight:600; font-size:13px;
+  padding:10px 18px; border-radius:9px; cursor:pointer;
+}
+.income-page .btn-cancel:hover{ background:var(--blue-50); }
+
+.income-page .btn-process{
+  background:var(--blue-700); color:#fff; border:none;
+  font-family:'Lexend', sans-serif; font-weight:700; font-size:13px;
+  padding:10px 22px; border-radius:9px; cursor:pointer;
+}
+.income-page .btn-process:hover{ background:var(--blue-800); }
+
+.income-page .summary-banner{
+  display:flex; gap:16px; padding:10px 14px; border-radius:9px;
+  background:var(--blue-50); border:1px solid var(--blue-100);
+  font-size:12px; margin-bottom:12px; align-items:center; flex-wrap:wrap;
+}
+.income-page .summary-banner b{ font-family:'Inter', sans-serif; }
+.income-page .summary-banner .ok{ color:var(--green); }
+.income-page .summary-banner .partial{ color:var(--teal); }
+.income-page .summary-banner .fail{ color:var(--red); }
+
+/* autocomplete */
+.income-page .order-suggest{
+  position:fixed; z-index:110;
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md);
+  box-shadow:0 14px 34px rgba(6,78,59,0.2);
+  max-height:220px; overflow-y:auto;
+}
+.income-page .order-suggest-item{ padding:9px 12px; cursor:pointer; border-bottom:1px solid var(--line); font-size:12.5px; }
+.income-page .order-suggest-item:last-child{ border-bottom:none; }
+.income-page .order-suggest-item:hover{ background:var(--blue-50); }
+.income-page .order-suggest-item .oi-no{ font-family:'Inter', sans-serif; font-weight:700; color:var(--blue-700); }
+.income-page .order-suggest-item .oi-cust{ font-family:'Inter', sans-serif; color:var(--ink-soft); font-size:11px; margin-left:8px; }
+.income-page .order-suggest-item .oi-amt{ float:right; font-family:'Inter', sans-serif; font-weight:600; color:var(--ink); font-size:11.5px; }
+.income-page .order-suggest-empty{ padding:11px 12px; font-size:12px; color:var(--ink-soft); }
+
+@media (max-width:1000px){
+  .income-page .cards-row{ grid-template-columns:repeat(2, 1fr); }
+}
+
+/* ============================================================
+   MODAL: Rekonsiliasi Pelunasan Piutang (per baris)
+   ============================================================ */
+.income-page .tb-modal{
+  background:#fff;
+  border-radius:20px;
+  width:100%;
+  max-width:460px;
+  overflow:hidden;
+  box-shadow:0 30px 80px rgba(6,78,59,0.25);
+}
+
+.income-page .tb-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:22px 22px 16px;
+}
+
+.income-page .tb-title{
+  font-family:'Lexend', sans-serif;
+  font-weight:700;
+  font-size:15px;
+  letter-spacing:0.2px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.income-page .tb-close{
+  background:none;
+  border:none;
+  color:var(--ink-mute);
+  cursor:pointer;
+  width:28px; height:28px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:7px;
+  flex:none;
+}
+.income-page .tb-close:hover{ background:var(--blue-50); color:var(--ink); }
+
+.income-page .tb-body{ padding:0 22px 20px; }
+
+.income-page .tb-info{
+  background:var(--paper);
+  border-radius:12px;
+  padding:14px 16px;
+  margin-bottom:20px;
+}
+
+.income-page .tb-info-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-size:13px;
+  color:var(--ink-soft);
+  padding:4px 0;
+}
+.income-page .tb-info-row b{
+  font-family:'Inter', sans-serif;
+  color:var(--ink);
+  font-weight:700;
+  font-size:13px;
+}
+
+.income-page .tb-info-divider{ border-top:1px dashed var(--line); margin:8px 0; }
+
+.income-page .tb-outstanding{ color:var(--blue-700) !important; font-size:16px !important; }
+
+.income-page .tb-field{ margin-bottom:16px; }
+.income-page .tb-field:last-child{ margin-bottom:0; }
+
+.income-page .tb-label{
+  display:block;
+  font-size:11px;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.4px;
+  color:var(--ink-soft);
+  margin-bottom:8px;
+}
+
+.income-page .tb-label-highlight{
+  display:inline-block;
+  background:#eef1f5;
+  padding:2px 7px;
+  border-radius:4px;
+}
+
+.income-page .tb-date-wrap{ position:relative; display:flex; align-items:center; }
+.income-page .tb-date-wrap svg{ position:absolute; left:13px; width:15px; height:15px; color:var(--ink-mute); pointer-events:none; }
+.income-page .tb-date-wrap input[type="date"]{ padding-left:38px; }
+
+.income-page .tb-input, .income-page .tb-select{
+  width:100%;
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:11px 14px;
+  font-family:'Inter', sans-serif;
+  font-size:13.5px;
+  color:var(--ink);
+  background:#fff;
+}
+.income-page .tb-select{ font-family:'Lexend', sans-serif; cursor:pointer; }
+.income-page .tb-input:focus, .income-page .tb-select:focus{ outline:2px solid var(--blue-700); outline-offset:-1px; }
+.income-page .tb-input:disabled{ background:var(--paper); color:var(--ink-mute); }
+.income-page .tb-input-lg{ font-size:15px; font-weight:600; font-family:'Inter', sans-serif; }
+
+.income-page .tb-row-2col{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+.income-page .tb-foot{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  padding:16px 22px;
+  border-top:1px solid var(--line);
+}
+
+.income-page .tb-btn-cancel{
+  background:#fff;
+  border:1px solid var(--line);
+  color:var(--ink-soft);
+  font-family:'Lexend', sans-serif;
+  font-weight:600;
+  font-size:13px;
+  padding:12px 20px;
+  border-radius:10px;
+  cursor:pointer;
+}
+.income-page .tb-btn-cancel:hover{ background:var(--blue-50); }
+
+.income-page .tb-btn-post{
+  background:var(--blue-700);
+  color:#fff;
+  border:none;
+  font-family:'Lexend', sans-serif;
+  font-weight:700;
+  font-size:13px;
+  padding:12px 22px;
+  border-radius:10px;
+  cursor:pointer;
+  flex:1;
+}
+.income-page .tb-btn-post:hover{ background:var(--blue-800); }
+
+.income-page {
+  width: 100% !important;
+  max-width: none !important;
+}
+.income-page .page-container {
+  width: 100% !important;
+  max-width: none !important;
+}
+.income-page .page-head {
+  width: 100% !important;
+  max-width: none !important;
+}
+.income-page .table-card {
+  width: 100% !important;
+  max-width: none !important;
+}

@@ -1,0 +1,273 @@
+/* Order detail ("Rincian") presentation.
+   Extracted verbatim from an inline <style> block in SalesTab.tsx so the rules
+   are parsed once by the bundler instead of re-injected on every open, and so
+   the same markup can be mounted either as a modal or as the tablet
+   master-detail pane. Every rule is scoped under .kbi-rincian-modal. */
+
+.kbi-rincian-modal {
+  --brand:#2b5a9e;
+  --brand-dark:#1e4275;
+  --brand-tint:#eef3fa;
+  --brand-tint-2:#dde8f5;
+
+  --ink:#101828;
+  --ink-soft:#475467;
+  --ink-mute:#98a2b3;
+
+  --bg:#f9fafb;
+  --surface:#ffffff;
+  --border:#e4e7ec;
+
+  --amber:#b45309; --amber-tint:#fef3e2;
+  --sky:#1d6fa5;   --sky-tint:#e8f2f9;
+  --green:#12805c; --green-tint:#e7f6ef;
+  --rose:#b42318;  --rose-tint:#fdece9;
+  --slate:#5b6472; --slate-tint:#f1f2f4;
+  --indigo:#4338ca; --indigo-tint:#e0e7ff;
+
+  --sh-sm:0 1px 3px rgba(16,24,40,.1), 0 1px 2px rgba(16,24,40,.06);
+  --sh-lg:0 24px 64px -12px rgba(16,24,40,.35);
+
+  --r-lg:16px; --r-md:10px; --r-sm:8px;
+
+  max-width:880px; width:100%; margin:0 auto;
+  background:var(--surface); border-radius:var(--r-lg);
+  box-shadow:var(--sh-lg); overflow:hidden;
+  display:flex; flex-direction:column; max-height:92vh;
+  font-family:'Lexend',system-ui,sans-serif; font-size:14px;
+  color:var(--ink);
+}
+
+.dark .kbi-rincian-modal {
+  --surface:#171717;
+  --bg:#0a0a0a;
+  --border:#262626;
+  --ink:#f5f5f5;
+  --ink-soft:#a3a3a3;
+  --ink-mute:#737373;
+  --brand-tint:#1e293b;
+}
+
+.kbi-rincian-modal .n { font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums; }
+
+/* ══════ HEADER ══════ */
+.kbi-rincian-modal .mhead {
+  padding:20px 24px; border-bottom:1px solid var(--border);
+  display:flex; align-items:flex-start; gap:14px; flex-shrink:0;
+}
+.kbi-rincian-modal .mhead .mk {
+  width:38px; height:38px; border-radius:10px;
+  background:var(--brand-tint); color:var(--brand);
+  display:flex; align-items:center; justify-content:center; flex:none;
+}
+.kbi-rincian-modal .mhead .mk svg { width:20px; height:20px; }
+.kbi-rincian-modal .mhead .htx { flex:1; min-width:0; }
+.kbi-rincian-modal .mhead .eyebrow {
+  font-size:11px; font-weight:600; letter-spacing:.6px; text-transform:uppercase;
+  color:var(--ink-mute); margin-bottom:3px;
+}
+.kbi-rincian-modal .mhead .hrow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.kbi-rincian-modal .mhead h2 {
+  font-family:'Inter',sans-serif; font-size:20px; font-weight:700;
+  margin:0; letter-spacing:-.4px; color:var(--ink);
+}
+.kbi-rincian-modal .bdg {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:10.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase;
+  padding:3.5px 10px 3.5px 8px; border-radius:99px;
+  background:var(--bt); color:var(--bc);
+}
+.kbi-rincian-modal .bdg .d { width:5px; height:5px; border-radius:50%; background:var(--bc); flex:none; }
+
+.kbi-rincian-modal .mclose {
+  width:32px; height:32px; border-radius:var(--r-sm); border:none;
+  background:var(--bg); color:var(--ink-soft); cursor:pointer;
+  display:flex; align-items:center; justify-content:center; flex:none; transition:.12s;
+}
+.kbi-rincian-modal .mclose:hover { background:var(--border); color:var(--ink); }
+.kbi-rincian-modal .mclose svg { width:16px; height:16px; }
+
+/* ══════ BODY ══════ */
+.kbi-rincian-modal .mbody { padding:24px; overflow-y:auto; flex:1; min-height:0; }
+
+.kbi-rincian-modal .sec { margin-bottom:26px; }
+.kbi-rincian-modal .sec:last-child { margin-bottom:0; }
+.kbi-rincian-modal .sec-h {
+  display:flex; align-items:center; gap:10px; margin-bottom:14px;
+}
+.kbi-rincian-modal .sec-h h3 { font-size:13.5px; font-weight:700; margin:0; color:var(--ink); }
+.kbi-rincian-modal .sec-h .rule { flex:1; height:1px; background:var(--border); }
+.kbi-rincian-modal .sec-h .cnt {
+  font-family:'Inter',sans-serif; font-size:11px; color:var(--ink-mute);
+  background:var(--bg); border:1px solid var(--border);
+  padding:2px 9px; border-radius:99px;
+}
+
+/* info grid */
+.kbi-rincian-modal .info-grid {
+  display:grid; grid-template-columns:repeat(4,1fr);
+  gap:1px; background:var(--border);
+  border:1px solid var(--border); border-radius:var(--r-md); overflow:hidden;
+}
+.kbi-rincian-modal .icell {
+  background:var(--surface); padding:12px 16px;
+  display:flex; flex-direction:column; justify-content:center; min-height:58px;
+}
+.kbi-rincian-modal .icell.full-span { grid-column:1 / -1; }
+.kbi-rincian-modal .icell.span-3 { grid-column: span 3; }
+.kbi-rincian-modal .icell .k { font-size:10.5px; color:var(--ink-mute); font-weight:600; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
+.kbi-rincian-modal .icell .v { font-size:13.5px; font-weight:600; word-break:break-word; color:var(--ink); line-height:1.4; }
+.kbi-rincian-modal .icell .v.mono { font-family:'Inter',sans-serif; font-variant-numeric:tabular-nums; }
+.kbi-rincian-modal .icell .v.muted { color:var(--ink-mute); font-weight:500; }
+.kbi-rincian-modal .icell .v .chip {
+  display:inline-flex; align-items:center; font-family:'Inter',sans-serif;
+  background:var(--brand-tint); color:var(--brand);
+  padding:2px 8px; border-radius:5px; font-size:12px; font-weight:600;
+}
+
+/* books + summary */
+.kbi-rincian-modal .cols { display:grid; grid-template-columns:499.688px 312.312px; gap:20px; align-items:start; }
+
+.kbi-rincian-modal .book-wrap { position:relative; width:499.688px; }
+.kbi-rincian-modal .book-scroll {
+  height:187.833px; max-height:187.833px; overflow-y:auto;
+  border:1px solid var(--border); border-radius:var(--r-md);
+}
+.kbi-rincian-modal .book-scroll::-webkit-scrollbar { width:8px; }
+.kbi-rincian-modal .book-scroll::-webkit-scrollbar-track { background:transparent; }
+.kbi-rincian-modal .book-scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:99px; border:2px solid var(--surface); }
+.kbi-rincian-modal .book-scroll::-webkit-scrollbar-thumb:hover { background:var(--ink-mute); }
+
+.kbi-rincian-modal .fade {
+  position:absolute; left:1px; right:9px; bottom:1px; height:34px;
+  background:linear-gradient(transparent, var(--surface));
+  border-radius:0 0 var(--r-md) var(--r-md);
+  pointer-events:none; opacity:0; transition:opacity .18s;
+}
+.kbi-rincian-modal .fade.on { opacity:1; }
+
+.kbi-rincian-modal .book {
+  display:flex; align-items:center; gap:12px;
+  padding:11px 15px; border-bottom:1px solid var(--border);
+}
+.kbi-rincian-modal .book:last-child { border-bottom:none; }
+.kbi-rincian-modal .book:hover { background:var(--bg); }
+.kbi-rincian-modal .book .cov {
+  width:34px; height:42px; border-radius:5px; flex:none;
+  background:linear-gradient(140deg,#d9cbb8,#b9a68d);
+  display:flex; align-items:center; justify-content:center; color:#fff; overflow:hidden;
+}
+.kbi-rincian-modal .book .cov svg { width:16px; height:16px; opacity:.85; }
+.kbi-rincian-modal .book .bi { flex:1; min-width:0; }
+.kbi-rincian-modal .book .bt {
+  font-weight:600; font-size:13px; margin-bottom:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--ink);
+}
+.kbi-rincian-modal .book .bs { font-family:'Inter',sans-serif; font-size:11.5px; color:var(--ink-mute); }
+.kbi-rincian-modal .book .bp { font-family:'Inter',sans-serif; font-weight:700; font-size:13.5px; flex:none; color:var(--ink); }
+
+.kbi-rincian-modal .summary {
+  width:312.312px; height:187.833px;
+  border:1px solid var(--border); border-radius:var(--r-md); overflow:hidden;
+  display:flex; flex-direction:column; justify-content:space-between;
+}
+.kbi-rincian-modal .srow {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:12px 16px; font-size:13px;
+}
+.kbi-rincian-modal .srow .k { color:var(--ink-soft); font-weight:500; }
+.kbi-rincian-modal .srow .v { font-family:'Inter',sans-serif; font-weight:600; color:var(--ink); }
+.kbi-rincian-modal .srow.disc .k, .kbi-rincian-modal .srow.disc .v { color:var(--rose); }
+.kbi-rincian-modal .srow.sep { border-top:1px dashed var(--border); }
+.kbi-rincian-modal .srow.grand {
+  background:var(--brand); padding:15px 16px; flex:1;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.kbi-rincian-modal .srow.grand .k { color:rgba(255,255,255,.8); font-weight:600; font-size:12.5px; }
+.kbi-rincian-modal .srow.grand .v { color:#fff; font-size:18px; font-weight:700; letter-spacing:-.3px; }
+
+/* timeline */
+.kbi-rincian-modal .tl { position:relative; padding-left:28px; }
+.kbi-rincian-modal .tl::before {
+  content:""; position:absolute; left:6px; top:6px; bottom:6px;
+  width:2px; background:var(--border); border-radius:2px;
+}
+.kbi-rincian-modal .tli { position:relative; padding-bottom:18px; }
+.kbi-rincian-modal .tli:last-child { padding-bottom:0; }
+.kbi-rincian-modal .tli::before {
+  content:""; position:absolute; left:-28px; top:3px;
+  width:14px; height:14px; border-radius:50%;
+  background:var(--surface); border:3px solid var(--tc);
+  box-shadow:0 0 0 3px var(--surface);
+}
+.kbi-rincian-modal .tli-h { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.kbi-rincian-modal .tli-t { font-weight:600; font-size:13.5px; color:var(--ink); }
+.kbi-rincian-modal .tli-d { font-family:'Inter',sans-serif; font-size:11.5px; color:var(--ink-mute); margin-top:2px; }
+
+/* foot */
+.kbi-rincian-modal .mfoot {
+  display:flex; justify-content:space-between; align-items:center; gap:12px;
+  padding:16px 24px; border-top:1px solid var(--border); background:var(--bg); flex-wrap:wrap; flex-shrink:0;
+}
+.kbi-rincian-modal .foot-meta { font-size:11.5px; color:var(--ink-mute); }
+.kbi-rincian-modal .foot-btns { display:flex; gap:10px; margin-left:auto; }
+.kbi-rincian-modal .btn {
+  display:inline-flex; align-items:center; gap:8px;
+  border-radius:var(--r-sm); padding:10px 20px;
+  font-family:'Lexend',sans-serif; font-weight:600; font-size:13px;
+  cursor:pointer; transition:.12s; border:1px solid transparent;
+}
+.kbi-rincian-modal .btn svg { width:15px; height:15px; }
+.kbi-rincian-modal .btn-ghost { background:var(--surface); border-color:var(--border); color:var(--ink-soft); }
+.kbi-rincian-modal .btn-ghost:hover { background:var(--bg); color:var(--ink); }
+.kbi-rincian-modal .btn-brand { background:var(--brand); color:#fff; }
+.kbi-rincian-modal .btn-brand:hover { background:var(--brand-dark); }
+
+@media (max-width:767.98px){
+  /* Two columns still wraps every uppercase label ("KATEGORI ORDER", "KODE
+     TOKO / ALAMAT") across 2-3 lines once icell's own padding is subtracted
+     from a ~179px half-width. One full-width column gives every label its
+     own line and reads as one continuous ledger list, consistent with how
+     the full-span rows (Note dari Customer) already look. */
+  .kbi-rincian-modal .info-grid { grid-template-columns: 1fr; }
+  .kbi-rincian-modal .icell .k { overflow-wrap: anywhere; }
+  /* .icell.span-3 still asks to span 3 columns; against a single explicit
+     column that request creates 2 extra IMPLICIT auto-sized columns to
+     satisfy it, silently reintroducing a multi-column grid. Only one column
+     exists now, so every cell (including full-span/span-3 ones) just
+     occupies it. */
+  .kbi-rincian-modal .icell.span-3,
+  .kbi-rincian-modal .icell.full-span { grid-column: auto; }
+
+  /* .cols already stacks (1fr), but .book-wrap and .summary keep their
+     desktop pixel widths (499.688px / 312.312px) regardless, so they
+     overflow inside the now-single mobile column. */
+  .kbi-rincian-modal .book-wrap { width: 100%; }
+  .kbi-rincian-modal .summary { width: 100%; }
+
+  /* .foot-btns divides up to 4 simultaneous buttons (Opsi Kirim Sebagian /
+     Refund Marketplace / Cetak / Tutup) into equal flex:1 slivers via the
+     mobile.css generic sheet rule, word-wrapping multi-word labels into a
+     tall thin column. A real 2-up grid cell (~166px at 358px content width)
+     fits every current label on one line; an odd button count leaves the
+     last one alone on its own row, which is a normal wrap outcome. */
+  .kbi-rincian-modal .foot-btns { flex-wrap: wrap; }
+  .kbi-rincian-modal .foot-btns .btn {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+    justify-content: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* `minmax(0, 1fr)`, not a bare `1fr`. A bare `1fr` track's automatic
+     minimum size is its content's min-content contribution — here, `.book
+     .bt`'s `white-space: nowrap` book title, which reports its full
+     unwrapped width — and that bypasses `.book-wrap`'s `width: 100%` above
+     entirely (percentages don't factor into min-content). The track then
+     grows past its own container instead of clipping to it. */
+  .kbi-rincian-modal .cols { grid-template-columns: minmax(0, 1fr); }
+  .kbi-rincian-modal .book-wrap,
+  .kbi-rincian-modal .book-scroll { min-width: 0; }
+}

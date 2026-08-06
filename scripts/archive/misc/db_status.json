@@ -1,0 +1,93 @@
+{
+  "freightList": [
+    {
+      "id": "123214213",
+      "createdAt": {
+        "type": "firestore/timestamp/1.0",
+        "seconds": 1782574823,
+        "nanoseconds": 494000000
+      },
+      "totalKg": 4,
+      "freightCode": "123214213",
+      "ratePerKg": 50000
+    },
+    {
+      "id": "13134",
+      "exchangeRate": 0.001776,
+      "totalKg": 1,
+      "docNo": "FI26070501",
+      "freightCode": "13134",
+      "ratePerKg": 20000,
+      "createdAt": {
+        "type": "firestore/timestamp/1.0",
+        "seconds": 1783258643,
+        "nanoseconds": 731000000
+      }
+    }
+  ],
+  "poList": [
+    {
+      "id": "BVUF8SqgJQlBvesyk7xP",
+      "purchaseCode": "PO26070601",
+      "status": "received",
+      "kodeEkspedisi": "123214213",
+      "receipts": [
+        {
+          "receivedBy": "cFd2OLcEMtgddj3JEwaqsRxOoMv2",
+          "receivedQty": 2,
+          "notes": "[Nomor Freight-In: 123214213] Received batch partial run",
+          "receivedDate": {
+            "type": "firestore/timestamp/1.0",
+            "seconds": 1783345017,
+            "nanoseconds": 9000000
+          },
+          "kodeEkspedisi": "123214213"
+        }
+      ]
+    }
+  ],
+  "journalList": [
+    {
+      "id": "JU-FR-123214213-payment",
+      "description": "123214213 - Pembayaran Freight-in",
+      "refId": "123214213",
+      "refType": "System"
+    },
+    {
+      "id": "JU-FR-13134-payment",
+      "description": "13134 - Pembayaran Freight-in",
+      "refId": "13134",
+      "refType": "System"
+    },
+    {
+      "id": "JU-PO-BVUF8SqgJQlBvesyk7xP-create",
+      "description": "Pemesanan Barang",
+      "refId": "PO26070601",
+      "refType": "System"
+    },
+    {
+      "id": "JU-PO-BVUF8SqgJQlBvesyk7xP-rec-capitalize-WzGp7yGyNFNVfytP0G84",
+      "description": "Penerimaan Barang",
+      "refId": "123214213",
+      "refType": "System"
+    },
+    {
+      "id": "JU26061001",
+      "description": "Modal Awal",
+      "refId": "",
+      "refType": "Manual"
+    },
+    {
+      "id": "JU26061002",
+      "description": "Modal Awal",
+      "refId": "",
+      "refType": "Manual"
+    },
+    {
+      "id": "JU26070503",
+      "description": "Penerimaan Barang",
+      "refId": "PO26070504",
+      "refType": "System"
+    }
+  ]
+}

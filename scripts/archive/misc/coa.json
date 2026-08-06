@@ -1,0 +1,530 @@
+[
+  {
+    "id": "1101",
+    "code": "1101",
+    "balance": 0,
+    "isActive": true,
+    "name": "Cash: NTD",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1782565507,
+      "nanoseconds": 948000000
+    },
+    "description": "",
+    "subType": "Aset Lancar",
+    "parentAccount": "Cash",
+    "type": "Assets"
+  },
+  {
+    "id": "1102",
+    "parentAccount": "Cash",
+    "subType": "Aset Lancar",
+    "isActive": true,
+    "code": "1102",
+    "name": "Cash: Rupiah",
+    "balance": 16549.84,
+    "type": "Assets",
+    "description": "",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1782565507,
+      "nanoseconds": 948000000
+    }
+  },
+  {
+    "id": "1110",
+    "code": "1110",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783676122,
+      "nanoseconds": 209000000
+    },
+    "type": "Assets",
+    "subType": "Aset Lancar",
+    "name": "Piutang Usaha",
+    "isActive": true
+  },
+  {
+    "id": "1120",
+    "name": "Freight-in Dalam Kapitalisasi",
+    "subType": "Aset Lancar",
+    "balance": 0,
+    "code": "1120",
+    "isActive": true,
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783439734,
+      "nanoseconds": 976000000
+    },
+    "type": "Assets"
+  },
+  {
+    "id": "1130",
+    "isActive": true,
+    "name": "Perlengkapan",
+    "subType": "Aset Lancar",
+    "code": "1130",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783441420,
+      "nanoseconds": 753000000
+    },
+    "type": "Assets"
+  },
+  {
+    "id": "1200",
+    "parentAccount": "",
+    "subType": "Aset Persediaan",
+    "type": "Assets",
+    "description": "",
+    "name": "Inventory",
+    "isActive": true,
+    "balance": 1244.02,
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1782565507,
+      "nanoseconds": 948000000
+    },
+    "code": "1200"
+  },
+  {
+    "id": "1201",
+    "subType": "Aset Persediaan",
+    "type": "Assets",
+    "name": "Inventory On Hand",
+    "isActive": true,
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1785234432,
+      "nanoseconds": 570000000
+    },
+    "code": "1201",
+    "parentAccount": "Inventory",
+    "description": ""
+  },
+  {
+    "id": "1203",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1782829903,
+      "nanoseconds": 521000000
+    },
+    "code": "1203",
+    "name": "Inventory in Transit",
+    "description": "",
+    "subType": "Aset Persediaan",
+    "isActive": true,
+    "type": "Assets",
+    "parentAccount": "Inventory",
+    "balance": 178
+  },
+  {
+    "id": "1300",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783005481,
+      "nanoseconds": 718000000
+    },
+    "description": "Akun utama perolehan aset tetap perusahaan",
+    "balance": 0,
+    "isActive": true,
+    "type": "Assets",
+    "subType": "Aset Tidak Lancar",
+    "name": "Aset Tetap",
+    "code": "1300"
+  },
+  {
+    "id": "1311",
+    "name": "Akumulasi Penyusutan - Peralatan",
+    "description": "Akumulasi penyusutan aset tetap (contra-asset)",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783005481,
+      "nanoseconds": 718000000
+    },
+    "subType": "Aset Tidak Lancar",
+    "code": "1311",
+    "parentAccount": "Aset Tetap",
+    "isActive": true,
+    "balance": 0,
+    "type": "Assets"
+  },
+  {
+    "id": "1400",
+    "name": "Biaya Dibayar Dimuka",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1785077114,
+      "nanoseconds": 943000000
+    },
+    "isActive": true,
+    "type": "Assets",
+    "subType": "Aset Lancar",
+    "code": "1400"
+  },
+  {
+    "id": "2100",
+    "name": "Utang Usaha",
+    "isActive": true,
+    "type": "Liabilities",
+    "subType": "Kewajiban Lancar",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783755700,
+      "nanoseconds": 521000000
+    },
+    "code": "2100"
+  },
+  {
+    "id": "2100-",
+    "isActive": true,
+    "code": "2100-",
+    "parentAccount": "2100 - Utang Usaha",
+    "type": "Liabilities",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1784966303,
+      "nanoseconds": 948000000
+    },
+    "subType": "Kewajiban Lancar",
+    "name": "Utang Usaha - 林治昇"
+  },
+  {
+    "id": "2100-FELIXS",
+    "code": "2100-FELIXS",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1784966564,
+      "nanoseconds": 566000000
+    },
+    "type": "Liabilities",
+    "subType": "Kewajiban Lancar",
+    "parentAccount": "2100 - Utang Usaha",
+    "isActive": true,
+    "name": "Utang Usaha - Felix Salim"
+  },
+  {
+    "id": "2110",
+    "type": "Liabilities",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783676122,
+      "nanoseconds": 487000000
+    },
+    "isActive": true,
+    "description": "",
+    "code": "2110",
+    "parentAccount": "",
+    "name": "Pendapatan Diterima di Muka",
+    "subType": "Kewajiban Lancar"
+  },
+  {
+    "id": "3100",
+    "name": "Modal Awal",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1782565507,
+      "nanoseconds": 948000000
+    },
+    "subType": "Ekuitas Pemilik",
+    "balance": 27793.86,
+    "type": "Equity",
+    "isActive": true,
+    "code": "3100"
+  },
+  {
+    "id": "3101",
+    "subType": "Ekuitas Pemilik",
+    "name": "Setoran Modal Tambahan",
+    "accountRole": "setoran_modal",
+    "code": "3101",
+    "systemKey": "setoran_modal",
+    "isActive": true,
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783142861,
+      "nanoseconds": 55000000
+    },
+    "type": "Equity"
+  },
+  {
+    "id": "3102",
+    "name": "Prive",
+    "systemKey": "prive",
+    "accountRole": "prive",
+    "subType": "Ekuitas Pemilik",
+    "code": "3102",
+    "isActive": true,
+    "type": "Equity",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783142826,
+      "nanoseconds": 134000000
+    }
+  },
+  {
+    "id": "4100",
+    "name": "Revenue",
+    "isActive": true,
+    "systemKey": "revenue",
+    "type": "Revenue",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783169592,
+      "nanoseconds": 432000000
+    },
+    "code": "4100",
+    "subType": "Pendapatan Usaha"
+  },
+  {
+    "id": "4104",
+    "name": "Pendapatan Lain-lain",
+    "isActive": true,
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783760089,
+      "nanoseconds": 716000000
+    },
+    "type": "Revenue",
+    "subType": "Pendapatan Lainnya",
+    "code": "4104"
+  },
+  {
+    "id": "4210",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1785255692,
+      "nanoseconds": 976000000
+    },
+    "name": "Laba/Rugi Selisih Kurs",
+    "type": "Revenue",
+    "subType": "Pendapatan Lain-lain",
+    "isActive": true,
+    "code": "4210"
+  },
+  {
+    "id": "5100",
+    "name": "Harga Pokok Penjualan",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1782565507,
+      "nanoseconds": 949000000
+    },
+    "description": "",
+    "isActive": true,
+    "subType": "Harga Pokok Penjualan",
+    "code": "5100",
+    "parentAccount": "",
+    "balance": 0,
+    "type": "Expenses"
+  },
+  {
+    "id": "5120",
+    "systemKey": "beban_gaji",
+    "type": "Expenses",
+    "isActive": true,
+    "subType": "Beban Operasional",
+    "accountRole": "beban_gaji",
+    "name": "Beban Gaji",
+    "code": "5120",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1784823689,
+      "nanoseconds": 940000000
+    }
+  },
+  {
+    "id": "5200",
+    "code": "5200",
+    "subType": "Biaya Umum dan Administrasi",
+    "name": "Beban Penyusutan",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783005481,
+      "nanoseconds": 718000000
+    },
+    "type": "Expenses",
+    "balance": 0,
+    "description": "Beban penyusutan operasional bulanan aset tetap",
+    "isActive": true
+  },
+  {
+    "id": "5220",
+    "code": "5220",
+    "subType": "Biaya Umum dan Administrasi",
+    "isActive": true,
+    "type": "Expenses",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783518153,
+      "nanoseconds": 842000000
+    },
+    "name": "Beban Perlengkapan Packing"
+  },
+  {
+    "id": "5230",
+    "code": "5230",
+    "description": "",
+    "isActive": true,
+    "subType": "Biaya Umum dan Administrasi",
+    "name": "Beban Ongkos Kirim",
+    "parentAccount": "",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1784820618,
+      "nanoseconds": 543000000
+    },
+    "type": "Expenses"
+  },
+  {
+    "id": "5240",
+    "name": "Beban Amortisasi",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1785077114,
+      "nanoseconds": 943000000
+    },
+    "isActive": true,
+    "type": "Expenses",
+    "subType": "Beban Operasional",
+    "code": "5240"
+  },
+  {
+    "id": "5300",
+    "isActive": true,
+    "description": "",
+    "parentAccount": "",
+    "code": "5300",
+    "name": "Beban Iklan",
+    "subType": "Beban Penjualan / Pemasaran",
+    "type": "Expenses",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1784818148,
+      "nanoseconds": 520000000
+    }
+  },
+  {
+    "id": "5310",
+    "description": "",
+    "type": "Expenses",
+    "isActive": true,
+    "subType": "Beban Penjualan / Pemasaran",
+    "name": "Beban Hadiah Pelanggan",
+    "parentAccount": "",
+    "code": "5310",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783660725,
+      "nanoseconds": 936000000
+    }
+  },
+  {
+    "id": "5500",
+    "description": "",
+    "parentAccount": "",
+    "type": "Expenses",
+    "name": "Beban Lain-lain",
+    "subType": "Beban Non-Operasional",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783440480,
+      "nanoseconds": 209000000
+    },
+    "isActive": true,
+    "code": "5500"
+  },
+  {
+    "id": "1202",
+    "balance": 0,
+    "description": "",
+    "isActive": true,
+    "type": "Assets",
+    "subType": "Aset Persediaan",
+    "name": "Inventory in Delivery",
+    "parentAccount": "Inventory",
+    "code": "1202",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1782613310,
+      "nanoseconds": 441000000
+    }
+  },
+  {
+    "id": "1100",
+    "description": "",
+    "parentAccount": "",
+    "balance": 16549.84,
+    "type": "Assets",
+    "name": "Cash",
+    "subType": "Aset Lancar",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1782015005,
+      "nanoseconds": 874000000
+    },
+    "isActive": true,
+    "code": "1100"
+  },
+  {
+    "id": "OK9US0mSxsgjjOk2UUIG",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783853384,
+      "nanoseconds": 475000000
+    },
+    "description": "",
+    "parentAccount": "",
+    "type": "Expenses",
+    "isActive": true,
+    "code": "5320",
+    "subType": "Beban Penjualan / Pemasaran",
+    "name": "Beban Komisi Penjualan"
+  },
+  {
+    "id": "RM9rM2kgzdP03BdGBUJ2",
+    "parentAccount": "",
+    "code": "5330",
+    "subType": "Beban Penjualan / Pemasaran",
+    "name": "Beban Biaya Platform",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1784994916,
+      "nanoseconds": 404000000
+    },
+    "description": "",
+    "type": "Expenses",
+    "isActive": true
+  },
+  {
+    "id": "jmUgTiayENFY0kb47XFT",
+    "balance": 750,
+    "parentAccount": "Beban Penyusutan",
+    "name": "Beban Penyusutan - Peralatan",
+    "description": "",
+    "code": "5201",
+    "isActive": true,
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1782984904,
+      "nanoseconds": 426000000
+    },
+    "subType": "Biaya Umum dan Administrasi",
+    "type": "Expenses"
+  },
+  {
+    "id": "zLHkhhMReYORuSObDgkT",
+    "isActive": true,
+    "subType": "Aset Tidak Lancar",
+    "parentAccount": "Aset Tetap",
+    "type": "Assets",
+    "createdAt": {
+      "type": "firestore/timestamp/1.0",
+      "seconds": 1783079173,
+      "nanoseconds": 612000000
+    },
+    "description": "",
+    "name": "Peralatan",
+    "code": "1301"
+  }
+]

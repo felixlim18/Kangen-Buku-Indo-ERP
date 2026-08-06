@@ -1,0 +1,185 @@
+/* NOTE: index.css redeclares `.kbi-so-overlay` with `inset: 0` further down the
+   bundle, so the `left` here is inert. The sidebar offset that actually takes
+   effect lives beside that later declaration. */
+.kbi-so-overlay {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  left: 0;
+  transition: all 0.3s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: rgba(15, 23, 32, 0.65);
+  /* backdrop-filter lives in index.css, scoped to >= 768px — see the note there. */
+  z-index: 40;
+  overflow-y: auto;
+}
+.kbi-so-card { width: 94%; max-width: 58rem; background: #FFFFFF; border-radius: 16px; box-shadow: 0 30px 70px rgba(15,23,32,0.35); overflow: hidden; display: flex; flex-direction: column; max-height: 90vh; margin: auto; }
+
+/* Header */
+.kbi-so-card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid #E2E6EC; }
+.kbi-so-card-header-left { display: flex; align-items: center; gap: 10px; }
+.kbi-so-icon-badge { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; background: #2B5A9E; color: #fff; flex-shrink: 0; }
+.kbi-so-card-title { font-size: 16.5px; font-weight: 600; margin: 0; font-family: var(--font-text); }
+.kbi-so-status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; background: #E4ECF7; color: #2B5A9E; font-family: var(--font-numeric); margin-left: 10px; }
+.kbi-so-status-pill .kbi-so-dot { width: 6px; height: 6px; border-radius: 999px; background: #2B5A9E; }
+.kbi-so-reseller-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; background: #EDE5F5; color: #6B4C9A; font-family: var(--font-numeric); margin-left: 8px; }
+.kbi-so-reseller-pill .kbi-so-dot { width: 6px; height: 6px; border-radius: 999px; background: #6B4C9A; }
+.kbi-so-marketplace-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; background: #FFF0E6; color: #E65100; font-family: var(--font-numeric); margin-left: 8px; }
+.kbi-so-marketplace-pill .kbi-so-dot { width: 6px; height: 6px; border-radius: 999px; background: #E65100; }
+.kbi-so-direct-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; background: #E6F4EA; color: #137333; font-family: var(--font-numeric); margin-left: 8px; }
+.kbi-so-direct-pill .kbi-so-dot { width: 6px; height: 6px; border-radius: 999px; background: #137333; }
+
+.kbi-so-icon-btn { background: none; border: none; cursor: pointer; color: #6B7684; padding: 8px; border-radius: 8px; display: inline-flex; }
+.kbi-so-icon-btn:hover { background: #F4E3DA; color: #B5502F; }
+
+/* Body */
+.kbi-so-card-body { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; flex: 1; min-height: 0; }
+@media (max-width: 860px) { .kbi-so-card-body { grid-template-columns: 1fr; overflow-y: auto; } }
+.kbi-so-col-left, .kbi-so-col-right { padding: 16px 20px; overflow-y: auto; }
+.kbi-so-col-left { border-right: 1px solid #E2E6EC; }
+/* Once the two columns stack, neither may keep its own scroller: the body
+   becomes the single scroll region (see the rule above). Leaving `overflow-y:
+   auto` on a column makes it a nested scroller sized to whatever height the
+   grid row lands on, which clips the book picker and the totals block with no
+   way to reach their end. */
+@media (max-width: 860px) {
+  .kbi-so-col-left { border-right: none; border-bottom: 1px solid #E2E6EC; }
+  .kbi-so-col-left, .kbi-so-col-right { overflow-y: visible; min-height: 0; }
+}
+
+.kbi-so-col-heading { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #2B5A9E; margin: 0 0 12px; font-family: var(--font-numeric); }
+
+/* Buyer type toggle */
+.kbi-so-buyer-type-toggle { display: flex; gap: 6px; margin-bottom: 12px; }
+.kbi-so-buyer-type-toggle button { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #E2E6EC; background: #FFFFFF; font-size: 12px; font-weight: 600; cursor: pointer; color: #6B7684; font-family: var(--font-text); }
+.kbi-so-buyer-type-toggle button.active.bt-langsung { background: #E4ECF7; border-color: #2B5A9E; color: #2B5A9E; }
+.kbi-so-buyer-type-toggle button.active.bt-reseller { background: #EDE5F5; border-color: #6B4C9A; color: #6B4C9A; }
+.kbi-so-buyer-type-toggle button.active.bt-marketplace { background: #E6F4EA; border-color: #137333; color: #137333; }
+
+.kbi-so-reseller-search-wrap { position: relative; }
+.kbi-so-reseller-suggestions { position: absolute; z-index: 10; width: 100%; margin-top: 4px; background: #FFFFFF; border: 1px solid #E2E6EC; border-radius: 10px; box-shadow: 0 12px 30px rgba(15,23,32,0.15); overflow: hidden; }
+.kbi-so-reseller-row { width: 100%; text-align: left; padding: 10px 14px; font-size: 13.5px; background: none; border: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; color: #1B2430; font-family: var(--font-text); }
+.kbi-so-reseller-row:hover { background: #EFF3F9; }
+.kbi-so-reseller-row .komisi { color: #6B4C9A; font-family: var(--font-numeric); font-size: 11.5px; font-weight: 600; }
+.kbi-so-reseller-row.reseller-new { color: #6B4C9A; border-top: 1px dashed #E2E6EC; }
+
+.kbi-so-reseller-chip { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #EDE5F5; border: 1px solid #6B4C9A; border-radius: 9px; padding: 10px 12px; }
+.kbi-so-reseller-chip-name { font-size: 13.5px; font-weight: 600; color: #52397A; }
+.kbi-so-reseller-chip-komisi { font-size: 11.5px; color: #6B4C9A; font-family: var(--font-numeric); margin-top: 1px; }
+.kbi-so-reseller-chip button { background: none; border: none; cursor: pointer; color: #6B4C9A; padding: 4px; border-radius: 6px; display: flex; }
+.kbi-so-reseller-chip button:hover { background: rgba(107,76,154,0.15); }
+
+.kbi-so-upload-box {
+  border: 1px dashed #CBD3DE; border-radius: 8px; background: #EFF3F9;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; cursor: pointer; height: 100%; min-height: 60px; padding: 6px; text-align: center;
+}
+.kbi-so-upload-box:hover { border-color: #2B5A9E; background: #E4ECF7; }
+.kbi-so-upload-box svg { color: #9AA4B2; width: 15px; height: 15px; }
+.kbi-so-upload-box span { font-size: 10.5px; color: #6B7684; font-family: var(--font-text); }
+.kbi-so-upload-preview { position: relative; height: 100%; min-height: 60px; }
+.kbi-so-upload-preview img { width: 100%; height: 100%; min-height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid #E2E6EC; }
+.kbi-so-upload-preview button { position: absolute; top: 4px; right: 4px; background: rgba(27,36,48,0.75); color: #fff; border: none; border-radius: 999px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+
+.kbi-so-label { display: block; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #6B7684; margin-bottom: 5px; font-family: var(--font-numeric); }
+.kbi-so-field { margin-bottom: 11px; }
+.kbi-so-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 11px; }
+@media (max-width: 480px) { .kbi-so-field-row { grid-template-columns: 1fr; } }
+
+.kbi-so-ledger-input {
+  width: 100%; border: 1px solid #E2E6EC; background: #FFFFFF; color: #1B2430;
+  border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: var(--font-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.kbi-so-ledger-input::placeholder { color: #9AA4B2; }
+.kbi-so-ledger-input:focus { outline: none; border-color: #2B5A9E; box-shadow: 0 0 0 3px rgba(43,90,158,0.15); }
+.kbi-so-ledger-input:read-only { background: #EFF3F9; color: #6B7684; }
+textarea.kbi-so-ledger-input { resize: vertical; min-height: 48px; }
+
+.kbi-so-select-wrap { position: relative; }
+.kbi-so-select-wrap select { appearance: none; padding-right: 34px; cursor: pointer; }
+.kbi-so-select-wrap svg { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #9AA4B2; }
+
+.kbi-so-nomor-row { display: flex; gap: 8px; }
+.kbi-so-nomor-row input { flex: 1; }
+.kbi-so-copy-btn { border: 1px solid #E2E6EC; background: #FFFFFF; border-radius: 9px; padding: 0 12px; cursor: pointer; color: #6B7684; display: flex; align-items: center; }
+.kbi-so-copy-btn:hover { border-color: #2B5A9E; color: #2B5A9E; }
+.kbi-so-copy-feedback { font-size: 11px; color: #2B5A9E; margin-left: 8px; opacity: 0; transition: opacity 0.2s ease; }
+.kbi-so-copy-feedback.show { opacity: 1; }
+
+/* Right column: search */
+.kbi-so-search-wrap { position: relative; margin-bottom: 11px; }
+.kbi-so-search-wrap svg.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9AA4B2; }
+.kbi-so-search-wrap input { padding-left: 38px; }
+.kbi-so-suggestions { position: absolute; z-index: 10; width: 100%; margin-top: 4px; background: #FFFFFF; border: 1px solid #E2E6EC; border-radius: 10px; box-shadow: 0 12px 30px rgba(15,23,32,0.15); overflow: hidden; max-height: 250px; overflow-y: auto; }
+.kbi-so-suggestion-row { width: 100%; text-align: left; padding: 10px 14px; font-size: 14px; background: none; border: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; color: #1B2430; font-family: var(--font-text); }
+.kbi-so-suggestion-row:hover { background: #EFF3F9; }
+.kbi-so-suggestion-price { color: #9AA4B2; font-family: var(--font-numeric); font-size: 12px; }
+
+.kbi-so-item-list { display: flex; flex-direction: column; gap: 7px; margin-bottom: 6px; }
+.kbi-so-empty-items { text-align: center; padding: 32px 16px; color: #9AA4B2; font-size: 13px; border: 1px dashed #E2E6EC; border-radius: 12px; }
+
+.kbi-so-item-card { display: flex; align-items: center; gap: 9px; border: 1px solid #E2E6EC; border-radius: 10px; padding: 7px 9px; background: #FFFFFF; }
+.kbi-so-spine { width: 32px; height: 42px; border-radius: 5px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.kbi-so-spine svg { color: rgba(255,255,255,0.85); }
+.kbi-so-item-info { flex: 1; min-width: 0; }
+.kbi-so-item-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.kbi-so-item-title { font-family: var(--font-text); font-weight: 500; font-size: 13px; color: #1B2430; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
+.kbi-so-gratis-tag { flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; background: #F3E6CE; color: #B67F2A; padding: 2px 8px; border-radius: 999px; font-family: var(--font-numeric); }
+.kbi-so-item-unit-price { font-size: 12px; color: #9AA4B2; font-family: var(--font-numeric); margin-top: 2px; }
+
+.kbi-so-qty-stepper { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.kbi-so-qty-stepper button { width: 22px; height: 22px; border-radius: 6px; border: 1px solid #E2E6EC; background: #EFF3F9; color: #1B2430; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.kbi-so-qty-stepper button:hover { border-color: #2B5A9E; color: #2B5A9E; }
+.kbi-so-qty-stepper span { min-width: 18px; text-align: center; font-family: var(--font-numeric); font-size: 12px; }
+
+.kbi-so-item-line-total { width: 68px; text-align: right; font-family: var(--font-numeric); font-weight: 600; font-size: 12.5px; flex-shrink: 0; }
+
+.kbi-so-item-actions { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.kbi-so-item-actions button { background: none; border: none; cursor: pointer; color: #9AA4B2; padding: 4px; border-radius: 6px; display: flex; }
+.kbi-so-item-actions button:hover.gift-btn { color: #B67F2A; background: #F3E6CE; }
+.kbi-so-item-actions button:hover.remove-btn { color: #B5502F; background: #F4E3DA; }
+
+/* Stock awareness: search chip */
+.kbi-so-suggestion-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.kbi-so-stock-chip { font-family: var(--font-numeric); font-size: 10px; font-weight: 700; letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.kbi-so-stock-chip.ok { background: #DCEEE0; color: #3D7A4F; }
+.kbi-so-stock-chip.low { background: #F3E6CE; color: #B67F2A; }
+.kbi-so-stock-chip.zero { background: #F4E3DA; color: #B5502F; }
+
+/* Stock awareness: item card */
+.kbi-so-backorder-tag { flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; background: #F4E3DA; color: #B5502F; padding: 2px 8px; border-radius: 999px; font-family: var(--font-numeric); }
+.kbi-so-item-stock-note { font-size: 11.5px; margin-top: 2px; font-family: var(--font-numeric); }
+.kbi-so-item-stock-note.ok { color: #9AA4B2; }
+.kbi-so-item-stock-note.warn { color: #B5502F; font-weight: 600; }
+
+/* Stock awareness: footer banner */
+.kbi-so-backorder-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #F3E6CE; border: 1px solid #B67F2A; border-radius: 10px; padding: 10px 14px; margin: 12px 20px 0; }
+.kbi-so-backorder-banner-left { display: flex; align-items: flex-start; gap: 10px; }
+.kbi-so-backorder-banner-left svg { color: #B67F2A; flex-shrink: 0; margin-top: 2px; }
+.kbi-so-backorder-banner-title { font-size: 13.5px; font-weight: 700; color: #B67F2A; }
+.kbi-so-backorder-banner-list { font-size: 12px; color: #8A6420; margin-top: 3px; }
+.kbi-so-btn-po-now { flex-shrink: 0; background: #B67F2A; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font-text); white-space: nowrap; }
+.kbi-so-btn-po-now:hover { background: #96681F; }
+
+.kbi-so-summary-block { margin-top: 12px; padding-top: 11px; border-top: 1px dashed #CBD3DE; }
+.kbi-so-summary-row { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; margin-bottom: 7px; }
+.kbi-so-summary-row span:first-child { color: #6B7684; }
+.kbi-so-summary-row .val { font-family: var(--font-numeric); }
+.kbi-so-diskon-input { width: 110px; text-align: right; }
+.kbi-so-grand-total-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; padding-top: 10px; border-top: 1px solid #E2E6EC; }
+.kbi-so-grand-total-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6B7684; font-family: var(--font-numeric); }
+.kbi-so-grand-total-value { font-family: var(--font-text); font-weight: 700; font-size: 21px; color: #2B5A9E; }
+
+/* Footer */
+.kbi-so-card-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid #E2E6EC; }
+.kbi-so-btn-ghost { background: none; border: none; padding: 8px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: #6B7684; cursor: pointer; font-family: var(--font-text); }
+.kbi-so-btn-ghost:hover { background: #EFF3F9; }
+.kbi-so-btn-outline { background: #FFFFFF; border: 1px solid #2B5A9E; color: #2B5A9E; padding: 8px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: var(--font-text); }
+.kbi-so-btn-outline:hover { background: #E4ECF7; }
+.kbi-so-btn-primary { background: #2B5A9E; color: #fff; border: none; padding: 8px 18px; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.08); transition: background-color 0.15s ease; font-family: var(--font-text); }
+.kbi-so-btn-primary:hover { background: #1F4478; }

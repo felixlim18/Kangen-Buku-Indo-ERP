@@ -1,0 +1,456 @@
+{
+  "entities": {
+    "Book": {
+      "title": "Book",
+      "description": "Indonesian book catalog details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "cover": { "type": "string" },
+        "category": { "type": "string" },
+        "bookName": { "type": "string" },
+        "bookNameLower": { "type": "string" },
+        "author": { "type": "string" },
+        "shopeePrice": { "type": "number", "description": "NTD cents" },
+        "generalPrice": { "type": "number", "description": "NTD cents" },
+        "description": { "type": "string" },
+        "minOrder": { "type": "number" },
+        "websiteId": { "type": "string" },
+        "shopeeId": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "bookName", "bookNameLower", "shopeePrice", "generalPrice", "isActive"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Book category classification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "color": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Wholesale supplier details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "currency": { "type": "string", "enum": ["IDR", "NTD"] },
+        "isArchived": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "currency", "isArchived"]
+    },
+    "SalesOrder": {
+      "title": "SalesOrder",
+      "description": "Customer order containing books, transport info, and financial metrics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderCode": { "type": "string" },
+        "orderDate": { "type": "string", "format": "date-time" },
+        "customerName": { "type": "string" },
+        "customerPlatformName": { "type": "string" },
+        "platformChannel": { "type": "string" },
+        "orderType": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "pickupLogistics": { "type": "string" },
+        "pickupDetails": { "type": "string" },
+        "subtotal": { "type": "number" },
+        "discount": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "confirmed", "shipped", "completed", "cancelled"] },
+        "partnerProfitShare": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "orderCode", "orderDate", "customerName", "totalPrice", "status"]
+    },
+    "PurchaseOrder": {
+      "title": "PurchaseOrder",
+      "description": "Purchase transaction with wholesale price conversions and receipt audits",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "purchaseCode": { "type": "string" },
+        "purchaseDate": { "type": "string", "format": "date-time" },
+        "bookId": { "type": "string" },
+        "bookName": { "type": "string" },
+        "qty": { "type": "number" },
+        "supplierId": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "purchasePriceIDR": { "type": "number" },
+        "exchangeRate": { "type": "number" },
+        "purchasePriceNTD": { "type": "number" },
+        "pricePerUnitNTD": { "type": "number" },
+        "supplierOrderNumber": { "type": "string" },
+        "forwarderFeeNTD": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "partial", "received", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "purchaseCode", "purchaseDate", "bookId", "qty", "supplierId", "purchasePriceIDR", "status"]
+    },
+    "InventoryRecord": {
+      "title": "InventoryRecord",
+      "description": "Calculated inventory snapshot and moving average cost",
+      "type": "object",
+      "properties": {
+        "bookId": { "type": "string" },
+        "initialStock": { "type": "number" },
+        "totalPurchased": { "type": "number" },
+        "totalDispatched": { "type": "number" },
+        "endingStock": { "type": "number" },
+        "readyStock": { "type": "number" },
+        "inTransitStock": { "type": "number" },
+        "ordersPlaced": { "type": "number" },
+        "ordersShipped": { "type": "number" },
+        "movingAverageCost": { "type": "number" },
+        "totalInventoryValue": { "type": "number" },
+        "stockStatus": { "type": "string", "enum": ["in_stock", "sold_out", "perlu_dibeli", "tidak_dijual"] },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bookId", "endingStock", "movingAverageCost", "totalInventoryValue", "stockStatus"]
+    },
+    "InventoryLedgerEntry": {
+      "title": "InventoryLedgerEntry",
+      "description": "Immutable ledger tracking stock count and average cost movements over time",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bookId": { "type": "string" },
+        "type": { "type": "string", "enum": ["purchase_received", "sale_shipped", "adjustment", "initial"] },
+        "qtyDelta": { "type": "number" },
+        "unitCost": { "type": "number" },
+        "refCollection": { "type": "string" },
+        "refId": { "type": "string" },
+        "balanceAfter": { "type": "number" },
+        "movingAvgAfter": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "bookId", "type", "qtyDelta", "unitCost", "refId", "timestamp"]
+    },
+    "CashFlowEntry": {
+      "title": "CashFlowEntry",
+      "description": "Cash Flow statement ledger and entries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "ledger": { "type": "string", "enum": ["NTD", "IDR"] },
+        "direction": { "type": "string", "enum": ["inflow", "outflow"] },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "amountNTD": { "type": "number" },
+        "fxRateUsed": { "type": "number" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "date", "ledger", "direction", "category", "amount", "amountNTD", "createdAt"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "Double entry accounting journal lines",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "date", "description", "createdAt"]
+    },
+    "OrderTypeConfig": {
+      "title": "OrderTypeConfig",
+      "description": "Dynamic configuration for sales order types",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name"]
+    },
+    "ChannelConfig": {
+      "title": "ChannelConfig",
+      "description": "Dynamic configuration for sales channels",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name"]
+    },
+    "PlatformConfig": {
+      "title": "PlatformConfig",
+      "description": "Dynamic configuration for shopping platforms and their default currency",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "currency": { "type": "string", "enum": ["IDR", "NTD", "USD"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "currency"]
+    },
+    "CoaAccount": {
+      "title": "CoaAccount",
+      "description": "Chart of Accounts setup",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["Assets", "Liabilities", "Equity", "Revenue", "Expenses"] },
+        "subType": { "type": "string" },
+        "parentAccount": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "code", "name", "type", "subType", "isActive"]
+    },
+    "FreightIn": {
+      "title": "FreightIn",
+      "description": "Freight shipment tracking and weight calculations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "freightCode": { "type": "string" },
+        "ratePerKg": { "type": "number" },
+        "totalKg": { "type": "number" },
+        "docNo": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "freightCode", "ratePerKg", "totalKg"]
+    },
+    "GlobalSetting": {
+      "title": "GlobalSetting",
+      "description": "Global config values like freight price per kg",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "value": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "value"]
+    },
+    "PeriodClosing": {
+      "title": "PeriodClosing",
+      "description": "Monthly period closing records and lock status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "period": { "type": "string" },
+        "status": { "type": "string", "enum": ["Terbuka", "Ditutup"] },
+        "totalEntries": { "type": "number" },
+        "closedAt": { "type": "string", "format": "date-time" },
+        "closedBy": { "type": "string" },
+        "fxJournalId": { "type": "string" }
+      },
+      "required": ["id", "period", "status", "totalEntries"]
+    },
+    "DamagedStock": {
+      "title": "DamagedStock",
+      "description": "Damaged stock tracking records and journal sync",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bookId": { "type": "string" },
+        "bookName": { "type": "string" },
+        "qty": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "notes": { "type": "string" },
+        "unitCost": { "type": "number" },
+        "totalCost": { "type": "number" },
+        "journalId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "bookId", "bookName", "qty", "date", "unitCost", "totalCost", "journalId"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Append-only passive historical tracking of manual journal changes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userEmail": { "type": "string" },
+        "userDisplayName": { "type": "string" },
+        "action": { "type": "string", "enum": ["EDIT", "DELETE"] },
+        "journalId": { "type": "string" },
+        "before": { "type": "object", "description": "Full journal entry before change" },
+        "after": { "type": "object", "description": "Full journal entry after change, or null/omitted for DELETE" }
+      },
+      "required": ["id", "timestamp", "userEmail", "userDisplayName", "action", "journalId", "before"]
+    },
+    "AuthorizedUser": {
+      "title": "AuthorizedUser",
+      "description": "White-listed email address to role mapping for secure ERP authorization",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "staff", "partner"] },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role"]
+    },
+    "PerlengkapanCategory": {
+      "title": "PerlengkapanCategory",
+      "description": "Categories for expenses and utilities",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "adjustmentAccountCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name"]
+    },
+    "PerlengkapanItem": {
+      "title": "PerlengkapanItem",
+      "description": "Unique items with stock and moving-average values under Perlengkapan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "name": { "type": "string" },
+        "qty": { "type": "number" },
+        "avgPrice": { "type": "number", "description": "Moving-average price in NTD" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "categoryId", "name", "qty", "avgPrice"]
+    },
+    "PerlengkapanPurchase": {
+      "title": "PerlengkapanPurchase",
+      "description": "Purchase transaction recordings for Perlengkapan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "docNo": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "itemName": { "type": "string" },
+        "qty": { "type": "number" },
+        "currency": { "type": "string", "enum": ["RP", "NTD"] },
+        "pricePerUnit": { "type": "number" },
+        "exchangeRate": { "type": "number" },
+        "pricePerUnitNTD": { "type": "number" },
+        "totalNTD": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pending", "Diterima", "Cancelled", "Tutup & Catat Rugi"] },
+        "date": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "itemId": { "type": "string" },
+        "journalId": { "type": "string" }
+      },
+      "required": ["id", "docNo", "categoryId", "itemName", "qty", "currency", "pricePerUnit", "pricePerUnitNTD", "totalNTD", "status", "date"]
+    }
+  },
+  "firestore": {
+    "/platforms/{id}": {
+      "schema": "PlatformConfig",
+      "description": "Dynamic purchase platforms"
+    },
+    "/orderTypes/{id}": {
+      "schema": "OrderTypeConfig",
+      "description": "Dynamic order types"
+    },
+    "/channels/{id}": {
+      "schema": "ChannelConfig",
+      "description": "Dynamic platform channels"
+    },
+    "/catalog/{bookId}": {
+      "schema": "Book",
+      "description": "Book list collection"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Classify catalog items"
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Wholesalers in Indonesia or Taiwan"
+    },
+    "/salesOrders/{orderId}": {
+      "schema": "SalesOrder",
+      "description": "Customer retail orders"
+    },
+    "/purchaseOrders/{poId}": {
+      "schema": "PurchaseOrder",
+      "description": "PO records and items purchased"
+    },
+    "/inventory/{bookId}": {
+      "schema": "InventoryRecord",
+      "description": "Aggregated stock statistics"
+    },
+    "/inventoryLedger/{entryId}": {
+      "schema": "InventoryLedgerEntry",
+      "description": "Chronological details of stock adjustments or receipt/dispatch"
+    },
+    "/cashFlow/{entryId}": {
+      "schema": "CashFlowEntry",
+      "description": "Cash Flow ledger recordings"
+    },
+    "/journalEntries/{entryId}": {
+      "schema": "JournalEntry",
+      "description": "Accounting Journal ledger double-entries"
+    },
+    "/coa/{id}": {
+      "schema": "CoaAccount",
+      "description": "Chart of accounts mapping and setup"
+    },
+    "/freightIn/{id}": {
+      "schema": "FreightIn",
+      "description": "Freight-in tracking records"
+    },
+    "/globalSettings/{id}": {
+      "schema": "GlobalSetting",
+      "description": "Global general configuration"
+    },
+    "/periodClosings/{id}": {
+      "schema": "PeriodClosing",
+      "description": "Monthly accounting periods and locks"
+    },
+    "/damagedStock/{id}": {
+      "schema": "DamagedStock",
+      "description": "Damaged stock recording events"
+    },
+    "/fixedAssets/{id}": {
+      "schema": "FixedAsset",
+      "description": "Fixed assets, book value tracking, and monthly depreciation schedules"
+    },
+    "/auditLog/{id}": {
+      "schema": "AuditLog",
+      "description": "Passive audit log of manual edits and deletions of journal entries"
+    },
+    "/authorizedUsers/{email}": {
+      "schema": "AuthorizedUser",
+      "description": "White-listed users allowed to authenticate into the ERP with their assigned role mapping"
+    },
+    "/perlengkapanCategories/{id}": {
+      "schema": "PerlengkapanCategory",
+      "description": "Categories of expenses and utilities"
+    },
+    "/perlengkapanItems/{id}": {
+      "schema": "PerlengkapanItem",
+      "description": "Unique items with stock levels and moving average costs"
+    },
+    "/perlengkapanPurchases/{id}": {
+      "schema": "PerlengkapanPurchase",
+      "description": "Purchase transaction records and audits for perlengkapan"
+    }
+  }
+}

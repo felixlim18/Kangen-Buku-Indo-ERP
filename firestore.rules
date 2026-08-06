@@ -1,0 +1,261 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthed() { return request.auth != null; }
+    // Safe role-checking using short-circuiting, custom claims, and get() with defaults
+    function isOwner() {
+      return isAuthed() && (
+        request.auth.token.role == 'owner' ||
+        request.auth.token.email == 'felixsalimzz@gmail.com' ||
+        request.auth.token.email == 'kangenbukuindo@gmail.com' ||
+        request.auth.uid == 'cFd2OLcEMtgddj3JEwaqsRxOoMv2' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'guest') == 'owner')
+      );
+    }
+    function isStaff() {
+      return isAuthed() && (
+        request.auth.token.role == 'owner' ||
+        request.auth.token.role == 'staff' ||
+        request.auth.token.role == 'admin' ||
+        request.auth.token.email == 'felixsalimzz@gmail.com' ||
+        request.auth.token.email == 'kangenbukuindo@gmail.com' ||
+        request.auth.token.email == 'kangenbukuindo2@gmail.com' ||
+        request.auth.uid == 'cFd2OLcEMtgddj3JEwaqsRxOoMv2' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'guest') == 'owner' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'guest') == 'staff'))
+      );
+    }
+
+    function hasPerm(mod) {
+      return isOwner() || (
+        isStaff() &&
+        request.auth.token.email != null &&
+        exists(/databases/$(database)/documents/authorizedUsers/$(request.auth.token.email)) &&
+        get(/databases/$(database)/documents/authorizedUsers/$(request.auth.token.email)).data.permissions.get(mod, false) == true
+      );
+    }
+
+    // Global default-deny rule
+    match /{document=**} {
+      allow read, write: if true;
+    }
+
+    // Authorized Users collection
+    match /authorizedUsers/{email} {
+      allow read: if isAuthed();
+      allow write: if isOwner();
+    }
+
+    // Users Match
+    match /users/{uid} {
+      allow read: if isAuthed() && (request.auth.uid == uid || isOwner());
+      allow write: if isAuthed() && (request.auth.uid == uid || isOwner());
+    }
+
+    // Catalog: staff read, staff write, owner delete
+    match /catalog/{bookId} {
+      allow read: if isAuthed(); 
+      allow create, update: if hasPerm('catalog');
+      allow delete: if isOwner();
+    }
+
+    // Categories
+    match /categories/{id} {
+      allow read: if isAuthed();
+      allow create, update: if hasPerm('catalog');
+      allow delete: if hasPerm('catalog');
+    }
+
+    // Dynamic Order Types Configuration
+    match /orderTypes/{id} {
+      allow read: if isAuthed();
+      allow create, update: if isStaff();
+      allow delete: if isOwner();
+    }
+
+    // Dynamic Channels Configuration
+    match /channels/{id} {
+      allow read: if isAuthed();
+      allow create, update: if isStaff();
+      allow delete: if isOwner();
+    }
+
+    // Dynamic Platforms Configuration
+    match /platforms/{id} {
+      allow read: if isAuthed();
+      allow create, update: if isStaff();
+      allow delete: if isOwner();
+    }
+
+    // Suppliers
+    match /suppliers/{id} {
+      allow read: if isAuthed();
+      allow create, update: if hasPerm('purchases');
+      allow delete: if isOwner();
+    }
+
+    // Sales Orders
+    match /salesOrders/{id} {
+      allow read: if isAuthed();
+      allow create: if hasPerm('sales');
+      allow update: if hasPerm('sales');
+      allow delete: if isOwner();
+    }
+
+    // Purchase Orders
+    match /purchaseOrders/{id} {
+      allow read: if isAuthed();
+      allow create, update, delete: if hasPerm('purchases');
+
+      match /receiptEvents/{eventId} {
+        allow read: if isAuthed();
+        allow create, update, delete: if hasPerm('purchases');
+      }
+    }
+
+    // Support collectionGroup queries on receiptEvents
+    match /{path=**}/receiptEvents/{eventId} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('purchases');
+    }
+
+    // Inventory status & Ledger
+    match /inventory/{bookId} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('inventory') || hasPerm('sales') || hasPerm('purchases') || hasPerm('freight-in');
+    }
+
+    match /inventoryLedger/{entryId} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('inventory') || hasPerm('sales') || hasPerm('purchases') || hasPerm('freight-in');
+    }
+
+    // FX rates
+    match /fxRates/{date} {
+      allow read: if isAuthed();
+      allow write: if isStaff();
+    }
+
+    // Cash flow
+    match /cashFlow/{entryId} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('financial') || hasPerm('income') || hasPerm('purchases') || hasPerm('piutang') || hasPerm('sales');
+    }
+
+    // Journal Entry
+    match /journalEntries/{entryId} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('double-entry') || hasPerm('sales') || hasPerm('purchases') || hasPerm('freight-in') || hasPerm('piutang') || hasPerm('fixed-assets') || hasPerm('income') || hasPerm('iklan') || hasPerm('perlengkapan') || hasPerm('ongkir');
+    }
+
+    // Chart of Accounts (CoA)
+    match /coa/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('double-entry');
+    }
+
+    // Payroll
+    match /payroll/{id} {
+      allow read, write: if isOwner();
+    }
+
+    // Partners
+    match /partners/{id} {
+      allow read: if isAuthed();
+      allow write: if isOwner();
+    }
+    match /paymentBatches/{id} {
+      allow read: if isAuthed();
+      allow write: if isOwner();
+    }
+
+    // Counters
+    match /counters/{id} {
+      allow read, write: if isStaff();
+    }
+
+    // Freight In tracking
+    match /freightIn/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('freight-in');
+    }
+
+    // Global settings configuration
+    match /globalSettings/{id} {
+      allow read: if isAuthed();
+      allow write: if isStaff();
+    }
+
+    // Monthly Period Closings
+    match /periodClosings/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('closing') || hasPerm('double-entry');
+    }
+
+    // Damaged Stock tracking
+    match /damagedStock/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('inventory');
+    }
+
+    // Fixed Assets tracking
+    match /fixedAssets/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('fixed-assets');
+    }
+
+    // Prive tracking
+    match /prive/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('financial');
+    }
+
+    // Setoran Modal tracking
+    match /setoranModal/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('financial');
+    }
+
+    // Income tracking
+    match /incomeEntries/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('income');
+    }
+
+    // Ads tracking
+    match /adsPurchases/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('iklan');
+    }
+
+    // Audit Log tracking: append-only (no update or delete)
+    match /auditLog/{id} {
+      allow read: if isAuthed();
+      allow create: if isAuthed();
+      allow update, delete: if false;
+    }
+
+    // Perlengkapan collections
+    match /perlengkapanCategories/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('perlengkapan');
+    }
+    match /perlengkapanItems/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('perlengkapan');
+    }
+    match /perlengkapanPurchases/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('perlengkapan');
+    }
+
+    // Ongkos Kirim tracking
+    match /ongkosKirim/{id} {
+      allow read: if isAuthed();
+      allow write: if hasPerm('ongkir');
+    }
+  }
+}

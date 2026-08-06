@@ -1,0 +1,19 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# IDE / tooling session data (bukan bagian dari project)
+.antigravity/
+.claude/settings.local.json
+.firebase/
+
+# Kredensial - jangan pernah di-commit
+*serviceAccount*.json
+*adminsdk*.json
+*.pem
+*.key

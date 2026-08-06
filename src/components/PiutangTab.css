@@ -1,0 +1,620 @@
+  .piutang-page {
+    --blue-900:#0f2547;
+    --blue-800:#1d3f70;
+    --blue-700:#2b5a9e;
+    --blue-600:#3d6eb0;
+    --blue-100:#e5edf9;
+    --blue-50:#f3f7fc;
+
+    --ink:#1c2431;
+    --ink-soft:#5f6b7d;
+    --ink-mute:#9aa4b2;
+
+    --paper:#f6f8fb;
+    --surface:#ffffff;
+    --line:#e4e9f1;
+
+    --amber:#a8701f;
+    --amber-bg:#faf3e2;
+    --teal:#0f7c8c;
+    --teal-bg:#e3f4f6;
+    --green:#1e7f5c;
+    --green-bg:#e7f4ee;
+    --red:#b0473d;
+    --red-bg:#faedec;
+
+    --r-lg:16px;
+    --r-md:12px;
+    --r-sm:9px;
+
+    background:transparent;
+    color:var(--ink);
+    font-family:'Lexend', system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .piutang-page * { box-sizing:border-box; }
+
+  .piutang-page .num{ font-family:'Inter', sans-serif; font-variant-numeric:tabular-nums; }
+
+  .piutang-page .page-container {
+    width: 100%;
+    padding: 0;
+  }
+
+  /* ---------- header ---------- */
+  .piutang-page .page-head{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--r-lg);
+    padding:22px 26px;
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+    margin-bottom:20px;
+  }
+
+  .piutang-page .page-head .eyebrow{
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:var(--ink-mute);
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:6px;
+  }
+  .piutang-page .page-head .eyebrow::before{
+    content:"";
+    width:16px; height:1.5px;
+    background:var(--blue-700);
+  }
+
+  .piutang-page .page-head h1{
+    font-size:24px;
+    font-weight:700;
+    margin:0 0 6px;
+    letter-spacing:-0.3px;
+  }
+  .piutang-page .page-head p{
+    margin:0;
+    font-size:13px;
+    color:var(--ink-soft);
+    max-width:520px;
+    line-height:1.5;
+  }
+
+  .piutang-page .btn-bulk{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    background:var(--blue-700);
+    color:#fff;
+    border:none;
+    border-radius:var(--r-sm);
+    padding:12px 20px;
+    font-family:'Lexend', sans-serif;
+    font-weight:600;
+    font-size:13.5px;
+    cursor:pointer;
+    transition:background .12s ease, transform .12s ease;
+    flex:none;
+  }
+  .piutang-page .btn-bulk:hover{ background:var(--blue-800); }
+  .piutang-page .btn-bulk svg{ width:16px; height:16px; }
+
+  /* ---------- platform cards ---------- */
+  .piutang-page .cards-row{
+    display:grid;
+    grid-template-columns:1.15fr repeat(4, 1fr);
+    gap:12px;
+    margin-bottom:22px;
+  }
+
+  .piutang-page .p-card{
+    background:var(--surface);
+    border:1.5px solid var(--line);
+    border-radius:var(--r-md);
+    padding:16px 18px;
+    cursor:pointer;
+    text-align:left;
+    transition:border-color .14s ease, box-shadow .14s ease, transform .1s ease;
+    position:relative;
+    overflow:hidden;
+  }
+  .piutang-page .p-card:hover{ transform:translateY(-1px); box-shadow:0 8px 20px rgba(15,37,71,0.08); }
+  .piutang-page .p-card.active{
+    border-color:var(--blue-700);
+    box-shadow:0 8px 22px rgba(43,90,158,0.14);
+  }
+
+  .piutang-page .p-card .icon{
+    width:32px; height:32px;
+    border-radius:9px;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--blue-100);
+    color:var(--blue-700);
+    margin-bottom:12px;
+  }
+  .piutang-page .p-card .icon svg{ width:16px; height:16px; }
+
+  .piutang-page .p-card .label{
+    font-size:12px;
+    font-weight:600;
+    color:var(--ink-soft);
+    margin-bottom:4px;
+  }
+
+  .piutang-page .p-card .amount{
+    font-family:'Inter', sans-serif;
+    font-variant-numeric:tabular-nums;
+    font-size:20px;
+    font-weight:700;
+    color:var(--ink);
+    line-height:1.15;
+  }
+
+  .piutang-page .p-card .sub{
+    font-size:11px;
+    color:var(--ink-mute);
+    margin-top:4px;
+    font-family:'Inter', sans-serif;
+  }
+
+  .piutang-page .p-card.total{
+    background:linear-gradient(135deg, var(--blue-900), var(--blue-700));
+    border-color:transparent;
+  }
+  .piutang-page .p-card.total .icon{ background:rgba(255,255,255,0.16); color:#fff; }
+  .piutang-page .p-card.total .label{ color:rgba(255,255,255,0.75); }
+  .piutang-page .p-card.total .amount{ color:#fff; }
+  .piutang-page .p-card.total .sub{ color:rgba(255,255,255,0.6); }
+  .piutang-page .p-card.total.active{ box-shadow:0 10px 26px rgba(15,37,71,0.3); }
+
+  /* ---------- table card ---------- */
+  .piutang-page .table-card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--r-lg);
+    overflow:hidden;
+  }
+
+  .piutang-page .table-card-head{
+    padding:18px 22px 14px;
+    border-bottom:1px solid var(--line);
+  }
+  .piutang-page .table-card-head h2{
+    font-size:15px;
+    font-weight:600;
+    margin:0 0 3px;
+  }
+  .piutang-page .table-card-head p{
+    margin:0;
+    font-size:12px;
+    color:var(--ink-soft);
+  }
+
+  .piutang-page .table-scroll{ overflow-x:auto; }
+
+  .piutang-page table{ width:100%; border-collapse:collapse; min-width:920px; }
+
+  .piutang-page thead th{
+    text-align:left;
+    font-size:10.5px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+    color:var(--ink-soft);
+    background:var(--blue-50);
+    padding:11px 16px;
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+  }
+  .piutang-page thead th.ta-r{ text-align:right; }
+  .piutang-page thead th.ta-c{ text-align:center; }
+
+  .piutang-page tbody td{
+    padding:14px 16px;
+    border-bottom:1px solid var(--line);
+    font-size:13px;
+    vertical-align:middle;
+    white-space:nowrap;
+  }
+  .piutang-page tbody tr:last-child td{ border-bottom:none; }
+  .piutang-page tbody tr:hover{ background:var(--blue-50); }
+
+  .piutang-page .order-code{ font-family:'Inter', sans-serif; font-weight:700; font-size:12.5px; color:var(--blue-700); }
+  .piutang-page .order-no{ display:block; font-family:'Inter', sans-serif; font-weight:500; font-size:11px; color:var(--ink-soft); margin-top:2px; }
+  .piutang-page .cust-name{ font-weight:600; font-size:12.5px; }
+  .piutang-page .cust-sub{ display:block; font-size:11px; color:var(--ink-soft); margin-top:2px; }
+
+  .piutang-page td.ta-r{ text-align:right; }
+  .piutang-page td.ta-c{ text-align:center; }
+
+  .piutang-page .val-billed{ font-weight:600; font-size:12.5px; }
+  .piutang-page .val-paid{ font-weight:600; font-size:12.5px; color:var(--green); }
+  .piutang-page .val-outstanding{ font-weight:700; font-size:13px; color:var(--blue-700); }
+  .piutang-page .val-outstanding.zero{ color:var(--ink-mute); font-weight:500; }
+
+  .piutang-page .status-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:11px;
+    font-weight:600;
+    padding:4px 11px;
+    border-radius:999px;
+    background:var(--sb);
+    color:var(--sc);
+  }
+  .piutang-page .status-badge::before{ content:""; width:6px; height:6px; border-radius:50%; background:var(--sc); }
+
+  .piutang-page .btn-row{
+    font-family:'Lexend', sans-serif;
+    font-weight:600;
+    font-size:11.5px;
+    color:#fff;
+    background:var(--blue-700);
+    border:none;
+    border-radius:7px;
+    padding:8px 14px;
+    cursor:pointer;
+    transition:background .12s ease;
+  }
+  .piutang-page .btn-row:hover{ background:var(--blue-800); }
+  .piutang-page .btn-row:disabled{ background:var(--ink-mute); cursor:not-allowed; }
+
+  .piutang-page .empty-state{ padding:44px 20px; text-align:center; color:var(--ink-soft); font-size:13px; }
+
+  /* ============================================================
+     MODAL: Terima Semua Piutang
+     ============================================================ */
+  .piutang-page .overlay{
+    position:fixed; inset:0;
+    background:rgba(15,25,45,0.55);
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:34px 16px;
+    z-index:100;
+    overflow-y:auto;
+  }
+
+  .piutang-page .modal{
+    background:var(--surface);
+    border-radius:18px;
+    width:100%;
+    max-width:760px;
+    overflow:hidden;
+    box-shadow:0 30px 80px rgba(6,14,30,0.5);
+  }
+
+  .piutang-page .modal-head{
+    background:linear-gradient(135deg, var(--blue-900), var(--blue-700));
+    color:#fff;
+    padding:22px 24px;
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .piutang-page .modal-head h2{ font-size:18px; font-weight:700; margin:0 0 3px; }
+  .piutang-page .modal-head p{ margin:0; font-size:12px; color:rgba(255,255,255,0.75); }
+
+  .piutang-page .modal-close{
+    background:rgba(255,255,255,0.16);
+    border:none; color:#fff;
+    width:32px; height:32px; border-radius:9px;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    flex:none;
+  }
+  .piutang-page .modal-close:hover{ background:rgba(255,255,255,0.28); }
+
+  .piutang-page .modal-body{ padding:20px 24px 4px; }
+
+  /* summary boxes */
+  .piutang-page .summary-pair{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    margin-bottom:16px;
+  }
+  .piutang-page .summary-box{
+    border:1px solid var(--line);
+    border-radius:var(--r-md);
+    padding:14px 16px;
+  }
+  .piutang-page .summary-box.recv{ background:var(--green-bg); border-color:#cfe9dd; }
+  .piutang-page .summary-box.total{ background:var(--blue-50); border-color:var(--blue-100); }
+
+  .piutang-page .summary-box .lbl{
+    font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px;
+    color:var(--ink-soft); margin-bottom:5px;
+  }
+  .piutang-page .summary-box .val{
+    font-family:'Inter', sans-serif; font-variant-numeric:tabular-nums;
+    font-size:20px; font-weight:700;
+  }
+  .piutang-page .summary-box.recv .val{ color:var(--green); }
+  .piutang-page .summary-box.total .val{ color:var(--blue-700); }
+
+  .piutang-page .grid-help{
+    font-size:11.5px;
+    color:var(--ink-soft);
+    margin-bottom:10px;
+    line-height:1.5;
+  }
+
+  .piutang-page .grid-wrap{
+    border:1px solid var(--line);
+    border-radius:var(--r-md);
+    overflow:hidden;
+  }
+
+  .piutang-page .grid-header-row, .piutang-page .grid-row{
+    display:grid;
+    grid-template-columns:32px 1fr 1fr 26px;
+    gap:0;
+  }
+
+  .piutang-page .grid-header-row{
+    background:var(--blue-700);
+    border-bottom:2px solid var(--blue-800);
+  }
+  .piutang-page .grid-header-row span{
+    font-family:'Lexend', sans-serif;
+    font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;
+    color:rgba(255,255,255,0.92);
+    padding:10px 9px;
+    display:flex; align-items:center;
+  }
+
+  .piutang-page .grid-scroll{ max-height:380px; overflow-y:auto; }
+
+  .piutang-page .grid-row{ border-bottom:1px solid var(--line); align-items:center; background:var(--surface); }
+  .piutang-page .grid-row:nth-child(even){ background:var(--blue-50); }
+  .piutang-page .grid-row:last-child{ border-bottom:none; }
+
+  .piutang-page .grid-row.success{ background:var(--green-bg); box-shadow:inset 3px 0 0 var(--green); }
+  .piutang-page .grid-row.partial{ background:var(--teal-bg); box-shadow:inset 3px 0 0 var(--teal); }
+  .piutang-page .grid-row.error{ background:var(--red-bg); box-shadow:inset 3px 0 0 var(--red); }
+
+  .piutang-page .row-num{
+    text-align:center; font-size:11px; color:var(--ink-mute);
+    font-family:'Inter', sans-serif; border-right:1px solid var(--line);
+  }
+
+  .piutang-page .grid-row input{
+    width:100%; border:none; background:transparent;
+    padding:9px 10px;
+    font-family:'Inter', sans-serif; font-size:12.5px; color:var(--ink);
+    border-right:1px solid var(--line);
+  }
+  .piutang-page .grid-row input::placeholder{ font-family:'Lexend', sans-serif; color:var(--ink-mute); }
+  .piutang-page .grid-row input:focus{ outline:2px solid var(--blue-700); outline-offset:-2px; background:var(--surface); }
+  .piutang-page .grid-row input:disabled{ color:var(--ink-soft); background:transparent; }
+  .piutang-page .grid-row input.cell-selected{
+    background:rgba(43,90,158,0.10);
+    box-shadow:inset 0 0 0 1.5px var(--blue-700);
+  }
+
+  .piutang-page .row-status{ display:flex; align-items:center; justify-content:center; }
+  .piutang-page .row-status svg{ width:14px; height:14px; }
+  .piutang-page .row-status.success{ color:var(--green); }
+  .piutang-page .row-status.partial{ color:var(--teal); }
+  .piutang-page .row-status.error{ color:var(--red); }
+
+  .piutang-page .modal-foot{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:10px; padding:16px 24px; border-top:1px solid var(--line); background:var(--paper);
+  }
+  .piutang-page .grid-status-text{ font-family:'Inter', sans-serif; font-size:11.5px; color:var(--ink-soft); }
+  .piutang-page .modal-foot-actions{ display:flex; gap:10px; }
+
+  .piutang-page .btn-cancel{
+    background:var(--surface); color:var(--ink-soft); border:1px solid var(--line);
+    font-family:'Lexend', sans-serif; font-weight:600; font-size:13px;
+    padding:10px 18px; border-radius:9px; cursor:pointer;
+  }
+  .piutang-page .btn-cancel:hover{ background:var(--blue-50); }
+
+  .piutang-page .btn-process{
+    background:var(--blue-700); color:#fff; border:none;
+    font-family:'Lexend', sans-serif; font-weight:700; font-size:13px;
+    padding:10px 22px; border-radius:9px; cursor:pointer;
+  }
+  .piutang-page .btn-process:hover{ background:var(--blue-800); }
+
+  .piutang-page .summary-banner{
+    display:flex; gap:16px; padding:10px 14px; border-radius:9px;
+    background:var(--blue-50); border:1px solid var(--blue-100);
+    font-size:12px; margin-bottom:12px; align-items:center; flex-wrap:wrap;
+  }
+  .piutang-page .summary-banner b{ font-family:'Inter', sans-serif; }
+  .piutang-page .summary-banner .ok{ color:var(--green); }
+  .piutang-page .summary-banner .partial{ color:var(--teal); }
+  .piutang-page .summary-banner .fail{ color:var(--red); }
+
+  /* autocomplete */
+  .piutang-page .order-suggest{
+    position:fixed; z-index:110;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md);
+    box-shadow:0 14px 34px rgba(15,37,71,0.2);
+    max-height:220px; overflow-y:auto;
+  }
+  .piutang-page .order-suggest-item{ padding:9px 12px; cursor:pointer; border-bottom:1px solid var(--line); font-size:12.5px; }
+  .piutang-page .order-suggest-item:last-child{ border-bottom:none; }
+  .piutang-page .order-suggest-item:hover{ background:var(--blue-50); }
+  .piutang-page .order-suggest-item .oi-no{ font-family:'Inter', sans-serif; font-weight:700; color:var(--blue-700); }
+  .piutang-page .order-suggest-item .oi-cust{ font-family:'Inter', sans-serif; color:var(--ink-soft); font-size:11px; margin-left:8px; }
+  .piutang-page .order-suggest-item .oi-amt{ float:right; font-family:'Inter', sans-serif; font-weight:600; color:var(--ink); font-size:11.5px; }
+  .piutang-page .order-suggest-empty{ padding:11px 12px; font-size:12px; color:var(--ink-soft); }
+
+  @media (max-width:1000px){
+    .piutang-page .cards-row{ grid-template-columns:repeat(2, 1fr); }
+  }
+
+  /* ============================================================
+     MODAL: Rekonsiliasi Pelunasan Piutang (per baris)
+     ============================================================ */
+  .piutang-page .tb-modal{
+    background:#fff;
+    border-radius:20px;
+    width:100%;
+    max-width:460px;
+    overflow:hidden;
+    box-shadow:0 30px 80px rgba(6,14,30,0.35);
+  }
+
+  .piutang-page .tb-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:22px 22px 16px;
+  }
+
+  .piutang-page .tb-title{
+    font-family:'Lexend', sans-serif;
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:0.2px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+
+  .piutang-page .tb-close{
+    background:none;
+    border:none;
+    color:var(--ink-mute);
+    cursor:pointer;
+    width:28px; height:28px;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:7px;
+    flex:none;
+  }
+  .piutang-page .tb-close:hover{ background:var(--blue-50); color:var(--ink); }
+
+  .piutang-page .tb-body{ padding:0 22px 20px; }
+
+  .piutang-page .tb-info{
+    background:var(--paper);
+    border-radius:12px;
+    padding:14px 16px;
+    margin-bottom:20px;
+  }
+
+  .piutang-page .tb-info-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:13px;
+    color:var(--ink-soft);
+    padding:4px 0;
+  }
+  .piutang-page .tb-info-row b{
+    font-family:'Inter', sans-serif;
+    color:var(--ink);
+    font-weight:700;
+    font-size:13px;
+  }
+
+  .piutang-page .tb-info-divider{ border-top:1px dashed var(--line); margin:8px 0; }
+
+  .piutang-page .tb-outstanding{ color:var(--blue-700) !important; font-size:16px !important; }
+
+  .piutang-page .tb-field{ margin-bottom:16px; }
+  .piutang-page .tb-field:last-child{ margin-bottom:0; }
+
+  .piutang-page .tb-label{
+    display:block;
+    font-size:11px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:0.4px;
+    color:var(--ink-soft);
+    margin-bottom:8px;
+  }
+
+  .piutang-page .tb-label-highlight{
+    display:inline-block;
+    background:#eef1f5;
+    padding:2px 7px;
+    border-radius:4px;
+  }
+
+  .piutang-page .tb-date-wrap{ position:relative; display:flex; align-items:center; }
+  .piutang-page .tb-date-wrap svg{ position:absolute; left:13px; width:15px; height:15px; color:var(--ink-mute); pointer-events:none; }
+  .piutang-page .tb-date-wrap input[type="date"]{ padding-left:38px; }
+
+  .piutang-page .tb-input, .piutang-page .tb-select{
+    width:100%;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:11px 14px;
+    font-family:'Inter', sans-serif;
+    font-size:13.5px;
+    color:var(--ink);
+    background:#fff;
+  }
+  .piutang-page .tb-select{ font-family:'Lexend', sans-serif; cursor:pointer; }
+  .piutang-page .tb-input:focus, .piutang-page .tb-select:focus{ outline:2px solid var(--blue-700); outline-offset:-1px; }
+  .piutang-page .tb-input:disabled{ background:var(--paper); color:var(--ink-mute); }
+  .piutang-page .tb-input-lg{ font-size:15px; font-weight:600; font-family:'Inter', sans-serif; }
+
+  .piutang-page .tb-row-2col{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+  .piutang-page .tb-foot{
+    display:flex;
+    justify-content:flex-end;
+    gap:10px;
+    padding:16px 22px;
+    border-top:1px solid var(--line);
+  }
+
+  .piutang-page .tb-btn-cancel{
+    background:#fff;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+    font-family:'Lexend', sans-serif;
+    font-weight:600;
+    font-size:13px;
+    padding:12px 20px;
+    border-radius:10px;
+    cursor:pointer;
+  }
+  .piutang-page .tb-btn-cancel:hover{ background:var(--blue-50); }
+
+  .piutang-page .tb-btn-post{
+    background:var(--blue-700);
+    color:#fff;
+    border:none;
+    font-family:'Lexend', sans-serif;
+    font-weight:700;
+    font-size:13px;
+    padding:12px 22px;
+    border-radius:10px;
+    cursor:pointer;
+    flex:1;
+  }
+  .piutang-page .tb-btn-post:hover{ background:var(--blue-800); }
+
+.piutang-page {
+  width: 100% !important;
+  max-width: none !important;
+}
+.piutang-page .page-container {
+  width: 100% !important;
+  max-width: none !important;
+}
+.piutang-page .page-head {
+  width: 100% !important;
+  max-width: none !important;
+}
+.piutang-page .table-card {
+  width: 100% !important;
+  max-width: none !important;
+}

@@ -1,0 +1,56 @@
+--- src/components/SalesTab.tsx
++++ src/components/SalesTab.tsx
+@@ -2701,44 +2701,20 @@
+   };
+ 
+   // 3. Sort orders: 
+-  // 1) Pinned orders (most recently pinned first)
+-  // 2) Overdue orders (diffDays >= 15) placed next (oldest first)
+-  // 3) Ready Stock orders (all items in stock) placed under overdue orders
+-  // 4) Normal orders preserving default date order (newest first).
+   const sortedOrders = useMemo(() => {
+     const pinnedItems: SalesOrder[] = [];
+-    const overdueItems: { order: SalesOrder; days: number }[] = [];
+-    const readyStockItems: SalesOrder[] = [];
+-    const normalItems: SalesOrder[] = [];
++    const unpinnedItems: SalesOrder[] = [];
+ 
+     searchedOrders.forEach((order) => {
+       if (order.isPinned) {
+         pinnedItems.push(order);
+       } else {
+-        const days = getOverdueDays(order);
+-        if (days >= 15) {
+-          overdueItems.push({ order, days });
+-        } else if (checkIsReadyStock(order)) {
+-          readyStockItems.push(order);
+-        } else {
+-          normalItems.push(order);
+-        }
++        unpinnedItems.push(order);
+       }
+     });
+ 
+-    // Pinned orders sorted most recently pinned first
+     pinnedItems.sort((a, b) => getPinnedMs(b) - getPinnedMs(a));
+-
+-    // Overdue orders sorted oldest first (highest days first)
+-    overdueItems.sort((a, b) => b.days - a.days);
+-
+-    // Normal & Ready Stock orders retain their exact original date order (newest date first)
+-    return [
+-      ...pinnedItems,
+-      ...overdueItems.map((item) => item.order),
+-      ...readyStockItems,
+-      ...normalItems,
+-    ];
+-  }, [searchedOrders, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords]);
++    
++    unpinnedItems.sort((a, b) => {
++      const codeA = a.orderCode || '';
++      const codeB = b.orderCode || '';
++      return codeB.localeCompare(codeA);
++    });
++
++    return [...pinnedItems, ...unpinnedItems];
++  }, [searchedOrders]);

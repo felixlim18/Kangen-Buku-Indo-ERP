@@ -1,0 +1,1957 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   KangenBukuIndo ERP — MOBILE DESIGN LAYER
+   Aesthetic: "Editorial Ledger" — warm bookbinding paper meets precision
+   accounting. Signature motif = the SPINE (book spine / ledger rule).
+
+   ⚠️  SCOPE CONTRACT
+   Every rule in this file lives inside @media (max-width: 767.98px).
+   Desktop (>= 768px) and tablet rendering are provably untouched.
+   No JS/logic is affected — this file only redresses what already exists.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 767.98px) {
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     1 · DESIGN TOKENS
+     One dominant tone (forest ink on warm paper), one accent (antique gold),
+     one neutral system. Deliberately unbalanced — paper dominates.
+     ───────────────────────────────────────────────────────────────────────── */
+  :root {
+    /* Type pairing — Lexend carries language, Inter carries figures.
+       Inter's tabular numerals keep columns of money optically aligned in a
+       card layout, where there is no table grid left to do that job. */
+    --m-font-text: 'Lexend', ui-sans-serif, system-ui, sans-serif;
+    --m-font-num:  'Inter', ui-sans-serif, system-ui, sans-serif;
+
+    /* Surfaces */
+    --m-paper:        #FAF8F3;
+    --m-paper-deep:   #F2EEE5;
+    --m-surface:      #FFFFFF;
+    --m-surface-2:    #FBF9F5;
+
+    /* Ink hierarchy */
+    --m-ink-strong:   #0E1013;
+    --m-ink:          #16181B;
+    --m-ink-2:        #4C545C;
+    --m-ink-3:        #8B939B;
+    --m-ink-mute:     #8B939B;
+
+    /* Structure */
+    --m-line:         #EAE7E1;
+    --m-line-soft:    #F2EFE9;
+
+    /* Dominant + accents (inherited from the existing brand system) */
+    --m-forest:       #14654A;
+    --m-forest-deep:  #0D4A36;
+    --m-forest-tint:  #E7F1EC;
+    --m-slate:        #3F5875;
+    --m-gold:         #A67A22;
+    --m-rust:         #A9503B;
+    --m-accent:       var(--m-forest);
+
+    /* Elevation — two-layer: tight contact shadow + ambient bloom */
+    --m-shadow-1: 0 1px 2px rgba(22,24,27,.05), 0 1px 3px rgba(22,24,27,.04);
+    --m-shadow-2: 0 2px 6px -1px rgba(22,24,27,.06), 0 6px 18px -6px rgba(22,24,27,.10);
+    --m-shadow-3: 0 4px 12px -2px rgba(22,24,27,.07), 0 16px 40px -12px rgba(13,74,54,.18);
+
+    /* Radii rhythm — 10 / 14 / 18 / 24 */
+    --m-r-sm: 10px;
+    --m-r-md: 14px;
+    --m-r-lg: 18px;
+    --m-r-xl: 24px;
+
+    /* Spacing rhythm — 4pt base, 16px gutter */
+    --m-gutter: 16px;
+
+    /* Motion — a single iOS-grade easing curve used everywhere */
+    --m-ease: cubic-bezier(.32, .72, 0, 1);
+    --m-ease-out: cubic-bezier(.16, 1, .3, 1);
+
+    /* Shell geometry */
+    --m-topbar-h: calc(60px + env(safe-area-inset-top, 0px));
+    --m-dock-h:   68px;
+  }
+
+  .dark {
+    --m-paper:        #0C0A12;
+    --m-paper-deep:   #08070C;
+    --m-surface:      #17161D;
+    --m-surface-2:    #1D1B24;
+
+    --m-ink-strong:   #FFFFFF;
+    --m-ink:          #F5F4F2;
+    --m-ink-2:        #A9A5A0;
+    --m-ink-3:        #78747A;
+    --m-ink-mute:     #78747A;
+
+    --m-line:         #2A2833;
+    --m-line-soft:    #211F29;
+
+    --m-forest:       #4ADE9E;
+    --m-forest-deep:  #22C088;
+    --m-forest-tint:  rgba(74, 222, 158, .10);
+    --m-slate:        #94A9C4;
+    --m-gold:         #D9A94A;
+    --m-rust:         #D98167;
+
+    --m-shadow-1: 0 1px 2px rgba(0,0,0,.32);
+    --m-shadow-2: 0 2px 6px -1px rgba(0,0,0,.38), 0 6px 18px -6px rgba(0,0,0,.44);
+    --m-shadow-3: 0 4px 12px -2px rgba(0,0,0,.42), 0 16px 40px -12px rgba(0,0,0,.6);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     2 · BASE — feel of the surface itself
+     ───────────────────────────────────────────────────────────────────────── */
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: var(--m-font-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior-y: none;
+  }
+
+  /* ── Type assignment ──────────────────────────────────────────────────────
+     Lexend for anything read as language; Inter for anything read as a
+     quantity. Splitting the two lets figures stay monospaced-by-width without
+     making the interface look like a terminal. */
+  .kbi-main, .kbi-modal-panel, .kbi-so-card,
+  h1, h2, h3, h4, h5, h6, p, label, button, a, th {
+    font-family: var(--m-font-text);
+  }
+
+  [data-kbi-num],
+  .font-numeric,
+  .tabular-nums,
+  input[type="number"],
+  input[inputmode="numeric"],
+  input[inputmode="decimal"],
+  time {
+    font-family: var(--m-font-num) !important;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.005em;
+  }
+
+  /* Paper grain — the tactile anchor. Sits behind content, never interactive. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: .035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .dark body::after { opacity: .05; }
+
+  /* Kill the grey flash on tap; keep gestures snappy. */
+  a, button, [role="button"], input, select, textarea, label {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  ::selection {
+    background: var(--m-forest-tint);
+    color: var(--m-forest-deep);
+  }
+
+  /* Accessible focus that matches the aesthetic instead of fighting it. */
+  :focus-visible {
+    outline: 2px solid var(--m-forest);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     3 · SHELL — the scroll viewport
+     The app shell is overflow-hidden, so <main> must stay the scroller.
+     We only correct its height to match the new top bar and use dvh so the
+     layout breathes with mobile browser chrome.
+     ───────────────────────────────────────────────────────────────────────── */
+  .kbi-main {
+    height: calc(100vh - var(--m-topbar-h)) !important;
+    height: calc(100dvh - var(--m-topbar-h)) !important;
+    overflow-y: auto !important;
+    padding: 18px var(--m-gutter) calc(var(--m-dock-h) + 42px + env(safe-area-inset-bottom, 0px)) !important;
+    scroll-behavior: smooth;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Content enters with one calm, staggered rise — the single entrance moment. */
+  .kbi-main > * {
+    animation: kbi-rise .5s var(--m-ease-out) backwards;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     4 · TOP BAR — the "bound edge"
+     A frosted paper header closed by a binding thread: forest → gold → rust.
+     ───────────────────────────────────────────────────────────────────────── */
+  .kbi-mtop {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    height: var(--m-topbar-h);
+    padding: env(safe-area-inset-top, 0px) var(--m-gutter) 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--m-paper) 94%, transparent) 0%,
+      color-mix(in srgb, var(--m-paper) 80%, transparent) 100%);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--m-line);
+  }
+
+  /* The binding thread — 2px of woven brand colour along the bound edge. */
+  .kbi-mtop::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 2px;
+    background: linear-gradient(90deg,
+      var(--m-forest) 0%,
+      var(--m-forest) 22%,
+      var(--m-gold) 46%,
+      var(--m-rust) 68%,
+      transparent 100%);
+    opacity: .5;
+  }
+
+  .kbi-mtop__left {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  /* Logo tile styled as a book cover: deep spine on the left, light emboss. */
+  .kbi-mtop__mark {
+    width: 38px; height: 38px;
+    flex-shrink: 0;
+    border-radius: 11px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .02em;
+    background: linear-gradient(145deg, var(--m-forest) 0%, var(--m-forest-deep) 100%);
+    box-shadow:
+      inset 3px 0 0 0 rgba(255,255,255,.22),
+      inset 0 1px 0 0 rgba(255,255,255,.18),
+      0 2px 8px -2px rgba(13,74,54,.5);
+  }
+  .kbi-mtop__mark img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+
+  /* Back control — circular ghost, 40px touch target. */
+  .kbi-mtop__back {
+    width: 40px; height: 40px;
+    flex-shrink: 0;
+    margin-left: -6px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--m-forest);
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    box-shadow: var(--m-shadow-1);
+    transition: transform .16s var(--m-ease), background .16s var(--m-ease);
+  }
+  .kbi-mtop__back:active { transform: scale(.9); background: var(--m-forest-tint); }
+
+  .kbi-mtop__titles { min-width: 0; }
+
+  .kbi-mtop__title {
+    font-family: 'Lexend', sans-serif;
+    font-size: 15.5px;
+    font-weight: 650;
+    letter-spacing: -.022em;
+    line-height: 1.15;
+    color: var(--m-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Eyebrow: small caps, wide tracking — the editorial tell. */
+  .kbi-mtop__eyebrow {
+    margin-top: 2px;
+    font-family: 'Lexend', sans-serif;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--m-ink-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .kbi-mtop__actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+  .kbi-mtop__icon {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--m-ink-2);
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    box-shadow: var(--m-shadow-1);
+    transition: transform .16s var(--m-ease), background .16s var(--m-ease), color .16s var(--m-ease);
+  }
+  .kbi-mtop__icon:active { transform: scale(.9); }
+  .kbi-mtop__icon.is-active {
+    background: linear-gradient(145deg, var(--m-forest), var(--m-forest-deep));
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 2px 10px -2px rgba(13,74,54,.5);
+  }
+  .dark .kbi-mtop__icon.is-active { color: #06120D; }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     5 · BOTTOM DOCK — the floating "shelf"
+     Not an edge-to-edge bar. A detached, rounded shelf with a bookmark
+     ribbon that hangs from the top edge over the active module.
+     ★ This is the differentiation anchor.
+     ───────────────────────────────────────────────────────────────────────── */
+  .kbi-mdock {
+    position: fixed;
+    z-index: 40;
+    left: 12px; right: 12px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    height: var(--m-dock-h);
+    padding: 0 4px;
+    display: flex;
+    align-items: stretch;
+    border-radius: 22px;
+    background: color-mix(in srgb, var(--m-surface) 88%, transparent);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--m-line);
+    box-shadow: var(--m-shadow-3);
+    user-select: none;
+  }
+
+  /* Hairline highlight along the shelf edge — reads as polished wood/paper. */
+  .kbi-mdock::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: inset 0 1px 0 0 rgba(255,255,255,.6);
+  }
+  .dark .kbi-mdock::after { box-shadow: inset 0 1px 0 0 rgba(255,255,255,.06); }
+
+  .kbi-mdock__btn {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 2px;
+    color: var(--m-ink-3);
+    background: none;
+    border: 0;
+    transition: color .2s var(--m-ease);
+  }
+
+  .kbi-mdock__icon {
+    width: 38px; height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    transition: background .28s var(--m-ease), transform .28s var(--m-ease);
+  }
+  .kbi-mdock__btn:active .kbi-mdock__icon { transform: scale(.86); }
+
+  .kbi-mdock__label {
+    font-family: 'Lexend', sans-serif;
+    font-size: 9.5px;
+    font-weight: 500;
+    letter-spacing: -.01em;
+    line-height: 1;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: font-weight .2s var(--m-ease);
+  }
+
+  .kbi-mdock__btn.is-active { color: var(--m-forest); }
+  .kbi-mdock__btn.is-active .kbi-mdock__icon { background: var(--m-forest-tint); }
+  .kbi-mdock__btn.is-active .kbi-mdock__label { font-weight: 700; }
+
+  /* ★ The bookmark ribbon — a notched tab hanging from the shelf's top edge. */
+  .kbi-mdock__btn.is-active::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    width: 20px; height: 11px;
+    background: linear-gradient(180deg, var(--m-forest) 0%, var(--m-forest-deep) 100%);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 58%, 0 100%);
+    transform-origin: top center;
+    animation: kbi-ribbon .42s var(--m-ease-out) both;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     6 · "LAINNYA" SHEET — the module library
+     ───────────────────────────────────────────────────────────────────────── */
+  .kbi-msheet-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    background: rgba(12,10,18,.5);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    animation: kbi-fade .28s var(--m-ease) both;
+  }
+
+  .kbi-msheet {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    max-height: 92dvh;
+    background: var(--m-paper);
+    border-top: 1px solid var(--m-line);
+    border-radius: var(--m-r-xl) var(--m-r-xl) 0 0;
+    box-shadow: 0 -18px 50px -12px rgba(12,10,18,.4);
+    animation: kbi-sheet-up .46s var(--m-ease-out) backwards;
+    overflow: hidden;
+  }
+
+  .kbi-msheet__grip {
+    padding: 10px 0 4px;
+    display: flex;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .kbi-msheet__grip span {
+    width: 40px; height: 5px;
+    border-radius: 99px;
+    background: var(--m-line);
+  }
+
+  .kbi-msheet__head {
+    padding: 4px var(--m-gutter) 14px;
+    border-bottom: 1px solid var(--m-line);
+    flex-shrink: 0;
+  }
+
+  .kbi-msheet__headrow {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .kbi-msheet__title {
+    font-family: 'Lexend', sans-serif;
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -.028em;
+    color: var(--m-ink);
+    line-height: 1.15;
+  }
+  .kbi-msheet__sub {
+    margin-top: 3px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--m-ink-3);
+  }
+
+  .kbi-msheet__close {
+    width: 40px; height: 40px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--m-ink-2);
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    box-shadow: var(--m-shadow-1);
+    transition: transform .16s var(--m-ease);
+  }
+  .kbi-msheet__close:active { transform: scale(.9); }
+
+  .kbi-msheet__search { position: relative; }
+  .kbi-msheet__search svg { position: absolute; top: 50%; transform: translateY(-50%); }
+  .kbi-msheet__search svg:first-of-type { left: 14px; color: var(--m-ink-3); }
+  .kbi-msheet__search input {
+    width: 100%;
+    height: 46px;
+    padding: 0 42px 0 40px;
+    font-family: 'Lexend', sans-serif;
+    font-size: 14px;
+    color: var(--m-ink);
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-r-md);
+    box-shadow: var(--m-shadow-1);
+    transition: border-color .18s var(--m-ease), box-shadow .18s var(--m-ease);
+  }
+  .kbi-msheet__search input::placeholder { color: var(--m-ink-3); }
+  .kbi-msheet__search input:focus {
+    outline: none;
+    border-color: var(--m-forest);
+    box-shadow: 0 0 0 3px var(--m-forest-tint);
+  }
+  .kbi-msheet__clear {
+    position: absolute;
+    right: 6px; top: 50%;
+    transform: translateY(-50%);
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--m-ink-3);
+  }
+
+  .kbi-msheet__body {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 20px var(--m-gutter) calc(32px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+  }
+
+  /* Sections rise in sequence — reads as pages settling, not as a spinner. */
+  .kbi-msheet__body > * { animation: kbi-rise .44s var(--m-ease-out) backwards; }
+  .kbi-msheet__body > *:nth-child(1) { animation-delay: .02s; }
+  .kbi-msheet__body > *:nth-child(2) { animation-delay: .05s; }
+  .kbi-msheet__body > *:nth-child(3) { animation-delay: .08s; }
+  .kbi-msheet__body > *:nth-child(4) { animation-delay: .11s; }
+  .kbi-msheet__body > *:nth-child(5) { animation-delay: .14s; }
+  .kbi-msheet__body > *:nth-child(6) { animation-delay: .17s; }
+  .kbi-msheet__body > *:nth-child(7) { animation-delay: .2s; }
+
+  /* Section label with a leading spine rule — the motif, repeated. */
+  .kbi-msheet__legend {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 11px;
+    font-family: 'Lexend', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--m-ink-3);
+  }
+  .kbi-msheet__legend::before {
+    content: '';
+    width: 3px; height: 13px;
+    flex-shrink: 0;
+    border-radius: 99px;
+    background: var(--m-legend, var(--m-forest));
+  }
+  .kbi-msheet__legend svg { color: var(--m-legend, var(--m-forest)); }
+
+  .kbi-msheet__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+
+  /* Standard module tile — 56px tall, comfortably above the 44px floor. */
+  .kbi-mtile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 56px;
+    padding: 10px 12px;
+    text-align: left;
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-r-md);
+    box-shadow: var(--m-shadow-1);
+    color: var(--m-ink);
+    transition: transform .18s var(--m-ease), border-color .18s var(--m-ease),
+                box-shadow .18s var(--m-ease), background .18s var(--m-ease);
+  }
+  .kbi-mtile:active { transform: scale(.97); }
+
+  .kbi-mtile__glyph {
+    width: 30px; height: 30px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    border-radius: 9px;
+    color: var(--m-tone, var(--m-ink-2));
+    background: var(--m-tone-tint, var(--m-line-soft));
+  }
+
+  .kbi-mtile__label {
+    font-family: 'Lexend', sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: -.012em;
+    line-height: 1.25;
+    color: var(--m-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kbi-mtile.is-active {
+    background: var(--m-tone-tint, var(--m-forest-tint));
+    border-color: var(--m-tone, var(--m-forest));
+    box-shadow: inset 3px 0 0 0 var(--m-tone, var(--m-forest)), var(--m-shadow-1);
+  }
+  .kbi-mtile.is-active .kbi-mtile__label { font-weight: 700; color: var(--m-tone, var(--m-forest)); }
+  .kbi-mtile.is-active .kbi-mtile__glyph { background: var(--m-surface); }
+
+  .kbi-mtile--wide { grid-column: 1 / -1; }
+
+  /* Hero tiles — the two primary modules, rendered as book covers. */
+  .kbi-mhero {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 108px;
+    padding: 14px;
+    text-align: left;
+    overflow: hidden;
+    border-radius: var(--m-r-lg);
+    border: 1px solid var(--m-line);
+    background: var(--m-surface);
+    box-shadow: var(--m-shadow-2);
+    transition: transform .2s var(--m-ease);
+  }
+  .kbi-mhero:active { transform: scale(.975); }
+
+  /* The spine: a colour band down the left edge of every hero cover. */
+  .kbi-mhero::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: linear-gradient(180deg, var(--m-tone), color-mix(in srgb, var(--m-tone) 55%, transparent));
+  }
+  /* A soft wash bleeding off the spine. */
+  .kbi-mhero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(105deg,
+      color-mix(in srgb, var(--m-tone) 9%, transparent) 0%,
+      transparent 62%);
+  }
+
+  /* Keep content above the spine wash. */
+  .kbi-mhero > * { position: relative; z-index: 1; }
+
+  .kbi-mhero__glyph {
+    width: 34px; height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    color: var(--m-tone);
+    background: var(--m-tone-tint);
+  }
+  .kbi-mhero__title {
+    font-family: 'Lexend', sans-serif;
+    font-size: 14px;
+    font-weight: 650;
+    letter-spacing: -.022em;
+    color: var(--m-ink);
+    line-height: 1.2;
+  }
+  .kbi-mhero__cap {
+    margin-top: 2px;
+    font-size: 10.5px;
+    font-weight: 450;
+    color: var(--m-ink-3);
+    line-height: 1.3;
+  }
+  .kbi-mhero.is-active { border-color: var(--m-tone); }
+  .kbi-mhero.is-active .kbi-mhero__title { color: var(--m-tone); }
+
+  /* Tone presets — how a module announces which ledger it belongs to. */
+  .t-forest { --m-tone: var(--m-forest); --m-tone-tint: var(--m-forest-tint); }
+  .t-slate  { --m-tone: var(--m-slate);  --m-tone-tint: #EAEFF5; }
+  .t-gold   { --m-tone: var(--m-gold);   --m-tone-tint: #F8F0DF; }
+  .t-rust   { --m-tone: var(--m-rust);   --m-tone-tint: #F8EAE6; }
+  .dark .t-slate { --m-tone-tint: rgba(148,169,196,.12); }
+  .dark .t-gold  { --m-tone-tint: rgba(217,169,74,.12); }
+  .dark .t-rust  { --m-tone-tint: rgba(217,129,103,.12); }
+
+  /* Empty search result state. */
+  .kbi-mempty {
+    padding: 40px 20px;
+    text-align: center;
+    border: 1px dashed var(--m-line);
+    border-radius: var(--m-r-lg);
+    background: var(--m-surface-2);
+  }
+  .kbi-mempty__glyph {
+    width: 48px; height: 48px;
+    margin: 0 auto 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    color: var(--m-ink-3);
+    background: var(--m-line-soft);
+  }
+  .kbi-mempty__title {
+    font-family: 'Lexend', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--m-ink);
+  }
+  .kbi-mempty__cap {
+    margin-top: 4px;
+    font-size: 11.5px;
+    color: var(--m-ink-3);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     7 · FORM CONTROLS — the single biggest mobile usability win
+     16px type prevents iOS auto-zoom on focus. 44px is the touch floor.
+     Table-embedded inputs are exempted so dense grids keep their column math.
+     ───────────────────────────────────────────────────────────────────────── */
+  .kbi-main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .kbi-main select,
+  .kbi-main textarea {
+    font-size: 16px;
+  }
+
+  .kbi-main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(table input),
+  .kbi-main select:not(table select),
+  .kbi-main textarea {
+    min-height: 44px;
+  }
+
+  .kbi-main table input,
+  .kbi-main table select {
+    font-size: 15px;
+  }
+
+  .kbi-main input[type="checkbox"],
+  .kbi-main input[type="radio"] {
+    width: 19px;
+    height: 19px;
+    accent-color: var(--m-forest);
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     8 · MICRO-INTERACTIONS — one gesture language across every control
+     ───────────────────────────────────────────────────────────────────────── */
+  .kbi-main button:not(:disabled) {
+    transition: transform .14s var(--m-ease), opacity .14s var(--m-ease);
+  }
+  .kbi-main button:not(:disabled):active { transform: scale(.97); }
+
+  /* Guarantee the touch floor on the small icon buttons scattered through the
+     dense accounting tables, without changing their visual box. */
+  .kbi-main button > svg:only-child { min-width: 18px; min-height: 18px; }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     9 · SURFACE REFINEMENT — softer radii, narrative shadows
+     Applied to the existing utility classes so every panel inherits the
+     mobile treatment without a single markup change.
+     ───────────────────────────────────────────────────────────────────────── */
+  .kbi-main .rounded-lg  { border-radius: var(--m-r-sm); }
+  .kbi-main .rounded-xl  { border-radius: var(--m-r-md); }
+  .kbi-main .rounded-2xl { border-radius: var(--m-r-lg); }
+  .kbi-main .rounded-3xl { border-radius: var(--m-r-xl); }
+
+  .kbi-main .shadow-xs,
+  .kbi-main .shadow-sm { box-shadow: var(--m-shadow-1); }
+  .kbi-main .shadow-md,
+  .kbi-main .shadow-lg { box-shadow: var(--m-shadow-2); }
+  .kbi-main .shadow-xl,
+  .kbi-main .shadow-2xl { box-shadow: var(--m-shadow-3); }
+
+  /* Tighten vertical rhythm — mobile reads better dense-but-airy than sparse. */
+  .kbi-main .space-y-6 > * + * { margin-top: 18px; }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     10 · ZERO HORIZONTAL SCROLL
+     The single hardest rule in this file: the page may only ever move on one
+     axis. Every mechanism that can introduce a second axis is closed off here,
+     at the source, rather than patched per-component.
+     ───────────────────────────────────────────────────────────────────────── */
+  html, body {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+  }
+
+  .kbi-main {
+    overflow-x: clip;
+    max-width: 100vw;
+  }
+
+  /* Desktop reserves a scroll runway for wide ledgers. The ledger is no longer
+     wide, so the runway is dead space — but ONLY for table wrappers. A chip or
+     tab strip that scrolls sideways is a native mobile pattern and is left
+     alone deliberately; it is styled as a rail further down. */
+  .overflow-x-auto:has(table),
+  .overflow-auto:has(table),
+  .overflow-x-scroll:has(table) {
+    overflow-x: visible !important;
+  }
+
+  /* Hard-coded table widths (min-w-[960px] and friends) are the real offender. */
+  .kbi-main table,
+  .kbi-modal-body table,
+  .kbi-so-card-body table {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  /* Horizontal rails that genuinely belong on mobile: keep the gesture, drop
+     the scrollbar chrome, and let them bleed to the screen edge. */
+  .kbi-main .overflow-x-auto:not(:has(table)) {
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+  }
+  .kbi-main .overflow-x-auto:not(:has(table))::-webkit-scrollbar {
+    display: none;
+  }
+  .kbi-main .overflow-x-auto:not(:has(table)) > * {
+    scroll-snap-align: start;
+  }
+
+  /* Long unbroken strings — SKUs, order refs, emails — must fold, not push. */
+  .kbi-main, .kbi-modal-body { overflow-wrap: anywhere; }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     10b · TABLE → CARD
+     A row is not a line of a spreadsheet on a phone; it is a record. The
+     runtime layer (lib/mobile-presentation.ts) stamps each cell with its
+     column name, and the table unfolds here into a stack of record cards:
+     headline on top, labelled figures beneath, actions along the foot.
+
+     This is what removes horizontal scrolling — not clipping, not shrinking.
+     ───────────────────────────────────────────────────────────────────────── */
+  table[data-kbi-cards] {
+    display: block !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    background: transparent !important;
+  }
+
+  table[data-kbi-cards] > thead { display: none !important; }
+  table[data-kbi-cards] > tbody { display: block !important; }
+
+  /* ── The record card ── */
+  table[data-kbi-cards] > tbody > tr {
+    display: block !important;
+    position: relative;
+    isolation: isolate;
+    padding: 14px 15px 13px !important;
+    margin: 0 0 10px !important;
+    background: var(--m-surface) !important;
+    border: 1px solid var(--m-line) !important;
+    border-radius: var(--m-r-lg) !important;
+    box-shadow: var(--m-shadow-1);
+    overflow: hidden;
+    transition: transform .18s var(--m-ease-out), box-shadow .18s var(--m-ease-out);
+  }
+
+  /* The spine motif, carried over from the navigation: every record is a book
+     on the shelf. This is the one mark that makes a KangenBukuIndo list
+     recognisable at a glance, so it sits above the card fill, not behind it. */
+  table[data-kbi-cards] > tbody > tr::after {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: linear-gradient(
+      180deg,
+      var(--m-accent) 0%,
+      color-mix(in srgb, var(--m-accent) 45%, transparent) 100%
+    );
+    opacity: .8;
+    pointer-events: none;
+  }
+
+  table[data-kbi-cards] > tbody > tr:active {
+    transform: scale(.992);
+    box-shadow: var(--m-shadow-2);
+  }
+
+  table[data-kbi-cards] > tbody > tr:last-child { margin-bottom: 0 !important; }
+
+  /* ── Default cell: label left, value right ── */
+  table[data-kbi-cards] > tbody > tr > td {
+    display: flex !important;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    padding: 4px 0 !important;
+    border: 0 !important;
+    text-align: right;
+    white-space: normal !important;
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: var(--m-ink);
+  }
+
+  td[data-kbi-label]::before {
+    content: attr(data-kbi-label);
+    flex: 0 1 auto;
+    min-width: 0;
+    text-align: left;
+    font-family: var(--m-font-text);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--m-ink-mute);
+    white-space: nowrap;
+  }
+
+  /* ── Headline: the cell that identifies the record ── */
+  table[data-kbi-cards] > tbody > tr > td[data-kbi-primary] {
+    display: block !important;
+    text-align: left;
+    padding: 0 30px 11px 0 !important;
+    margin-bottom: 7px;
+    border-bottom: 1px solid var(--m-line-soft) !important;
+    font-family: var(--m-font-text);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    line-height: 1.35;
+    color: var(--m-ink-strong);
+  }
+
+  /* ── Figures: Inter, tabular, weighted ── */
+  table[data-kbi-cards] td[data-kbi-num] {
+    font-family: var(--m-font-num);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    letter-spacing: -.005em;
+  }
+
+  /* ── Selection control: parked in the card's top-right corner ── */
+  table[data-kbi-cards] > tbody > tr > td[data-kbi-control] {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: block !important;
+    padding: 0 !important;
+    z-index: 2;
+  }
+  table[data-kbi-cards] td[data-kbi-control] input {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* ── Actions: a footer strip, thumb-sized ── */
+  table[data-kbi-cards] > tbody > tr > td[data-kbi-actions] {
+    display: flex !important;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 8px;
+    margin-top: 9px;
+    padding-top: 11px !important;
+    border-top: 1px solid var(--m-line-soft) !important;
+  }
+  table[data-kbi-cards] td[data-kbi-actions] > * {
+    margin: 0 !important;
+  }
+  table[data-kbi-cards] td[data-kbi-actions] button,
+  table[data-kbi-cards] td[data-kbi-actions] a {
+    min-height: 40px;
+    min-width: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Cells with nothing in them earn no space. */
+  table[data-kbi-cards] td[data-kbi-empty] { display: none !important; }
+
+  /* ── Full-width message rows ("no data", notes) become a quiet notice ── */
+  table[data-kbi-cards] > tbody > tr[data-kbi-full] {
+    background: transparent !important;
+    border: 1px dashed var(--m-line) !important;
+    box-shadow: none !important;
+    text-align: center;
+  }
+  table[data-kbi-cards] > tbody > tr[data-kbi-full]::after { display: none; }
+  table[data-kbi-cards] td[data-kbi-full] {
+    display: block !important;
+    padding: 18px 8px !important;
+    text-align: center;
+    font-size: 13px;
+    color: var(--m-ink-mute);
+  }
+
+  /* Footers (totals) read as a summary card, distinct from the records. */
+  table[data-kbi-cards] > tfoot {
+    display: block !important;
+    margin-top: 10px;
+  }
+  table[data-kbi-cards] > tfoot > tr {
+    display: block !important;
+    padding: 13px 15px !important;
+    border-radius: var(--m-r-lg);
+    background: var(--m-surface-2);
+    border: 1px solid var(--m-line);
+  }
+  table[data-kbi-cards] > tfoot > tr > td {
+    display: flex !important;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0 !important;
+    border: 0 !important;
+    width: auto !important;
+    text-align: right;
+    font-family: var(--m-font-num);
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     11 · MODALS → SHEET NAVIGATION
+     A centred dialog is a desktop idea. Here every dialog becomes a full
+     screen in a navigation stack: the first rises from the bottom, anything
+     opened on top of it pushes in from the right. Each screen keeps a fixed
+     header carrying a back control, so there is always a way out.
+     ───────────────────────────────────────────────────────────────────────── */
+  .kbi-modal-backdrop {
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    padding: 0 !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    overflow: hidden !important;
+    background: var(--m-paper) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .kbi-modal-panel {
+    position: relative;
+    display: flex !important;
+    flex-direction: column;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Depth 0 — the sheet rises. */
+  .kbi-modal-backdrop[data-kbi-depth="0"] .kbi-modal-panel {
+    animation: kbi-sheet-up .42s var(--m-ease-out) backwards;
+  }
+  /* Depth 1+ — a forward step in the stack, so it comes from the right. */
+  .kbi-modal-backdrop:not([data-kbi-depth="0"]) .kbi-modal-panel {
+    animation: kbi-sheet-push .34s var(--m-ease-out) backwards;
+  }
+
+  /* ── Hand-rolled dialogs ──────────────────────────────────────────────────
+     Most dialogs in this app predate the shared Modal component and build
+     their own panel, so they never carry .kbi-modal-panel. They are always the
+     single direct child of the backdrop, which makes that the reliable hook.
+
+     The overflow-y is not optional. These panels are `overflow-hidden` with
+     padded content and no inner scroll region — giving them a full-viewport
+     height without a scroller would push their Batal/Konfirmasi buttons below
+     the fold on a device that has no Esc key. */
+  .kbi-modal-backdrop > div:not(.kbi-modal-panel) {
+    position: relative;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .kbi-modal-backdrop[data-kbi-depth="0"] > div:not(.kbi-modal-panel) {
+    animation: kbi-sheet-up .42s var(--m-ease-out) backwards;
+  }
+  .kbi-modal-backdrop:not([data-kbi-depth="0"]) > div:not(.kbi-modal-panel) {
+    animation: kbi-sheet-push .34s var(--m-ease-out) backwards;
+  }
+
+  /* The order detail runs its own header/body/footer scroll model, so it must
+     not become a scroller itself or the sticky header would scroll away. */
+  .kbi-modal-backdrop > .kbi-rincian-modal {
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column;
+  }
+
+  /* ── Order detail sheet ───────────────────────────────────────────────────
+     The detail runs header / scrolling body / footer. As a full-screen sheet
+     the header and footer pin so the order code and the actions stay put
+     while the body scrolls. */
+  .kbi-modal-backdrop > .kbi-rincian-modal .mhead {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 14px) !important;
+  }
+  .kbi-modal-backdrop > .kbi-rincian-modal .mbody {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .kbi-modal-backdrop > .kbi-rincian-modal .mfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 6;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .kbi-modal-backdrop > .kbi-rincian-modal .foot-btns { width: 100%; }
+  .kbi-modal-backdrop > .kbi-rincian-modal .foot-btns .btn {
+    flex: 1;
+    min-height: 46px;
+  }
+  /* 32px is a mouse target, not a thumb target. */
+  .kbi-modal-backdrop > .kbi-rincian-modal .mclose {
+    width: 44px !important;
+    height: 44px !important;
+    flex: none;
+  }
+
+  /* ── Packing checklist ────────────────────────────────────────────────────
+     A full-screen page rather than a dialog: it has no backdrop and paints its
+     own background, so it must NOT get the panel treatment above. It only
+     needs the sidebar gutter removed and the safe areas respected. */
+  .kbi-fullpage {
+    left: 0 !important;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 12px) !important;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .kbi-fullpage__close {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── Lightbox ─────────────────────────────────────────────────────────────
+     Opted out of the sheet treatment, so it needs its own full-bleed rules.
+     It portals to <body>, so no .kbi-main-prefixed rule can reach it. */
+  .kbi-lightbox {
+    left: 0 !important;
+    padding: 0 !important;
+    background: rgba(0, 0, 0, .92) !important;
+  }
+  .kbi-lightbox__frame {
+    max-width: 100% !important;
+    padding: 0 16px;
+  }
+  .kbi-lightbox__frame img { max-height: 70dvh !important; }
+  /* The desktop position (-top-10) sits off-screen once the frame is full-bleed. */
+  .kbi-lightbox__close {
+    position: fixed !important;
+    top: calc(env(safe-area-inset-top, 0px) + 12px) !important;
+    right: 12px !important;
+    left: auto !important;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, .55) !important;
+    color: #fff !important;
+  }
+
+  /* ── Fixed header: back · title · close ── */
+  .kbi-modal-head {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    display: flex !important;
+    align-items: center;
+    gap: 4px;
+    min-height: 56px;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 8px 8px !important;
+    background: var(--m-surface) !important;
+    border-bottom: 1px solid var(--m-line) !important;
+  }
+
+  /* The title block is the flexible middle; the two controls bracket it.
+     Both brackets claim the same 44px so the title lands optically centred. */
+  .kbi-modal-head > div:first-of-type {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+    padding: 0 4px;
+  }
+  .kbi-modal-head > div:last-of-type {
+    flex: 0 0 auto;
+    min-width: 44px;
+    justify-content: flex-end;
+  }
+  .kbi-modal-head > div:last-of-type button {
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .kbi-modal-head h3 {
+    display: block !important;
+    font-size: 15px !important;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .kbi-modal-head p {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Back control — 44px, thumb-reachable, top-left. */
+  .kbi-sheet-back {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--m-r-md);
+    background: transparent;
+    color: var(--m-accent);
+    font-family: var(--m-font-text);
+    font-size: 14px;
+    font-weight: 550;
+    cursor: pointer;
+    transition: background .16s var(--m-ease-out), transform .16s var(--m-ease-out);
+  }
+  .kbi-sheet-back:active {
+    background: var(--m-surface-2);
+    transform: scale(.94);
+  }
+  .kbi-sheet-back:disabled { opacity: .4; }
+
+  /* Standalone back bar for dialogs that suppress the desktop header. */
+  .kbi-sheet-backbar {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    min-height: 56px;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 8px 8px;
+    background: var(--m-surface);
+    border-bottom: 1px solid var(--m-line);
+  }
+
+  .kbi-modal-body {
+    flex: 1 1 auto;
+    padding: var(--m-gutter) !important;
+    padding-bottom: calc(var(--m-gutter) + 24px + env(safe-area-inset-bottom, 0px)) !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* The project's bespoke sales-order dialog follows the same stack model.
+     It is portalled to <body>, so it must clear the bottom dock (z-index 40)
+     rather than sit alongside it — at equal z-index the winner would depend on
+     portal insertion order, which is not something to leave to chance. */
+  .kbi-so-overlay {
+    left: 0 !important;
+    padding: 0 !important;
+    align-items: stretch !important;
+    background: var(--m-paper) !important;
+    z-index: 60 !important;
+    /* The blur is not disabled here: `backdrop-filter: none` is the initial
+       value, and the minifier drops it as redundant. It is scoped to >= 768px
+       at its source in index.css instead. (Nothing to blur anyway — this
+       backdrop is fully opaque and covers the viewport edge to edge.)
+
+       The card is exactly 100dvh, so the overlay has nothing to scroll. Saying
+       so keeps the body the one and only scroll region. */
+    overflow: hidden !important;
+  }
+  .kbi-so-card {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+    animation: kbi-sheet-up .42s var(--m-ease-out) backwards;
+  }
+  /* `position: relative`, not `sticky`. The card is a 100dvh flex column and the
+     body between these two is the only thing that flexes, so the header and
+     footer are already pinned by the layout. Sticky here promotes them to their
+     own composited layers either side of the scroller for no visual gain — one
+     more contributor to the stale-frame artefact described on kbi-sheet-up. */
+  .kbi-so-card-header {
+    position: relative;
+    z-index: 6;
+    flex-shrink: 0;
+    min-height: 56px;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--m-gutter) 10px !important;
+    background: var(--m-surface);
+    border-bottom: 1px solid var(--m-line);
+  }
+  .kbi-so-card-body {
+    padding: var(--m-gutter) !important;
+    gap: 22px !important;
+    overflow-y: auto !important;
+    min-height: 0;
+  }
+  /* The body already carries the gutter; the columns' own 16/20px inset on top
+     of it costs 36px a side on a 390px screen and squeezes the two-up field
+     rows. Let the gutter be the only margin and keep the divider breathing. */
+  .kbi-so-col-left,
+  .kbi-so-col-right {
+    padding: 0 !important;
+  }
+  .kbi-so-col-left { padding-bottom: 20px !important; }
+  .kbi-so-card-footer {
+    position: relative;
+    z-index: 6;
+    flex-shrink: 0;
+    background: var(--m-surface);
+    border-top: 1px solid var(--m-line);
+    padding: 12px var(--m-gutter) calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .kbi-so-card-footer button { min-height: 46px; flex: 1; }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     12 · BOOT + AUTH SCREENS
+     First three seconds. Calm, warm, unmistakably a books business.
+     ───────────────────────────────────────────────────────────────────────── */
+  .kbi-boot {
+    background: var(--m-paper) !important;
+  }
+
+  /* A shelf of three spines drawing themselves in — the loading indicator
+     doubles as the brand mark. */
+  .kbi-boot__shelf {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 6px;
+    height: 44px;
+  }
+  .kbi-boot__shelf i {
+    display: block;
+    width: 9px;
+    border-radius: 3px 3px 1px 1px;
+    background: var(--m-forest);
+    animation: kbi-spine 1.15s var(--m-ease) infinite;
+  }
+  .kbi-boot__shelf i:nth-child(1) { animation-delay: 0s;    opacity: .9; }
+  .kbi-boot__shelf i:nth-child(2) { animation-delay: .13s;  background: var(--m-gold); }
+  .kbi-boot__shelf i:nth-child(3) { animation-delay: .26s;  background: var(--m-slate); }
+
+  .kbi-boot__label {
+    margin-top: 22px;
+    font-family: 'Lexend', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--m-ink-3);
+  }
+
+  .kbi-auth {
+    padding: 0 !important;
+    background: var(--m-paper) !important;
+    align-items: stretch !important;
+  }
+  .kbi-auth__card {
+    max-width: 100% !important;
+    width: 100% !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: calc(48px + env(safe-area-inset-top, 0px)) 24px
+             calc(32px + env(safe-area-inset-bottom, 0px)) !important;
+    background: transparent !important;
+    justify-content: center !important;
+  }
+  /* Suppress the desktop card's decorative sparkle on mobile. */
+  .kbi-auth__ornament { display: none !important; }
+
+  .kbi-auth__art {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 7px;
+    height: 92px;
+    margin-bottom: 28px;
+  }
+  .kbi-auth__art i {
+    display: block;
+    width: 15px;
+    border-radius: 4px 4px 2px 2px;
+    box-shadow: inset 2px 0 0 0 rgba(255,255,255,.28), var(--m-shadow-1);
+    animation: kbi-shelf-in .7s var(--m-ease-out) both;
+  }
+  .kbi-auth__art i:nth-child(1) { height: 58px; background: var(--m-slate);  animation-delay: .05s; }
+  .kbi-auth__art i:nth-child(2) { height: 78px; background: var(--m-forest); animation-delay: .12s; }
+  .kbi-auth__art i:nth-child(3) { height: 66px; background: var(--m-gold);   animation-delay: .19s; }
+  .kbi-auth__art i:nth-child(4) { height: 88px; background: var(--m-rust);   animation-delay: .26s; }
+  .kbi-auth__art i:nth-child(5) { height: 52px; background: var(--m-forest-deep); animation-delay: .33s; }
+
+  .kbi-auth__title {
+    font-size: 26px !important;
+    letter-spacing: -.03em !important;
+    text-transform: none !important;
+    font-weight: 700 !important;
+  }
+  .kbi-auth__cta {
+    min-height: 52px;
+    border-radius: var(--m-r-md) !important;
+    background: linear-gradient(145deg, var(--m-forest), var(--m-forest-deep)) !important;
+    box-shadow: 0 6px 18px -6px rgba(13,74,54,.6) !important;
+    transition: transform .16s var(--m-ease);
+  }
+  .kbi-auth__cta:active { transform: scale(.98); }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     14 · SALES ORDERS — record cards
+     The order list is the densest screen in the product: eight columns of
+     ledger. On a phone it is rebuilt as one card per order, ordered the way a
+     packer actually reads it — which order, who, how it ships, how much, then
+     what to do about it. The status ribbon down the left edge is the same
+     spine motif the rest of the mobile layer uses.
+     ───────────────────────────────────────────────────────────────────────── */
+  .kbi-ocards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .kbi-ocard {
+    position: relative;
+    padding-left: 16px;
+    background: var(--m-surface);
+    border: 1px solid var(--m-line);
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: var(--m-shadow-1);
+    transition: transform .18s var(--m-ease-out), box-shadow .18s var(--m-ease-out);
+  }
+  .kbi-ocard:active {
+    transform: scale(.993);
+    box-shadow: var(--m-shadow-2);
+  }
+
+  /* Status ribbon — colour is bound to the order's own status pill. */
+  .kbi-ocard__ribbon {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 6px;
+  }
+
+  /* ── Head: identity left, status right ── */
+  .kbi-ocard__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 13px 13px 11px 6px;
+  }
+  .kbi-ocard__ident { min-width: 0; }
+  .kbi-ocard__code {
+    font-family: var(--m-font-num);
+    font-weight: 600;
+    font-size: 13.5px;
+    letter-spacing: .01em;
+    color: var(--m-ink-strong);
+  }
+  /* --m-ink-mute measured 3.11:1 here — below AA for 11px text. */
+  .kbi-ocard__date {
+    font-family: var(--m-font-num);
+    font-size: 11px;
+    color: var(--m-ink-2);
+    margin-top: 2px;
+  }
+
+  /* Flags: ready stock, overdue, pinned. */
+  .kbi-ocard__flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+    margin-right: 5px;
+    padding: 3px 8px;
+    border-radius: 8px;
+    font-size: 10.5px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .kbi-ocard__flag--ready { background: #DDEEE3; color: #1E4A34; }
+  .kbi-ocard__flag--pin   { background: var(--m-forest-tint); color: var(--m-forest-deep); }
+  .dark .kbi-ocard__flag--ready { background: rgba(74,222,158,.12); color: #6EE7B7; }
+
+  /* This chip is also the stepper toggle, so it is a real tap target. */
+  .kbi-ocard__status {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 36px;
+    padding: 5px 10px;
+    border: 0;
+    border-radius: 9px;
+    font-family: var(--m-font-text);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .kbi-ocard__statusdot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* The dashed rule reads as a perforation — a docket torn from a book. */
+  .kbi-ocard__rule {
+    border-top: 1.5px dashed var(--m-line);
+    margin: 0 13px 0 6px;
+  }
+
+  /* ── Body ── */
+  .kbi-ocard__body { padding: 12px 13px 4px 6px; }
+
+  .kbi-ocard__buyerrow {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .kbi-ocard__buyer { min-width: 0; }
+  .kbi-ocard__name {
+    font-size: 14.5px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--m-ink-strong);
+  }
+  .kbi-ocard__alias {
+    font-size: 11px;
+    color: var(--m-ink-mute);
+    margin-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kbi-ocard__channel {
+    flex-shrink: 0;
+    max-width: 40%;
+    padding: 4px 9px;
+    border: 1px solid;
+    border-radius: 8px;
+    font-size: 10.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Channel colours are brand hexes set inline, and some (TikTok's near-black)
+     vanish against a dark surface. Rather than guess a lighter variant per
+     brand, dark mode puts every badge on a light chip — the brand colour stays
+     exactly itself and reads as a printed platform sticker. */
+  .dark .kbi-ocard__channel {
+    background: #FDFCF9 !important;
+    border-color: rgba(255, 255, 255, .16) !important;
+  }
+
+  .kbi-ocard__ship {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 11px;
+    font-size: 12px;
+    color: var(--m-ink-2);
+  }
+  .kbi-ocard__shiptag {
+    font-family: var(--m-font-num);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: .03em;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--m-surface-2);
+    border: 1px solid var(--m-line);
+    color: var(--m-ink-2);
+  }
+  .kbi-ocard__track {
+    font-family: var(--m-font-num);
+    color: var(--m-ink-mute);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* flex-start, not flex-end: the qty must sit on the total's line, so the
+     discount hangs beneath it as a footnote rather than pulling qty down. */
+  .kbi-ocard__pricerow {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .kbi-ocard__qty {
+    font-size: 12px;
+    color: var(--m-ink-2);
+    padding-top: 4px;
+  }
+  .kbi-ocard__qty b { font-family: var(--m-font-num); font-weight: 600; color: var(--m-ink); }
+  .kbi-ocard__figures { text-align: right; }
+  .kbi-ocard__total {
+    font-family: var(--m-font-num);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 16.5px;
+    color: var(--m-ink-strong);
+  }
+  .kbi-ocard__disc {
+    font-family: var(--m-font-num);
+    font-size: 11px;
+    color: #7A2E1E;
+    margin-top: 2px;
+  }
+  .dark .kbi-ocard__disc { color: #E5907B; }
+
+  /* ── Action foot ── */
+  .kbi-ocard__actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 11px 13px 13px 6px;
+    border-top: 1px solid var(--m-line);
+  }
+  .kbi-ocard__icons {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .kbi-ocard__mini {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 1px solid var(--m-line);
+    background: var(--m-paper);
+    color: var(--m-ink-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform .15s var(--m-ease-out), background .15s var(--m-ease-out);
+  }
+  .kbi-ocard__mini:active { transform: scale(.9); }
+  .kbi-ocard__mini.is-pinned {
+    background: var(--m-forest-tint);
+    border-color: transparent;
+    color: var(--m-forest-deep);
+  }
+  .kbi-ocard__mini.is-reco { color: var(--m-forest); }
+  .kbi-ocard__mini.is-danger { color: #A9503B; }
+
+  .kbi-ocard__cta {
+    min-height: 40px;
+    padding: 0 18px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--m-forest);
+    color: #F1ECDD;
+    font-family: var(--m-font-text);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .15s var(--m-ease-out);
+  }
+  .kbi-ocard__cta:active { transform: scale(.96); }
+  .kbi-ocard__cta--neutral {
+    background: var(--m-surface-2) !important;
+    color: var(--m-ink) !important;
+    border: 1px solid var(--m-line);
+  }
+  .kbi-ocard__cta--ghost {
+    background: transparent !important;
+    color: #A9503B !important;
+    border: 1px solid #E3BDB2;
+  }
+  .kbi-ocard__ctagroup { display: flex; gap: 6px; }
+
+  .kbi-ocard__stepper {
+    padding: 14px 13px 16px 6px;
+    border-top: 1px solid var(--m-line);
+    background: var(--m-surface-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .kbi-ocard__stepper::-webkit-scrollbar { display: none; }
+
+  /* Empty result — an illustration beats a bare sentence. */
+  .kbi-ocard__empty {
+    padding: 48px 20px;
+    text-align: center;
+    border: 1px dashed var(--m-line);
+    border-radius: 15px;
+    background: var(--m-surface);
+  }
+  .kbi-ocard__emptyicon {
+    width: 44px; height: 44px;
+    margin: 0 auto 12px;
+    border-radius: var(--m-r-md);
+    background: var(--m-surface-2);
+    color: var(--m-ink-mute);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .kbi-ocard__empty p { font-size: 12.5px; color: var(--m-ink-mute); }
+
+  /* The foot bar survives on mobile — it carries the running total and the
+     pager the card list still depends on. Buttons get a real touch target. */
+  .kbi-sofoot > div {
+    padding: 12px 14px !important;
+    gap: 10px !important;
+  }
+  .kbi-sofoot button {
+    min-height: 40px;
+    min-width: 56px;
+    border-radius: 10px !important;
+  }
+
+  /* ── Masthead: title left, overflow control right ─────────────────────────
+     The row is flex-col below 640px, which would drop the ⋯ under the title.
+     On a phone it belongs beside it. */
+  .kbi-somast {
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+  .kbi-somore {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    margin: -4px -4px 0 0;
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-r-md);
+    background: var(--m-surface);
+    color: var(--m-ink-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform .15s var(--m-ease-out), background .15s var(--m-ease-out);
+  }
+  .kbi-somore:active { transform: scale(.92); background: var(--m-surface-2); }
+
+  /* ── Floating action: the one thing a packer does most ────────────────────
+     z-39 sits below the dock (z-40) and below every modal backdrop, so the
+     opaque full-screen sheets cover it without any JS toggling. */
+  .kbi-sofab {
+    position: fixed;
+    z-index: 39;
+    right: var(--m-gutter);
+    bottom: calc(10px + var(--m-dock-h) + 14px + env(safe-area-inset-bottom, 0px));
+    width: 56px;
+    height: 56px;
+    border: 0;
+    border-radius: 18px;
+    background: linear-gradient(145deg, var(--m-forest), var(--m-forest-deep));
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--m-shadow-3);
+    cursor: pointer;
+    transition: transform .16s var(--m-ease-out);
+  }
+  .kbi-sofab:active { transform: scale(.92); }
+
+  /* The FAB and the overflow sheet are portalled to <body> rather than left in
+     the component tree. `.kbi-main > *` carries a transform entrance
+     animation, and Chromium keeps such an element as the containing block for
+     fixed-position descendants even after the animation finishes — measured,
+     not assumed: in-tree the FAB landed at y=1372 on an 844px-tall viewport.
+     Suppressing the FAB's own animation does not help, because it is the
+     ancestor's transform that creates the containing block. */
+
+  /* ── Overflow sheet rows ──────────────────────────────────────────────── */
+  .kbi-sosheet__row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: var(--m-r-md);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: background .15s var(--m-ease-out);
+  }
+  .kbi-sosheet__row:active { background: var(--m-surface-2); }
+  .kbi-sosheet__icon {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--m-r-sm);
+    background: var(--m-forest-tint);
+    color: var(--m-forest-deep);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .kbi-sosheet__text { flex: 1 1 auto; min-width: 0; }
+  .kbi-sosheet__label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--m-ink-strong);
+  }
+  /* --m-ink-mute on a white sheet measures 2.93:1 — below AA for 11.5px text.
+     --m-ink-2 clears it while staying clearly secondary to the label. */
+  .kbi-sosheet__hint {
+    display: block;
+    font-size: 11.5px;
+    color: var(--m-ink-2);
+    margin-top: 1px;
+  }
+  .kbi-sosheet__chev { flex: 0 0 auto; color: var(--m-ink-3); }
+
+  /* ── Status counters → a swipeable chip rail ──────────────────────────────
+     The seven stat cards stack into a 4-row block on a phone and push the list
+     below the fold. As a single edge-to-edge rail they cost one row and gain a
+     gesture. */
+  .kbi-sostat {
+    display: flex !important;
+    gap: 8px !important;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    margin-inline: calc(var(--m-gutter) * -1);
+    padding-inline: var(--m-gutter);
+    padding-bottom: 4px;
+  }
+  .kbi-sostat::-webkit-scrollbar { display: none; }
+  .kbi-sostat > * {
+    flex: 0 0 auto !important;
+    min-width: 112px;
+    scroll-snap-align: start;
+    padding: 10px 12px !important;
+    border-radius: var(--m-r-md) !important;
+  }
+  /* The trailing caption is redundant once the rail is this compact. */
+  .kbi-sostat > * > [class*="text-[10.5px]"] { display: none; }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     13 · MOTION
+     Sparse by design: one entrance per surface, one gesture per control.
+     ───────────────────────────────────────────────────────────────────────── */
+  @keyframes kbi-rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes kbi-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  /* The entrance animations above run with `fill-mode: backwards`, never
+     `both`. `both` keeps filling forwards after the animation ends, and a
+     filled transform always computes to a matrix — writing `to { transform:
+     none }` does NOT avoid it, the resolved value is still matrix(1,0,0,1,0,0).
+     An element left holding a transform stays composited and stays the
+     containing block for its fixed/sticky descendants; wrapped around a scroll
+     region that corrupts repaints, so two scroll positions of the same content
+     end up painted on top of each other. `backwards` still supplies the `from`
+     value before the animation starts, so there is no flash on open, and the
+     element drops back to a clean base style the moment it finishes. */
+  @keyframes kbi-sheet-up {
+    from { transform: translateY(100%); }
+    to   { transform: none; }
+  }
+  /* A dialog opened on top of a dialog is a step forward in a stack, not a
+     new layer — so it arrives from the side, the way a pushed page does. */
+  @keyframes kbi-sheet-push {
+    from { transform: translateX(100%); }
+    to   { transform: none; }
+  }
+  @keyframes kbi-card-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes kbi-ribbon {
+    from { transform: translateX(-50%) scaleY(0); opacity: 0; }
+    to   { transform: translateX(-50%) scaleY(1); opacity: 1; }
+  }
+  @keyframes kbi-spine {
+    0%, 100% { height: 16px; opacity: .45; }
+    50%      { height: 40px; opacity: 1; }
+  }
+  @keyframes kbi-shelf-in {
+    from { transform: translateY(14px) scaleY(.7); opacity: 0; }
+    to   { transform: none; opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

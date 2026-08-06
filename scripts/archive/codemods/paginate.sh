@@ -1,0 +1,1 @@
+sed -i 's/const \[searchTerm, setSearchTerm\] = useState('"''"');/const [searchTerm, setSearchTerm] = useState('"''"');\n  const [currentPageKontrol, setCurrentPageKontrol] = useState(1);\n  const [currentPageMonthly, setCurrentPageMonthly] = useState(1);/g' src/components/InventoryTab.tsx

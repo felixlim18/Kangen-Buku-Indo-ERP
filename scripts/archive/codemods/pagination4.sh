@@ -1,0 +1,1 @@
+sed -i 's/{reportRows.filter(row => row.book && row.book.bookName && row.book.bookName.toLowerCase().includes(searchTerm.toLowerCase())).map(({/{paginatedReportRows.map(({/g' src/components/InventoryTab.tsx
