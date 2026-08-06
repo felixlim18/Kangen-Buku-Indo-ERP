@@ -1,49 +1,52 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './lib/auth-context';
 import { SidebarProvider, useSidebar } from './lib/sidebar-context';
 import { Sidebar } from './components/Sidebar';
 import { MobileNav } from './components/MobileNav';
-
-
-import { DashboardTab } from './components/DashboardTab';
-import { CatalogTab } from './components/CatalogTab';
-import { SalesTab } from './components/SalesTab';
-import { PurchasesTab } from './components/PurchasesTab';
-import { InventoryTab } from './components/InventoryTab';
-import { FinancialTab } from './components/FinancialTab';
-import { CoaTab } from './components/CoaTab';
-import { JournalTab } from './components/JournalTab';
-import FreightInTab from './components/FreightInTab';
-import { ClosingTab } from './components/ClosingTab';
-import { LedgerSummaryTab } from './components/LedgerSummaryTab';
-import { TrialBalanceTab } from './components/TrialBalanceTab';
-import { FixedAssetsTab } from './components/FixedAssetsTab';
-import { AmortisasiTab } from './components/AmortisasiTab';
-import { ReportSalesDetailTab } from './components/ReportSalesDetailTab';
-import { PerlengkapanTab } from './components/PerlengkapanTab';
-import { IklanTab } from './components/IklanTab';
-import BebanLainnyaTab from './components/BebanLainnyaTab';
-import { OngkosKirimTab } from './components/OngkosKirimTab';
-import { IncomeTab } from './components/IncomeTab';
-import { PiutangUtangTab } from './components/PiutangUtangTab';
-import { PiutangTab } from './components/PiutangTab';
-import { UserManagementTab } from './components/UserManagementTab';
-import { BusinessPartnerTab } from './components/BusinessPartnerTab';
-import { BankKasTab } from './components/BankKasTab';
-import { SettingsTab } from './components/SettingsTab';
-import { getAccountBalanceForPeriod, isParentAccount } from './lib/decimal-utils';
 import { initMobilePresentation } from './lib/mobile-presentation';
-import { 
-  Lock, 
-  Sparkles, 
-  HelpCircle, 
-  Eye, 
-  Layers, 
-  BookOpen, 
-  TrendingUp,
-  LogIn,
-  ChevronRight
-} from 'lucide-react';
+import { Lock, Sparkles, BookOpen } from 'lucide-react';
+
+// Setiap tab dimuat on-demand. Tanpa ini seluruh modul (termasuk library berat
+// seperti xlsx/exceljs/jspdf/recharts yang cuma dipakai beberapa tab) ikut masuk
+// ke bundle awal, sehingga login screen pun harus menunggu ~5 MB JS.
+// Nama export tidak seragam: sebagian default, sebagian named.
+const lazyNamed = <K extends string>(
+  loader: () => Promise<Record<K, React.ComponentType<any>>>,
+  key: K,
+) => lazy(() => loader().then((m) => ({ default: m[key] })));
+
+const DashboardTab = lazyNamed(() => import('./components/DashboardTab'), 'DashboardTab');
+const CatalogTab = lazyNamed(() => import('./components/CatalogTab'), 'CatalogTab');
+const SalesTab = lazyNamed(() => import('./components/SalesTab'), 'SalesTab');
+const PurchasesTab = lazyNamed(() => import('./components/PurchasesTab'), 'PurchasesTab');
+const InventoryTab = lazyNamed(() => import('./components/InventoryTab'), 'InventoryTab');
+const FinancialTab = lazyNamed(() => import('./components/FinancialTab'), 'FinancialTab');
+const CoaTab = lazyNamed(() => import('./components/CoaTab'), 'CoaTab');
+const JournalTab = lazyNamed(() => import('./components/JournalTab'), 'JournalTab');
+const FreightInTab = lazy(() => import('./components/FreightInTab'));
+const ClosingTab = lazyNamed(() => import('./components/ClosingTab'), 'ClosingTab');
+const LedgerSummaryTab = lazyNamed(() => import('./components/LedgerSummaryTab'), 'LedgerSummaryTab');
+const TrialBalanceTab = lazyNamed(() => import('./components/TrialBalanceTab'), 'TrialBalanceTab');
+const FixedAssetsTab = lazyNamed(() => import('./components/FixedAssetsTab'), 'FixedAssetsTab');
+const AmortisasiTab = lazyNamed(() => import('./components/AmortisasiTab'), 'AmortisasiTab');
+const ReportSalesDetailTab = lazyNamed(() => import('./components/ReportSalesDetailTab'), 'ReportSalesDetailTab');
+const PerlengkapanTab = lazyNamed(() => import('./components/PerlengkapanTab'), 'PerlengkapanTab');
+const IklanTab = lazyNamed(() => import('./components/IklanTab'), 'IklanTab');
+const BebanLainnyaTab = lazy(() => import('./components/BebanLainnyaTab'));
+const OngkosKirimTab = lazyNamed(() => import('./components/OngkosKirimTab'), 'OngkosKirimTab');
+const IncomeTab = lazyNamed(() => import('./components/IncomeTab'), 'IncomeTab');
+const PiutangTab = lazyNamed(() => import('./components/PiutangTab'), 'PiutangTab');
+const UserManagementTab = lazyNamed(() => import('./components/UserManagementTab'), 'UserManagementTab');
+const BusinessPartnerTab = lazyNamed(() => import('./components/BusinessPartnerTab'), 'BusinessPartnerTab');
+const BankKasTab = lazyNamed(() => import('./components/BankKasTab'), 'BankKasTab');
+const SettingsTab = lazyNamed(() => import('./components/SettingsTab'), 'SettingsTab');
+
+const TabLoader: React.FC = () => (
+  <div className="flex flex-col items-center justify-center py-24" role="status" aria-label="Memuat modul">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-650 border-t-transparent"></div>
+    <p className="mt-4 text-sm text-neutral-500 font-medium">Memuat modul...</p>
+  </div>
+);
 
 const MainAppContent: React.FC = () => {
   const { user, profile, loading, signInWithGoogle, loginAsDemo, authError } = useAuth();
@@ -236,7 +239,7 @@ const MainAppContent: React.FC = () => {
         
         {/* Tab switcher renderer */}
         {hasPerm(activeTab) ? (
-          <>
+          <Suspense fallback={<TabLoader />}>
             {activeTab === 'dashboard' && <DashboardTab setTab={setActiveTab} />}
             {activeTab === 'catalog' && <CatalogTab />}
             {activeTab === 'sales' && <SalesTab />}
@@ -267,7 +270,7 @@ const MainAppContent: React.FC = () => {
             {activeTab === 'report-sales-detail' && <ReportSalesDetailTab />}
             {activeTab === 'user-management' && <UserManagementTab />}
             {activeTab === 'settings' && <SettingsTab />}
-          </>
+          </Suspense>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Lock className="h-16 w-16 text-neutral-300 dark:text-neutral-700 mb-4" />

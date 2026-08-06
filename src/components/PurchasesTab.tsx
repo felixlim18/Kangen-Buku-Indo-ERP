@@ -25,8 +25,7 @@ import { useAuth } from '../lib/auth-context';
 import { useSidebar } from '../lib/sidebar-context';
 import { useModalEsc, getModalOverlayClass } from '../lib/use-modal-esc';
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
-import ExcelJS from 'exceljs';
+import { loadXLSX, loadExcelJS } from '../lib/lazy-libs';
 import {
   ensureAutoAccountExists,
   getInventoryAccount,
@@ -1289,6 +1288,7 @@ export const PurchasesTab = () => {
       const idrPlat = platforms.find(p => p.currency === 'IDR')?.name || "Shopee Indonesia";
       const ntdPlat = platforms.find(p => p.currency === 'NTD')?.name || "Kangen Buku Taiwan";
 
+      const ExcelJS = await loadExcelJS();
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('PO Import Template');
 
@@ -1535,6 +1535,7 @@ export const PurchasesTab = () => {
       reader.onload = async (evt) => {
         try {
           const binaryData = evt.target?.result;
+          const XLSX = await loadXLSX();
           const workbook = XLSX.read(binaryData, { type: 'binary', cellDates: true });
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];

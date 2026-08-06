@@ -25,7 +25,7 @@ import {
   Plus,
   Users
 } from 'lucide-react';
-import jsPDF from 'jspdf';
+import { loadJsPDF } from '../lib/lazy-libs';
 import { useAuth } from '../lib/auth-context';
 import { useSidebar } from '../lib/sidebar-context';
 import { useModalEsc, getModalOverlayClass } from '../lib/use-modal-esc';
@@ -354,12 +354,13 @@ export const BusinessPartnerTab: React.FC = () => {
     }
   };
 
-  const printReceipt = (batchId: string) => {
+  const printReceipt = async (batchId: string) => {
     const batchData = paymentBatches.find(b => b.id === batchId);
     if (!batchData) return;
     const p = partners.find(x => x.id === batchData.partnerId);
     if (!p) return;
 
+    const jsPDF = await loadJsPDF();
     const docPDF = new jsPDF({ unit: "mm", format: "a5" });
     const pageW = 148, marginX = 16;
     let y = 20;

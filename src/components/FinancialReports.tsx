@@ -11,8 +11,7 @@ import {
   calculateEquityModalAtDate,
   findAccountByRole
 } from '../lib/decimal-utils';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { loadJsPDF, loadHtml2Canvas } from '../lib/lazy-libs';
 
 function parseToDate(val: any): Date {
   if (!val) return new Date();
@@ -211,6 +210,7 @@ export async function exportReportToPDF(
       year: 'numeric'
     }) + ' ' + now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
+    const html2canvas = await loadHtml2Canvas();
     const canvas = await html2canvas(element, {
       scale: 2,
       useCORS: true,
@@ -321,6 +321,7 @@ export async function exportReportToPDF(
     });
 
     const imgData = canvas.toDataURL('image/png');
+    const jsPDF = await loadJsPDF();
     const pdf = new jsPDF({
       orientation: 'p',
       unit: 'mm',

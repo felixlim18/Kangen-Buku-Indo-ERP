@@ -1,7 +1,7 @@
 import { getNextJournalId } from '../lib/journalUtils';
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
-import ExcelJS from 'exceljs';
+import type ExcelJSTypes from 'exceljs';
+import { loadXLSX, loadExcelJS, loadJsPDF, loadHtml2Canvas } from '../lib/lazy-libs';
 import { ImagePreviewModal } from "./ui/ImagePreviewModal";
 import { BookRecommendationsModal } from './BookRecommendationsModal';
 import { TruncatedTooltip } from "./ui/TruncatedTooltip";
@@ -37,8 +37,6 @@ import { useAuth } from '../lib/auth-context';
 import { useSettings } from '../lib/use-settings';
 import { useSidebar } from '../lib/sidebar-context';
 import { useModalEsc, getModalOverlayClass } from '../lib/use-modal-esc';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { 
   Plus, 
   Search, 
@@ -2173,6 +2171,7 @@ export const SalesTab: React.FC = () => {
     };
     
     try {
+      const html2canvas = await loadHtml2Canvas();
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
@@ -2213,6 +2212,7 @@ export const SalesTab: React.FC = () => {
       });
       
       const imgData = canvas.toDataURL('image/png');
+      const jsPDF = await loadJsPDF();
       const pdf = new jsPDF({
         orientation: 'p',
         unit: 'mm',
@@ -3046,6 +3046,7 @@ export const SalesTab: React.FC = () => {
       reader.onload = async (e) => {
         try {
           const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const XLSX = await loadXLSX();
           const workbook = XLSX.read(data, { type: 'array' });
           const rows: any[] = [];
 
@@ -3103,14 +3104,15 @@ export const SalesTab: React.FC = () => {
 
   const downloadExcelTemplate = async () => {
     try {
+      const ExcelJS = await loadExcelJS();
       const workbook = new ExcelJS.Workbook();
-      
+
       const sampleProductId1 = books && books[0] ? (books[0].productId || 'KB-260712-2804') : 'KB-260712-2804';
       const sampleProductId2 = books && books[1] ? (books[1].productId || 'KB-260712-1691') : 'KB-260712-1691';
       const sampleItems = `${sampleProductId1}:1pcs, ${sampleProductId2}:2pcs`;
 
       // Helper to format header rows
-      const styleHeader = (worksheet: ExcelJS.Worksheet) => {
+      const styleHeader = (worksheet: ExcelJSTypes.Worksheet) => {
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
         headerRow.fill = {
