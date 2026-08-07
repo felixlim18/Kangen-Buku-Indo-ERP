@@ -79,7 +79,11 @@ const EMPTY_INVENTORY_DATA: InventoryData = Object.freeze({
  * closedPeriods hanya id-nya, sisanya `{ id, ...data }`.
  */
 async function fetchInventoryCollection(name: string): Promise<any[]> {
-  const snap = await getDocs(collection(db, name));
+  const bound = BOUNDS[name];
+  const ref = collection(db, name);
+  const snap = await getDocs(
+    bound ? query(ref, where(bound.field, '>=', Timestamp.fromDate(bound.value))) : ref
+  );
   const out: any[] = [];
   if (name === 'closedPeriods') {
     snap.forEach((d) => out.push(d.id));

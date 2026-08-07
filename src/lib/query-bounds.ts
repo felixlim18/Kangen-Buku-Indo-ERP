@@ -26,15 +26,25 @@ export interface QueryBound {
 }
 
 /**
- * Koleksi yang boleh dibatasi. SENGAJA KOSONG sampai Gate 2 lulus.
+ * Koleksi yang boleh dibatasi. Isinya ditentukan oleh hasil
+ * scripts/verify-date-bounds.ts (dijalankan 7 Agu 2026):
  *
- * Tidak akan pernah boleh dibatasi, apa pun hasil Gate 2:
- *  - catalog, inventory  : tidak punya dimensi tanggal (master produk)
- *  - salesOrders         : bengkaknya dari foto base64 di 14 dokumen, bukan jumlah
- *                          baris; replay juga butuh semua SO completed sejak awal
- *  - purchaseOrders      : orderDate tipenya sudah bermasalah - memfilternya akan
- *                          membuang baris diam-diam dan merusak netUnitCostByPoBook
+ *   BOLEH  inventoryLedger.timestamp   764/764 Timestamp, 0 terbuang
+ *   TOLAK  journalEntries.date         38 dari 1.219 dokumen bertipe string -
+ *                                      filter tanggal akan MEMBUANGNYA DIAM-DIAM,
+ *                                      merusak saldo rekonsiliasi 1201/1202
+ *   TOLAK  purchaseOrders.orderDate    field-nya TIDAK ADA di ke-361 dokumen -
+ *                                      filter akan membuang 100% PO
+ *   BOLEH  salesOrders.orderDate       bersih, tapi sengaja tidak dibatasi:
+ *                                      replay butuh semua SO completed sejak awal,
+ *                                      dan bengkaknya dari foto base64 (bukan baris)
  *
- * Kandidat setelah Gate 2 lulus: inventoryLedger (timestamp), journalEntries (date).
+ * catalog & inventory tidak punya dimensi tanggal sama sekali (master produk).
+ *
+ * PERINGATAN: jalankan ulang verify-date-bounds.ts sebelum menambah koleksi apa
+ * pun ke sini, dan setelah perubahan yang menyentuh cara field tanggal ditulis.
+ * Satu dokumen bertipe salah = satu baris hilang tanpa pesan error.
  */
-export const BOUNDS: Partial<Record<string, QueryBound>> = {};
+export const BOUNDS: Partial<Record<string, QueryBound>> = {
+  inventoryLedger: { field: 'timestamp', describe: 'ts>=2025-01', value: DATA_EPOCH },
+};
