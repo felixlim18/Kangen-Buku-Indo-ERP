@@ -657,6 +657,10 @@ export const PurchasesTab = () => {
       let totalReceivedValueCents = 0;
       let totalReceivedValuePlat = 0;
       let bookDescriptions: string[] = [];
+      // Dipakai untuk memposting jurnal penerimaan - bentuknya harus sama dengan
+      // yang dipakai handleProcessReceiveGoods supaya writeReceiptEventAndJournal
+      // menghitung nilai yang identik di kedua jalur.
+      const itemsReceivedThisTime: Array<{ bookId: string; bookName: string; qtyReceived: number }> = [];
       const todayFormatted = formatToYYYYMMDD(new Date());
 
       for (let i = 0; i < updatedItemsList.length; i++) {
@@ -735,6 +739,8 @@ export const PurchasesTab = () => {
               userId: user?.uid || 'anonymous'
             });
 
+            itemsReceivedThisTime.push({ bookId: item.bookId, bookName: item.bookName, qtyReceived: qtyRecNum });
+
             latestLogs.push(`${todayFormatted} ${item.bookName}: diterima ${qtyRecNum} unit${currentKodeEkspedisi ? ` (Freight-In: ${currentKodeEkspedisi})` : ''}`);
           }
         }
@@ -769,6 +775,34 @@ export const PurchasesTab = () => {
 
       const poRef = doc(db, 'purchaseOrders', po.id);
       batch.update(poRef, updatePoData);
+
+      // Jalur ini dulu HANYA menulis baris inventoryLedger dan dokumen inventory,
+      // tanpa jurnal sama sekali. Akibatnya nilai barang masuk terlihat di Laporan
+      // Bulanan tapi tidak pernah masuk buku besar - itu sumber selisih
+      // rekonsiliasi NT$3.302,91 di Agustus (20 PO). Sekarang memposting jurnal
+      // yang sama persis dengan jalur penerimaan biasa.
+      if (totalReceivedThisRunSum > 0 && itemsReceivedThisTime.length > 0) {
+        const poForJournal = { ...po, items: updatedItemsList };
+        const eventId = doc(collection(db, 'purchaseOrders', po.id, 'receiptEvents')).id;
+        const receiptEventData = await prepareReceiptEventData(
+          db,
+          poForJournal,
+          currentKodeEkspedisi || undefined,
+          totalReceivedThisRunSum,
+          overallStatus
+        );
+        writeReceiptEventAndJournal(
+          batch,
+          poForJournal,
+          eventId,
+          receiptEventData,
+          totalReceivedThisRunSum,
+          itemsReceivedThisTime,
+          currentKodeEkspedisi || undefined,
+          overallStatus,
+          user?.email || user?.uid || 'anonymous'
+        );
+      }
 
       await batch.commit();
 
