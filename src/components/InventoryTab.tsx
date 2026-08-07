@@ -21,7 +21,7 @@ import { useAuth } from '../lib/auth-context';
 import { isPeriodClosed, getYearMonth } from '../lib/period-closing-utils';
 import { getCached, cacheKey, invalidateCollections } from '../lib/firestore-cache';
 import { BOUNDS } from '../lib/query-bounds';
-import { legacyBuildReportRows, type PerpetualData } from '../lib/perpetual-inventory';
+import { legacyBuildReportRows, type PerpetualData, type ReportRow } from '../lib/perpetual-inventory';
 import { 
   Boxes, 
   TrendingUp, 
@@ -90,6 +90,9 @@ async function fetchInventoryCollection(name: string): Promise<any[]> {
   }
   return out;
 }
+
+/** Identitas stabil supaya memo turunan (sortedReportRows) tidak thrashing saat digerbangi. */
+const EMPTY_REPORT_ROWS: ReportRow[] = Object.freeze([]) as ReportRow[];
 
 const SPINES = ["#4C4EA3", "#3E3226", "#8A6A2F", "#54463A", "#7A3B4A", "#2E2A24"];
 function spineColor(title: string) { 
@@ -1059,9 +1062,14 @@ export const InventoryTab: React.FC = () => {
     inventoryList, ledgerEntries, purchaseOrders, salesOrders, journals, freightIn, damagedRecords, books,
   }), [inventoryList, ledgerEntries, purchaseOrders, salesOrders, journals, freightIn, damagedRecords, books]);
 
+  // Hanya dihitung saat sub-tab Laporan Bulanan benar-benar dibuka. Sebelumnya ini
+  // berjalan tiap mount apa pun sub-tab aktifnya, padahal cuma tab ini yang memakainya
+  // - itulah freeze saat membuka "Stok & Value".
   const reportRows = React.useMemo(
-    () => legacyBuildReportRows(perpetualData, selectedMonth),
-    [perpetualData, selectedMonth]
+    () => (activeSubTab === 'monthly' && status === 'ready')
+      ? legacyBuildReportRows(perpetualData, selectedMonth)
+      : EMPTY_REPORT_ROWS,
+    [activeSubTab, status, perpetualData, selectedMonth]
   );
 
   // Monthly report table sort state
@@ -1127,10 +1135,19 @@ export const InventoryTab: React.FC = () => {
   const totalPagesMonthly = Math.ceil(sortedReportRows.length / 50);
   const paginatedReportRows = sortedReportRows.slice((currentPageMonthly - 1) * 50, currentPageMonthly * 50);
 
-  const reportValuationSum = reportRows.reduce((acc, cur) => acc + cur.totalNilaiStok, 0) / 100;
+  const reportValuationSum = React.useMemo(
+    () => reportRows.reduce((acc, cur) => acc + cur.totalNilaiStok, 0) / 100,
+    [reportRows]
+  );
 
   // Calculate actual Inventory On Hand & In Delivery (codes: 1201 & 1202) ledger balance up to selected month end
+  // Ikut digerbangi bersama reportRows: banner rekonsiliasi ini hanya dirender di
+  // sub-tab bulanan, dan membandingkannya dengan reportRows kosong akan menghasilkan
+  // selisih palsu.
   const { dbInventoryBalance, reconciliationMismatch, hasMismatch } = React.useMemo(() => {
+    if (activeSubTab !== 'monthly' || status !== 'ready') {
+      return { dbInventoryBalance: 0, reconciliationMismatch: 0, hasMismatch: false };
+    }
     const [year, month] = selectedMonth.split('-').map(Number);
     const endOfMonth = new Date(year, month, 1); // Next month start, exclusive
 
@@ -1163,7 +1180,7 @@ export const InventoryTab: React.FC = () => {
     const mismatchAmt = Math.abs(reportValuationSum - balance);
     const has = mismatchAmt > 0.05; // toleransi rounding kecil
     return { dbInventoryBalance: balance, reconciliationMismatch: mismatchAmt, hasMismatch: has };
-  }, [journals, selectedMonth, reportValuationSum]);
+  }, [activeSubTab, status, journals, selectedMonth, reportValuationSum]);
 
   const [isPostingAdjustment, setIsPostingAdjustment] = useState(false);
 
