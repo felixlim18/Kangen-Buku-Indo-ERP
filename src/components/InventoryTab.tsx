@@ -21,7 +21,7 @@ import { useAuth } from '../lib/auth-context';
 import { isPeriodClosed, getYearMonth } from '../lib/period-closing-utils';
 import { getCached, cacheKey, invalidateCollections } from '../lib/firestore-cache';
 import { BOUNDS } from '../lib/query-bounds';
-import { legacyBuildReportRows, type PerpetualData, type ReportRow } from '../lib/perpetual-inventory';
+import { buildPerpetualIndex, buildReportRows, type PerpetualData, type ReportRow } from '../lib/perpetual-inventory';
 import { 
   Boxes, 
   TrendingUp, 
@@ -414,7 +414,9 @@ export const InventoryTab: React.FC = () => {
     });
 
     setBookLedgerEntries(computedEntries);
-  }, [selectedBookForLedger, ledgerEntries, inventoryList]);
+    // salesOrders dibaca di dalam efek ini (mencari SO penyebab tiap baris ledger)
+    // tapi sebelumnya tidak ada di deps - laci ledger bisa menampilkan data basi.
+  }, [selectedBookForLedger, ledgerEntries, inventoryList, salesOrders]);
 
   // Fetch / Filter Specific Book Ledger timeline on click
   const handleRowClick = (book: Book) => {
@@ -1062,14 +1064,21 @@ export const InventoryTab: React.FC = () => {
     inventoryList, ledgerEntries, purchaseOrders, salesOrders, journals, freightIn, damagedRecords, books,
   }), [inventoryList, ledgerEntries, purchaseOrders, salesOrders, journals, freightIn, damagedRecords, books]);
 
+  // Semua pemindaian koleksi dilakukan sekali di sini (±11 ms), bukan sekali per buku.
+  // Terpisah dari reportRows supaya ganti bulan tidak membangun ulang index.
+  const perpetualIndex = React.useMemo(
+    () => buildPerpetualIndex(perpetualData),
+    [perpetualData]
+  );
+
   // Hanya dihitung saat sub-tab Laporan Bulanan benar-benar dibuka. Sebelumnya ini
   // berjalan tiap mount apa pun sub-tab aktifnya, padahal cuma tab ini yang memakainya
   // - itulah freeze saat membuka "Stok & Value".
   const reportRows = React.useMemo(
     () => (activeSubTab === 'monthly' && status === 'ready')
-      ? legacyBuildReportRows(perpetualData, selectedMonth)
+      ? buildReportRows(perpetualIndex, books, selectedMonth)
       : EMPTY_REPORT_ROWS,
-    [activeSubTab, status, perpetualData, selectedMonth]
+    [activeSubTab, status, perpetualIndex, books, selectedMonth]
   );
 
   // Monthly report table sort state

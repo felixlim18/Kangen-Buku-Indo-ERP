@@ -323,6 +323,364 @@ export function legacyCalculatePerpetualInventoryState(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Implementasi CEPAT - hasilnya wajib identik dengan yang legacy di atas.
+// Dijaga oleh scripts/verify-perpetual-parity.cjs (semua buku x semua bulan).
+//
+// Idenya: versi legacy memindai ulang seluruh koleksi untuk SETIAP buku. Di sini
+// semua pemindaian itu dilakukan SEKALI di buildPerpetualIndex, hasilnya disimpan
+// di Map, lalu tiap buku cuma melakukan fold atas event miliknya sendiri.
+// ---------------------------------------------------------------------------
+
+type PEvent =
+  | { type: 'purchase_received'; timeMs: number; qtyDelta: number; cost: number }
+  | { type: 'freight_capitalized'; timeMs: number; freightAllocatedCents: number }
+  | { type: 'outflow'; timeMs: number; qtyDelta: number };
+
+const ORDER: Record<PEvent['type'], number> = {
+  purchase_received: 1,
+  freight_capitalized: 2,
+  outflow: 3,
+};
+
+export interface PerpetualIndex {
+  initialStockByBook: Map<string, number>;
+  /** Sudah terurut (waktu asc, lalu tipe) - fold tinggal jalan. */
+  eventsByBook: Map<string, PEvent[]>;
+  /** Agregat bulanan untuk buildReportRows, kunci `bookId|YYYY-MM`. */
+  stokMasukByBookMonth: Map<string, number>;
+  stokKeluarByBookMonth: Map<string, number>;
+  rusakByBookMonth: Map<string, number>;
+}
+
+const push = <T>(m: Map<string, T[]>, k: string, v: T) => {
+  const a = m.get(k);
+  if (a) a.push(v); else m.set(k, [v]);
+};
+const bump = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
+
+/** `YYYY-MM` dari nilai tanggal apa pun, atau null kalau tidak bisa diparse. */
+function monthKeyOf(ts: any): string | null {
+  if (!ts) return null;
+  const d = parseEventDate(ts);
+  const t = d.getTime();
+  if (isNaN(t)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function buildPerpetualIndex(data: PerpetualData, nowMs: number = Date.now()): PerpetualIndex {
+  const { inventoryList, ledgerEntries, purchaseOrders, salesOrders, journals, freightIn, damagedRecords } = data;
+
+  // -- saldo awal ---------------------------------------------------------
+  // legacy memakai .find (kecocokan PERTAMA), jadi jangan menimpa kalau sudah ada.
+  const initialStockByBook = new Map<string, number>();
+  for (const inv of inventoryList) {
+    if (inv.bookId !== undefined && !initialStockByBook.has(inv.bookId)) {
+      initialStockByBook.set(inv.bookId, inv.initialStock || 0);
+    }
+  }
+
+  // -- indeks PO ----------------------------------------------------------
+  const poById = new Map<string, any>();
+  for (const p of purchaseOrders) if (!poById.has(p.id)) poById.set(p.id, p);
+  const validPoIds = new Set(purchaseOrders.map((p) => p.id));
+
+  // Biaya per unit hasil alokasi diskon, dihitung sekali per (po, buku).
+  const netUnitCostCache = new Map<string, number | null>();
+  function netUnitCostFor(po: any, bookId: string): number | null {
+    const k = `${po.id}|${bookId}`;
+    const hit = netUnitCostCache.get(k);
+    if (hit !== undefined) return hit;
+    let val: number | null;
+    if (po.items && po.items.length > 0) {
+      const poItem = po.items.find((it: any) => it.bookId === bookId);
+      if (poItem) {
+        const discount = po.discount || 0;
+        const totalQtyOrdered = po.items.reduce((acc: number, it: any) => acc + (it.qty || 0), 0) || 1;
+        const diskon_per_buku = discount * ((poItem.qty || 0) / totalQtyOrdered);
+        const netItemPriceNTDTotal = (poItem.priceNTDTotal || 0) - diskon_per_buku;
+        val = poItem.qty > 0 ? (netItemPriceNTDTotal / poItem.qty) : (poItem.pricePerItem || 0);
+      } else {
+        val = null; // legacy jatuh ke entry.unitCost
+      }
+    } else {
+      val = po.qty > 0 ? (po.purchasePriceNTD / po.qty) : (po.pricePerUnitNTD || 0);
+    }
+    netUnitCostCache.set(k, val);
+    return val;
+  }
+
+  // -- freight: kode mana yang sudah dikapitalisasi -----------------------
+  // legacy memanggil journals.some() per (buku x freight); di sini satu lintasan.
+  const capitalizedCodes = new Set<string>();
+  for (const f of freightIn) {
+    const c = f.freightCode?.toUpperCase().trim();
+    if (c && f.isCapitalized) capitalizedCodes.add(c);
+  }
+  for (const j of journals) {
+    if (!(j.description || '').toUpperCase().includes('KAPITALISASI')) continue;
+    const a = j.freightCode?.toUpperCase();
+    const b = j.refId?.toUpperCase();
+    if (a) capitalizedCodes.add(a.trim());
+    if (b) capitalizedCodes.add(b.trim());
+  }
+  // legacy membandingkan j.freightCode?.toUpperCase() === cleanFCode TANPA trim di
+  // sisi jurnal, jadi simpan juga varian tanpa-trim supaya cocok persis.
+  for (const j of journals) {
+    if (!(j.description || '').toUpperCase().includes('KAPITALISASI')) continue;
+    if (j.freightCode?.toUpperCase()) capitalizedCodes.add(j.freightCode.toUpperCase());
+    if (j.refId?.toUpperCase()) capitalizedCodes.add(j.refId.toUpperCase());
+  }
+
+  const journalById = new Map<string, any>();
+  for (const j of journals) if (!journalById.has(j.id)) journalById.set(j.id, j);
+
+  // total qty seluruh buku per kode freight - legacy menghitung ulang ini di dalam
+  // loop per-buku, padahal nilainya global.
+  const freightTotalQtyByCode = new Map<string, number>();
+  for (const p of purchaseOrders) {
+    if (p.receipts && p.receipts.length > 0) {
+      for (const rx of p.receipts) {
+        const c = rx.kodeEkspedisi?.toUpperCase().trim();
+        if (c) bump(freightTotalQtyByCode, c, rx.receivedQty || 0);
+      }
+    } else if (p.kodeEkspedisi) {
+      const c = p.kodeEkspedisi.toUpperCase().trim();
+      bump(freightTotalQtyByCode, c, p.qtyReceived || p.qty || 0);
+    }
+  }
+
+  const eventsByBook = new Map<string, PEvent[]>();
+
+  // -- 1. penerimaan PO dari ledger ---------------------------------------
+  for (const e of ledgerEntries) {
+    if (e.type !== 'purchase_received' || e.reversed === true || !e.bookId) continue;
+    let cost = 0;
+    if (e.unitCost !== undefined && e.unitCost !== null && e.unitCost > 0) {
+      cost = (e.qtyDelta || 0) * e.unitCost;
+    } else {
+      const po = poById.get(e.refId);
+      if (po) {
+        const nuc = netUnitCostFor(po, e.bookId);
+        cost = (e.qtyDelta || 0) * (nuc === null ? (e.unitCost || 0) : nuc);
+      } else {
+        cost = (e.qtyDelta || 0) * (e.unitCost || 0);
+      }
+    }
+    push(eventsByBook, e.bookId, {
+      type: 'purchase_received', timeMs: parseEventDate(e.timestamp).getTime(),
+      qtyDelta: e.qtyDelta || 0, cost,
+    });
+  }
+
+  // -- 2. kapitalisasi freight --------------------------------------------
+  // legacy: freightIn -> (bookPos milik buku) -> receipts. Dibalik jadi satu
+  // lintasan PO -> receipts -> receivedQtyDetails yang memancarkan (buku, kode, qty).
+  for (const fRec of freightIn) {
+    if (!fRec.freightCode) continue;
+    const fCode = fRec.freightCode.toUpperCase().trim();
+    if (!capitalizedCodes.has(fCode)) continue;
+
+    const totalQty = freightTotalQtyByCode.get(fCode) || 0;
+    if (totalQty <= 0) continue;
+
+    const totalFreightNTDCents = fRec.totalHargaPengirimanNTD
+      ? Math.round(fRec.totalHargaPengirimanNTD * 100)
+      : Math.round((fRec.totalKg || 0) * (fRec.ratePerKg || 0) * (fRec.exchangeRate || FALLBACK_NTD_PER_IDR) * 100);
+
+    const timeMs = parseEventDate(getCapitalizationTimestamp(fRec, journals, nowMs)).getTime();
+
+    for (const po of purchaseOrders) {
+      if (po.status === 'cancelled') continue;
+      if (!po.receipts || po.receipts.length === 0) continue;
+      for (const r of po.receipts) {
+        if (!r.kodeEkspedisi || r.kodeEkspedisi.toUpperCase().trim() !== fCode) continue;
+        if (r.receivedQtyDetails) {
+          for (const d of r.receivedQtyDetails) {
+            const qty = d.qty || 0;
+            if (qty <= 0 || !d.bookId) continue;
+            // legacy hanya memproses PO yang lolos filter bookPos untuk buku ini
+            const inPo = po.bookId === d.bookId || (po.items && po.items.some((it: any) => it.bookId === d.bookId));
+            if (!inPo) continue;
+            push(eventsByBook, d.bookId, {
+              type: 'freight_capitalized', timeMs,
+              freightAllocatedCents: Math.round((qty / totalQty) * totalFreightNTDCents),
+            });
+          }
+        } else if (po.bookId) {
+          const qty = r.receivedQty || 0;
+          if (qty <= 0) continue;
+          push(eventsByBook, po.bookId, {
+            type: 'freight_capitalized', timeMs,
+            freightAllocatedCents: Math.round((qty / totalQty) * totalFreightNTDCents),
+          });
+        }
+      }
+    }
+  }
+
+  // -- 3. keluar: penjualan completed + barang rusak ----------------------
+  // legacy: journals.filter(...) per buku, lalu .find per SO. Di sini satu Map.
+  const completedCogsJournalBySo = new Map<string, any>();
+  for (const j of journals) {
+    if (j.refType !== 'sales_order_completed') continue;
+    if (!(j.lines || []).some((l: any) => (l.accountCode || '').trim() === '1202')) continue;
+    if (!completedCogsJournalBySo.has(j.refId)) completedCogsJournalBySo.set(j.refId, j);
+  }
+  // dispatch per (buku, SO) - legacy mem-filter ledger per buku lalu .find per SO
+  const dispatchByBookSo = new Map<string, any>();
+  const dispatchMonthByBookSo = new Map<string, string | null>();
+  for (const e of ledgerEntries) {
+    if (e.type !== 'DISPATCHED' || e.reversed === true || !e.bookId) continue;
+    const k = `${e.bookId}|${e.refId}`;
+    if (!dispatchByBookSo.has(k)) {
+      dispatchByBookSo.set(k, e);
+      dispatchMonthByBookSo.set(k, monthKeyOf(e.timestamp));
+    }
+  }
+
+  const stokKeluarByBookMonth = new Map<string, number>();
+
+  for (const so of salesOrders) {
+    if (so.status !== 'completed' || !Array.isArray(so.items)) continue;
+    const completedJournal = completedCogsJournalBySo.get(so.id);
+
+    // legacy memakai items.find(...) - buku yang sama muncul dua kali di satu SO
+    // hanya dihitung sekali, jadi de-duplikasi di sini juga.
+    const seen = new Set<string>();
+    for (const it of so.items) {
+      if (!it.bookId || seen.has(it.bookId)) continue;
+      seen.add(it.bookId);
+      const first = so.items.find((x: any) => x.bookId === it.bookId);
+      const qty = first?.qty || 0;
+
+      const k = `${it.bookId}|${so.id}`;
+      const dispatchEntry = dispatchByBookSo.get(k);
+      const ts = completedJournal ? completedJournal.date
+        : (dispatchEntry ? dispatchEntry.timestamp : (so.orderDate || so.createdAt));
+
+      push(eventsByBook, it.bookId, {
+        type: 'outflow', timeMs: parseEventDate(ts).getTime(), qtyDelta: qty,
+      });
+
+      // agregat bulanan stokKeluar - urutan resolusinya harus sama persis dengan legacy
+      let month: string | null;
+      if (completedJournal) {
+        month = monthKeyOf(completedJournal.date);
+      } else if (dispatchEntry) {
+        month = dispatchMonthByBookSo.get(k) ?? null;
+      } else {
+        month = monthKeyOf(so.orderDate || so.createdAt);
+      }
+      if (month) bump(stokKeluarByBookMonth, `${it.bookId}|${month}`, qty);
+    }
+  }
+
+  for (const e of ledgerEntries) {
+    if (e.type !== 'damaged_stock' || e.reversed === true || !e.bookId) continue;
+    push(eventsByBook, e.bookId, {
+      type: 'outflow', timeMs: parseEventDate(e.timestamp).getTime(),
+      qtyDelta: Math.abs(e.qtyDelta || 0),
+    });
+  }
+
+  // -- urutkan sekali per buku --------------------------------------------
+  for (const evs of eventsByBook.values()) {
+    evs.sort((a, b) => (a.timeMs !== b.timeMs ? a.timeMs - b.timeMs : ORDER[a.type] - ORDER[b.type]));
+  }
+
+  // -- agregat bulanan sisanya --------------------------------------------
+  const stokMasukByBookMonth = new Map<string, number>();
+  for (const e of ledgerEntries) {
+    if (e.type !== 'purchase_received' || !e.bookId || !validPoIds.has(e.refId)) continue;
+    const m = monthKeyOf(e.timestamp);
+    if (m) bump(stokMasukByBookMonth, `${e.bookId}|${m}`, e.qtyDelta || 0);
+  }
+
+  const rusakByBookMonth = new Map<string, number>();
+  for (const rec of damagedRecords) {
+    if (!rec.bookId || !rec.date) continue;
+    bump(rusakByBookMonth, `${rec.bookId}|${String(rec.date).slice(0, 7)}`, rec.qty || 0);
+  }
+
+  return { initialStockByBook, eventsByBook, stokMasukByBookMonth, stokKeluarByBookMonth, rusakByBookMonth };
+}
+
+/** Fold sekali jalan, mengambil snapshot di dua cutoff sekaligus. */
+export function computePerpetualStates(
+  index: PerpetualIndex,
+  bookId: string,
+  prevMonthStr: string,
+  currMonthStr: string,
+): { prev: PerpetualState; curr: PerpetualState } {
+  const cut = (mStr: string) => {
+    const [y, m] = mStr.split('-').map(Number);
+    return new Date(y, m, 1).getTime(); // awal bulan berikutnya, eksklusif
+  };
+  const prevCut = cut(prevMonthStr);
+  const currCut = cut(currMonthStr);
+
+  const initialStock = index.initialStockByBook.get(bookId) || 0;
+  let runningStock = initialStock;
+  let runningValueCents = 0; // legacy: initialCost selalu 0
+  let currentAverageCost = 0;
+
+  let prev: PerpetualState | null = null;
+  const events = index.eventsByBook.get(bookId);
+
+  if (events) {
+    for (const ev of events) {
+      // legacy melakukan replay terpisah per cutoff dan BREAK di event pertama yang
+      // >= cutoff. Karena event sudah urut, ambil snapshot saat melewati batas.
+      if (prev === null && ev.timeMs >= prevCut) {
+        prev = { runningStock, runningValueCents, currentAverageCost };
+      }
+      if (ev.timeMs >= currCut) break;
+
+      if (ev.type === 'purchase_received') {
+        runningStock += ev.qtyDelta;
+        runningValueCents += ev.cost;
+        currentAverageCost = runningStock > 0 ? runningValueCents / runningStock : 0;
+      } else if (ev.type === 'freight_capitalized') {
+        runningValueCents += ev.freightAllocatedCents;
+        currentAverageCost = runningStock > 0 ? runningValueCents / runningStock : 0;
+      } else {
+        const hppCents = ev.qtyDelta * currentAverageCost;
+        runningStock = Math.max(0, runningStock - ev.qtyDelta);
+        runningValueCents = Math.max(0, runningValueCents - hppCents);
+      }
+    }
+  }
+
+  if (prev === null) prev = { runningStock, runningValueCents, currentAverageCost };
+  return { prev, curr: { runningStock, runningValueCents, currentAverageCost } };
+}
+
+export function buildReportRows(
+  index: PerpetualIndex,
+  books: any[],
+  selectedMonth: string,
+): ReportRow[] {
+  const [y, m] = selectedMonth.split('-').map(Number);
+  const prevMonthStr = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+
+  return books.map((book) => {
+    const { prev, curr } = computePerpetualStates(index, book.id, prevMonthStr, selectedMonth);
+    const k = `${book.id}|${selectedMonth}`;
+    return {
+      book,
+      hargaRataRata: curr.currentAverageCost,
+      stokAwal: prev.runningStock,
+      stokMasuk: index.stokMasukByBookMonth.get(k) || 0,
+      stokKeluar: index.stokKeluarByBookMonth.get(k) || 0,
+      rusak: index.rusakByBookMonth.get(k) || 0,
+      stokAkhir: curr.runningStock,
+      totalNilaiStok: curr.runningValueCents,
+      minStock: book.minOrder || 0,
+    };
+  });
+}
+
 export function legacyBuildReportRows(
   data: PerpetualData,
   selectedMonth: string,
