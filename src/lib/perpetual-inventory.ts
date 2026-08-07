@@ -335,7 +335,9 @@ export function legacyCalculatePerpetualInventoryState(
 type PEvent =
   | { type: 'purchase_received'; timeMs: number; qtyDelta: number; cost: number }
   | { type: 'freight_capitalized'; timeMs: number; freightAllocatedCents: number }
-  | { type: 'outflow'; timeMs: number; qtyDelta: number };
+  // costCents = HPP yang benar-benar diposting ke jurnal. null berarti tidak ada
+  // jurnal yang mengunci nilainya (data legacy) - fold jatuh ke rata-rata berjalan.
+  | { type: 'outflow'; timeMs: number; qtyDelta: number; costCents: number | null };
 
 const ORDER: Record<PEvent['type'], number> = {
   purchase_received: 1,
@@ -490,30 +492,47 @@ export function buildPerpetualIndex(data: PerpetualData, nowMs: number = Date.no
 
     const timeMs = parseEventDate(getCapitalizationTimestamp(fRec, journals, nowMs)).getTime();
 
+    const emit = (bookId: string, qty: number) => {
+      if (!bookId || qty <= 0) return;
+      push(eventsByBook, bookId, {
+        type: 'freight_capitalized', timeMs,
+        freightAllocatedCents: Math.round((qty / totalQty) * totalFreightNTDCents),
+      });
+    };
+
     for (const po of purchaseOrders) {
       if (po.status === 'cancelled') continue;
-      if (!po.receipts || po.receipts.length === 0) continue;
-      for (const r of po.receipts) {
-        if (!r.kodeEkspedisi || r.kodeEkspedisi.toUpperCase().trim() !== fCode) continue;
-        if (r.receivedQtyDetails) {
-          for (const d of r.receivedQtyDetails) {
-            const qty = d.qty || 0;
-            if (qty <= 0 || !d.bookId) continue;
-            // legacy hanya memproses PO yang lolos filter bookPos untuk buku ini
-            const inPo = po.bookId === d.bookId || (po.items && po.items.some((it: any) => it.bookId === d.bookId));
-            if (!inPo) continue;
-            push(eventsByBook, d.bookId, {
-              type: 'freight_capitalized', timeMs,
-              freightAllocatedCents: Math.round((qty / totalQty) * totalFreightNTDCents),
-            });
+
+      if (po.receipts && po.receipts.length > 0) {
+        for (const r of po.receipts) {
+          if (!r.kodeEkspedisi || r.kodeEkspedisi.toUpperCase().trim() !== fCode) continue;
+          if (r.receivedQtyDetails) {
+            for (const d of r.receivedQtyDetails) {
+              // legacy hanya memproses PO yang lolos filter bookPos untuk buku ini
+              const inPo = po.bookId === d.bookId || (po.items && po.items.some((it: any) => it.bookId === d.bookId));
+              if (!inPo) continue;
+              emit(d.bookId, d.qty || 0);
+            }
+          } else if (po.bookId) {
+            emit(po.bookId, r.receivedQty || 0);
           }
-        } else if (po.bookId) {
-          const qty = r.receivedQty || 0;
-          if (qty <= 0) continue;
-          push(eventsByBook, po.bookId, {
-            type: 'freight_capitalized', timeMs,
-            freightAllocatedCents: Math.round((qty / totalQty) * totalFreightNTDCents),
-          });
+        }
+        continue;
+      }
+
+      // Bentuk legacy: kode ekspedisi ada di LEVEL PO dan PO-nya tidak punya
+      // array `receipts` sama sekali. Penyebut (freightTotalQtyByCode) sudah
+      // menghitung bentuk ini sejak dulu, tapi pembilangnya tidak - sehingga
+      // freight-nya masuk GL lewat jurnal kapitalisasi tapi tidak pernah
+      // dialokasikan ke buku mana pun. Itulah selisih NT$761,18 pada AX2607S29TG.
+      if (po.kodeEkspedisi && po.kodeEkspedisi.toUpperCase().trim() === fCode) {
+        const poQty = po.qtyReceived || po.qty || 0;
+        if (poQty <= 0) continue;
+        if (po.items && po.items.length > 0) {
+          // Pecah menurut qty tiap item supaya total alokasinya tetap = poQty.
+          for (const it of po.items) emit(it.bookId, it.qtyReceived || it.qty || 0);
+        } else {
+          emit(po.bookId, poQty);
         }
       }
     }
@@ -545,9 +564,21 @@ export function buildPerpetualIndex(data: PerpetualData, nowMs: number = Date.no
     if (so.status !== 'completed' || !Array.isArray(so.items)) continue;
     const completedJournal = completedCogsJournalBySo.get(so.id);
 
+    // HPP yang benar-benar dikreditkan ke 1202 oleh jurnal order ini. Laporan
+    // WAJIB mengurangi persis sebesar ini, bukan menghitung ulang rata-rata
+    // bergerak sendiri - kalau tidak, nilai persediaan laporan tidak akan pernah
+    // cocok dengan buku besar (jurnal mengunci HPP saat barang DIKIRIM, sedangkan
+    // rata-rata bergerak bisa berubah sebelum order DISELESAIKAN).
+    const journalCogsCents = completedJournal
+      ? (completedJournal.lines || []).reduce(
+          (a: number, l: any) => a + ((l.accountCode || '').trim() === '1202' ? (l.credit || 0) : 0), 0)
+      : null;
+
     // legacy memakai items.find(...) - buku yang sama muncul dua kali di satu SO
     // hanya dihitung sekali, jadi de-duplikasi di sini juga.
     const seen = new Set<string>();
+    const perBook: Array<{ bookId: string; qty: number; ts: any; month: string | null; raw: number }> = [];
+
     for (const it of so.items) {
       if (!it.bookId || seen.has(it.bookId)) continue;
       seen.add(it.bookId);
@@ -559,10 +590,6 @@ export function buildPerpetualIndex(data: PerpetualData, nowMs: number = Date.no
       const ts = completedJournal ? completedJournal.date
         : (dispatchEntry ? dispatchEntry.timestamp : (so.orderDate || so.createdAt));
 
-      push(eventsByBook, it.bookId, {
-        type: 'outflow', timeMs: parseEventDate(ts).getTime(), qtyDelta: qty,
-      });
-
       // agregat bulanan stokKeluar - urutan resolusinya harus sama persis dengan legacy
       let month: string | null;
       if (completedJournal) {
@@ -573,14 +600,48 @@ export function buildPerpetualIndex(data: PerpetualData, nowMs: number = Date.no
         month = monthKeyOf(so.orderDate || so.createdAt);
       }
       if (month) bump(stokKeluarByBookMonth, `${it.bookId}|${month}`, qty);
+
+      perBook.push({ bookId: it.bookId, qty, ts, month, raw: (first?.cogsSnapshot || 0) * qty });
     }
+
+    // Bagi HPP jurnal ke tiap buku menurut cogsSnapshot-nya, dengan bagian
+    // terakhir menyerap sisa pembulatan - pola yang sama dipakai
+    // completeSalesOrderTransaction saat memecah paidCogs/freeCogs. Dengan begitu
+    // jumlah alokasi per buku SELALU sama persis dengan angka di jurnal.
+    const totalRaw = perBook.reduce((a, p) => a + p.raw, 0);
+    let remaining = journalCogsCents;
+
+    perBook.forEach((p, i) => {
+      let costCents: number | null = null;
+      if (remaining !== null) {
+        if (i === perBook.length - 1) {
+          costCents = remaining;
+        } else {
+          const portion = totalRaw > 0 ? Math.round((p.raw / totalRaw) * journalCogsCents!) : 0;
+          costCents = portion;
+          remaining -= portion;
+        }
+      }
+      push(eventsByBook, p.bookId, {
+        type: 'outflow',
+        timeMs: parseEventDate(p.ts).getTime(),
+        qtyDelta: p.qty,
+        // null = tidak ada jurnal completed (data legacy) -> fold pakai rata-rata berjalan
+        costCents,
+      });
+    });
   }
 
   for (const e of ledgerEntries) {
     if (e.type !== 'damaged_stock' || e.reversed === true || !e.bookId) continue;
+    const qty = Math.abs(e.qtyDelta || 0);
+    // Jurnal barang rusak mengkredit 1201 sebesar qty x unitCost yang tersimpan di
+    // baris ledger ini. Pakai angka yang sama supaya laporan dan GL bergerak sama.
+    const unit = e.unitCost;
     push(eventsByBook, e.bookId, {
       type: 'outflow', timeMs: parseEventDate(e.timestamp).getTime(),
-      qtyDelta: Math.abs(e.qtyDelta || 0),
+      qtyDelta: qty,
+      costCents: (unit !== undefined && unit !== null) ? qty * unit : null,
     });
   }
 
@@ -645,9 +706,20 @@ export function computePerpetualStates(
         runningValueCents += ev.freightAllocatedCents;
         currentAverageCost = runningStock > 0 ? runningValueCents / runningStock : 0;
       } else {
-        const hppCents = ev.qtyDelta * currentAverageCost;
+        // Jurnal yang menang: kalau HPP-nya sudah dikunci di jurnal, kurangi persis
+        // sebesar itu. Hanya data legacy tanpa jurnal yang jatuh ke rata-rata berjalan.
+        const authoritative = ev.costCents !== null;
+        const hppCents = authoritative ? ev.costCents! : ev.qtyDelta * currentAverageCost;
         runningStock = Math.max(0, runningStock - ev.qtyDelta);
-        runningValueCents = Math.max(0, runningValueCents - hppCents);
+        // Nilai TIDAK diklem ke 0 saat angkanya berasal dari jurnal. Klem itu dulu
+        // menahan nilai yang sudah dikreditkan buku besar, sehingga total laporan
+        // tidak akan pernah bisa sama dengan GL. Kalau sebuah buku jadi negatif,
+        // artinya GL membebankan HPP lebih besar dari nilai masuk yang tercatat untuk
+        // buku itu - itu inkonsistensi data nyata yang memang harus terlihat, bukan
+        // disembunyikan. scripts/verify-inventory-reconciliation.ts menandainya.
+        runningValueCents = authoritative
+          ? runningValueCents - hppCents
+          : Math.max(0, runningValueCents - hppCents);
       }
     }
   }

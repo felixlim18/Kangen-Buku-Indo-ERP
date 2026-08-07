@@ -409,30 +409,47 @@ export function getMovingAverageLandedCost(
         ? Math.round(fRec.totalHargaPengirimanNTD * 100) 
         : Math.round((fRec.totalKg || 0) * (fRec.ratePerKg || 0) * (fRec.exchangeRate || FALLBACK_NTD_PER_IDR) * 100);
 
+      const capTimestamp = fRec.capitalizationJournalId
+        ? (allJournals.find(x => x.id === fRec.capitalizationJournalId)?.date?.seconds ||
+           allJournals.find(x => x.id === fRec.capitalizationJournalId)?.date?.toDate?.()?.getTime() / 1000)
+        : null;
+      const timestamp = capTimestamp || fRec.createdAt?.seconds || fRec.createdAt?.toDate?.()?.getTime() / 1000 || 0;
+
+      const pushFreight = (qtyReceived: number) => {
+        if (qtyReceived <= 0) return;
+        freightCapitalizationEvents.push({
+          type: 'freight_capitalized',
+          timestamp,
+          freightCode: fRec.freightCode,
+          freightAllocatedCents: Math.round((qtyReceived / totalQtyReceivedInFreight) * totalFreightNTDCents),
+          refId: fRec.freightCode
+        });
+      };
+
       // Now find each receipt batch of our book under this freight
       bookPos.forEach(po => {
         po.receipts.forEach((r: any) => {
           if (r.kodeEkspedisi && r.kodeEkspedisi.toUpperCase().trim() === fCode) {
-            const qtyReceived = getBookQtyInReceipt(po, r, bookId);
-            if (qtyReceived > 0) {
-              const freightAllocatedCents = Math.round((qtyReceived / totalQtyReceivedInFreight) * totalFreightNTDCents);
-              
-              const capTimestamp = fRec.capitalizationJournalId
-                ? (allJournals.find(x => x.id === fRec.capitalizationJournalId)?.date?.seconds || 
-                   allJournals.find(x => x.id === fRec.capitalizationJournalId)?.date?.toDate?.()?.getTime() / 1000)
-                : null;
-              const timestamp = capTimestamp || fRec.createdAt?.seconds || fRec.createdAt?.toDate?.()?.getTime() / 1000 || 0;
-
-              freightCapitalizationEvents.push({
-                type: 'freight_capitalized',
-                timestamp: timestamp,
-                freightCode: fRec.freightCode,
-                freightAllocatedCents: freightAllocatedCents,
-                refId: fRec.freightCode
-              });
-            }
+            pushFreight(getBookQtyInReceipt(po, r, bookId));
           }
         });
+      });
+
+      // Bentuk legacy: kode ekspedisi di LEVEL PO tanpa array `receipts`. Penyebut
+      // di atas sudah menghitung bentuk ini, jadi pembilangnya harus ikut - kalau
+      // tidak, freight-nya masuk buku besar tapi tidak pernah membebani buku mana
+      // pun. Sama seperti perbaikan di src/lib/perpetual-inventory.ts.
+      allPos.forEach(po => {
+        if (po.status === 'cancelled') return;
+        if (po.receipts && po.receipts.length > 0) return;
+        if (!po.kodeEkspedisi || po.kodeEkspedisi.toUpperCase().trim() !== fCode) return;
+        if (po.items && po.items.length > 0) {
+          po.items.forEach((it: any) => {
+            if (it.bookId === bookId) pushFreight(it.qtyReceived || it.qty || 0);
+          });
+        } else if (po.bookId === bookId) {
+          pushFreight(po.qtyReceived || po.qty || 0);
+        }
       });
     });
   }

@@ -14,7 +14,8 @@ import {
   query, 
   where,
   Timestamp,
-  getDocs
+  getDocs,
+  getDoc
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Book, Category, Supplier } from '../types';
@@ -1329,12 +1330,35 @@ export const CatalogTab: React.FC = () => {
   };
 
   const deleteBook = async (bookId: string) => {
-    if (!window.confirm("Apakah anda yakin ingin menghapus buku ini?") && !isOwner) return;
     try {
+      // Laporan Bulanan menelusuri koleksi catalog. Menghapus buku yang masih punya
+      // mutasi persediaan akan MENYEMBUNYIKAN nilainya dari laporan sementara buku
+      // besar tetap memperhitungkannya - itu yang dulu menimbulkan selisih
+      // rekonsiliasi NT$142,00 yang butuh skrip pemulihan untuk dibereskan.
+      const ledgerSnap = await getDocs(
+        query(collection(db, 'inventoryLedger'), where('bookId', '==', bookId))
+      );
+      if (!ledgerSnap.empty) {
+        const invSnap = await getDoc(doc(db, 'inventory', bookId));
+        const stock = invSnap.exists() ? (invSnap.data().endingStock || 0) : 0;
+        window.alert(
+          `Buku ini tidak bisa dihapus karena masih punya ${ledgerSnap.size} riwayat mutasi persediaan` +
+          (stock ? ` dan stok ${stock} unit` : '') + `.\n\n` +
+          `Menghapusnya akan membuat nilainya hilang dari Laporan Bulanan padahal buku besar tetap ` +
+          `mencatatnya, sehingga muncul selisih rekonsiliasi.\n\n` +
+          `Nonaktifkan saja lewat tombol Edit (hilangkan centang "Aktif") - buku akan hilang dari ` +
+          `pencarian penjualan tapi riwayat dan nilainya tetap utuh.`
+        );
+        return;
+      }
+
+      if (!window.confirm("Apakah anda yakin ingin menghapus buku ini?") && !isOwner) return;
+
       await deleteDoc(doc(db, 'catalog', bookId));
       await deleteDoc(doc(db, 'inventory', bookId));
     } catch (err) {
       console.error("Error deleting book", err);
+      window.alert('Gagal menghapus buku. Coba lagi.');
     }
   };
 
