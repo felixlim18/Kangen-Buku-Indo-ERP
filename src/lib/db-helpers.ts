@@ -832,8 +832,15 @@ export async function confirmSalesOrderTransaction(orderId: string, currentUserI
 
 /**
  * Marks sales order as completed, recognizes Revenue and COGS
+ *
+ * @param paymentTermsDays Umur piutang yang dipilih di modal "Selesai". Opsional supaya
+ *   order lama (yang menyimpan nilainya di dokumen sejak masih ada di form) tetap jalan.
  */
-export async function completeSalesOrderTransaction(orderId: string, currentUserId: string): Promise<void> {
+export async function completeSalesOrderTransaction(
+  orderId: string,
+  currentUserId: string,
+  paymentTermsDays?: 30 | 60 | 90,
+): Promise<void> {
   const path = `salesOrders/${orderId}`;
   try {
     // 1. Read shipped journal from Firestore first (outside transaction)
@@ -953,12 +960,17 @@ export async function completeSalesOrderTransaction(orderId: string, currentUser
 
       // Umur piutang (30/60/90 hari, default 30) hanya relevan untuk order yang masuk
       // Piutang Usaha (COD/isUnpaid) - dihitung dari saat order benar-benar completed.
+      // Prioritas: pilihan user di modal Selesai, lalu nilai lama di dokumen order.
       let dueDateStr: string | null = null;
+      let appliedTermsDays: number | null = null;
       if (isUnpaid) {
-        const termsDays = order.paymentTermsDays || 30;
+        appliedTermsDays = paymentTermsDays || order.paymentTermsDays || 30;
         const dueDateObj = new Date();
-        dueDateObj.setDate(dueDateObj.getDate() + termsDays);
-        dueDateStr = dueDateObj.toISOString().split('T')[0];
+        dueDateObj.setDate(dueDateObj.getDate() + appliedTermsDays);
+        // Rakit tanggal dari komponen lokal, bukan toISOString() - toISOString() memakai
+        // UTC, jadi untuk user di UTC+8 (Taipei) order yang diselesaikan sebelum pukul
+        // 08:00 akan mendapat tanggal jatuh tempo satu hari lebih awal.
+        dueDateStr = `${dueDateObj.getFullYear()}-${String(dueDateObj.getMonth() + 1).padStart(2, '0')}-${String(dueDateObj.getDate()).padStart(2, '0')}`;
       }
 
       // Update status to 'completed'
@@ -968,6 +980,7 @@ export async function completeSalesOrderTransaction(orderId: string, currentUser
         isUnpaid: isUnpaid,
         amountPaid: isUnpaid ? 0 : order.totalPrice,
         dueDate: dueDateStr,
+        paymentTermsDays: appliedTermsDays,
         completedAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       });

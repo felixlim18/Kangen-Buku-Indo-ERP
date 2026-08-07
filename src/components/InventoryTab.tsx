@@ -1,20 +1,16 @@
 import { getNextJournalId } from '../lib/journalUtils';
 import { FALLBACK_NTD_PER_IDR } from '../lib/exchangeRateConstants';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useTransition } from 'react';
 import { Decimal } from 'decimal.js';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  getDoc,
-  setDoc,
+import {
+  collection,
+  doc,
   getDocs,
-  query, 
+  query,
   where,
   Timestamp,
-  writeBatch,
-  deleteField
+  writeBatch
 } from 'firebase/firestore';
 import { DiagnosticReportModal } from './DiagnosticReportModal';
 import { Book, InventoryRecord, InventoryLedgerEntry, DamagedStock, JournalEntry } from '../types';
@@ -23,6 +19,8 @@ import { getCurrentKontrolStokForBook, getPhysicalOnHandStockForBook, getAllBook
 import { ensureAutoAccountExists } from '../lib/journalAuto';
 import { useAuth } from '../lib/auth-context';
 import { isPeriodClosed, getYearMonth } from '../lib/period-closing-utils';
+import { getCached, cacheKey, invalidateCollections } from '../lib/firestore-cache';
+import { BOUNDS } from '../lib/query-bounds';
 import { 
   Boxes, 
   TrendingUp, 
@@ -46,8 +44,51 @@ import {
   PackageX,
   PackagePlus,
   Package,
-  Filter
+  Filter,
+  RotateCw
 } from 'lucide-react';
+
+/** Koleksi yang dibutuhkan tab ini. Urutannya harus sama dengan destructure di loader. */
+const INVENTORY_COLLECTIONS = [
+  'catalog', 'inventory', 'inventoryLedger', 'damagedStock',
+  'journalEntries', 'closedPeriods', 'purchaseOrders', 'freightIn', 'salesOrders',
+] as const;
+
+export interface InventoryData {
+  books: Book[];
+  inventoryList: InventoryRecord[];
+  ledgerEntries: InventoryLedgerEntry[];
+  damagedRecords: DamagedStock[];
+  journals: JournalEntry[];
+  closedPeriods: string[];
+  purchaseOrders: any[];
+  freightIn: any[];
+  salesOrders: any[];
+}
+
+// Identitas stabil - dipakai sebagai state awal supaya memo tidak thrashing.
+const EMPTY_INVENTORY_DATA: InventoryData = Object.freeze({
+  books: [], inventoryList: [], ledgerEntries: [], damagedRecords: [],
+  journals: [], closedPeriods: [], purchaseOrders: [], freightIn: [], salesOrders: [],
+}) as InventoryData;
+
+/**
+ * Bentuk tiap koleksi HARUS sama persis dengan loader lama, kalau tidak akan jadi
+ * bug data senyap: inventory/inventoryLedger/damagedStock disimpan tanpa `id`,
+ * closedPeriods hanya id-nya, sisanya `{ id, ...data }`.
+ */
+async function fetchInventoryCollection(name: string): Promise<any[]> {
+  const snap = await getDocs(collection(db, name));
+  const out: any[] = [];
+  if (name === 'closedPeriods') {
+    snap.forEach((d) => out.push(d.id));
+  } else if (name === 'inventory' || name === 'inventoryLedger' || name === 'damagedStock') {
+    snap.forEach((d) => out.push(d.data()));
+  } else {
+    snap.forEach((d) => out.push({ id: d.id, ...d.data() }));
+  }
+  return out;
+}
 
 const SPINES = ["#4C4EA3", "#3E3226", "#8A6A2F", "#54463A", "#7A3B4A", "#2E2A24"];
 function spineColor(title: string) { 
@@ -168,6 +209,24 @@ const CUSTOM_STYLES = `
     .kbi-t-head span:nth-child(8), .kbi-t-row > div:nth-child(8),
     .kbi-t-head span:nth-child(10), .kbi-t-row > div:nth-child(10) { display: none; }
   }
+
+  /* Kerangka saat memuat - menggantikan tabel kosong tanpa penjelasan */
+  .kbi-skel-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; }
+  .kbi-skel-note { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .kbi-skel-row { display: flex; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .kbi-skel-row:last-child { border-bottom: none; }
+  .kbi-skel-cell { height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--card-alt) 25%, var(--line) 37%, var(--card-alt) 63%); background-size: 400% 100%; animation: kbi-shimmer 1.4s ease-in-out infinite; }
+  @keyframes kbi-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+  @media (prefers-reduced-motion: reduce) { .kbi-skel-cell { animation: none; } }
+
+  .kbi-load-error { display: flex; align-items: center; gap: 12px; background: var(--red-soft); border: 1px solid var(--red); border-radius: 12px; padding: 14px 18px; color: var(--red); }
+  .kbi-load-error .sub { display: block; font-size: 12px; opacity: .85; font-weight: 400; }
+  .kbi-load-error button { background: var(--red); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .kbi-load-error button:disabled { opacity: .6; cursor: not-allowed; }
+
+  /* Sub-tab sedang menghitung: tabel lama diredupkan, bar tab tetap bisa diklik */
+  .kbi-subtab-pending { opacity: .55; pointer-events: none; transition: opacity .12s ease; }
+  .kbi-subtab-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
 `;
 
 export const InventoryTab: React.FC = () => {
@@ -181,6 +240,9 @@ export const InventoryTab: React.FC = () => {
 
   // Sub-tabs: 'kontrol_stok', 'monthly', or 'adjustments'
   const [activeSubTab, setActiveSubTab] = useState<'kontrol_stok' | 'monthly' | 'adjustments'>('kontrol_stok');
+  // Perhitungan sub-tab berjalan sinkron saat render. Tanpa transition, bar tab
+  // ikut membeku sampai selesai; dengan transition, tombolnya tetap bisa diklik.
+  const [isSubTabPending, startSubTabTransition] = useTransition();
   
   // Search state
   const [searchTerm, setSearchTerm] = useState('');
@@ -189,16 +251,17 @@ export const InventoryTab: React.FC = () => {
   const [currentPageKontrol, setCurrentPageKontrol] = useState(1);
   const [currentPageMonthly, setCurrentPageMonthly] = useState(1);
 
-  // Core data states
-  const [books, setBooks] = useState<Book[]>([]);
-  const [inventoryList, setInventoryList] = useState<InventoryRecord[]>([]);
-  const [ledgerEntries, setLedgerEntries] = useState<InventoryLedgerEntry[]>([]);
-  const [damagedRecords, setDamagedRecords] = useState<DamagedStock[]>([]);
-  const [journals, setJournals] = useState<JournalEntry[]>([]);
-  const [closedPeriods, setClosedPeriods] = useState<string[]>([]);
-  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
-  const [freightIn, setFreightIn] = useState<any[]>([]);
-  const [salesOrders, setSalesOrders] = useState<any[]>([]);
+  // Core data - satu objek supaya penyerahan dari cache jadi satu setState, dan
+  // supaya seluruh dep array memo di bawah tidak perlu diubah (lihat destructure).
+  const [data, setData] = useState<InventoryData>(EMPTY_INVENTORY_DATA);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const {
+    books, inventoryList, ledgerEntries, damagedRecords,
+    journals, closedPeriods, purchaseOrders, freightIn, salesOrders,
+  } = data;
 
   // Period / Month selection (defaults to current month)
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -255,258 +318,48 @@ export const InventoryTab: React.FC = () => {
   };
 
 
-  // Load Realtime Data
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [
-          catSnap, invSnap, ledgerSnap, damagedSnap,
-          journalsSnap, closedSnap, poSnap, freightSnap, soSnap
-        ] = await Promise.all([
-          getDocs(collection(db, 'catalog')),
-          getDocs(collection(db, 'inventory')),
-          getDocs(collection(db, 'inventoryLedger')),
-          getDocs(collection(db, 'damagedStock')),
-          getDocs(collection(db, 'journalEntries')),
-          getDocs(collection(db, 'closedPeriods')),
-          getDocs(collection(db, 'purchaseOrders')),
-          getDocs(collection(db, 'freightIn')),
-          getDocs(collection(db, 'salesOrders'))
-        ]);
-        
-        // Catalog
-        const bList = [];
-        catSnap.forEach((d) => bList.push({ id: d.id, ...d.data() }));
-        setBooks(bList);
+  // Load data. Dilayani cache sesi (src/lib/firestore-cache.ts) sehingga buka-tutup
+  // tab tidak mengunduh ulang ~11 MB; `force` dipakai tombol Segarkan dan dipanggil
+  // setelah setiap tulisan supaya angkanya ikut berubah tanpa perlu pindah tab.
+  const loadData = useCallback(async (force = false) => {
+    if (force) setIsRefreshing(true); else setStatus('loading');
+    try {
+      if (force) invalidateCollections(...INVENTORY_COLLECTIONS);
+      const [
+        catalogList, invList, ledgerList, damagedList,
+        journalList, closedList, poList, freightList, soList,
+      ] = await Promise.all(
+        INVENTORY_COLLECTIONS.map((name) =>
+          getCached(cacheKey(name, BOUNDS[name]?.describe), () => fetchInventoryCollection(name))
+        )
+      );
 
-        // Inventory
-        const iList = [];
-        invSnap.forEach((d) => iList.push(d.data()));
-        setInventoryList(iList);
-
-        // Ledger
-        const lList = [];
-        ledgerSnap.forEach((d) => lList.push(d.data()));
-        setLedgerEntries(lList);
-        
-        // Damaged
-        const dList = [];
-        damagedSnap.forEach((d) => dList.push(d.data()));
-        setDamagedRecords(dList);
-
-        // Journals
-        const jList = [];
-        journalsSnap.forEach((d) => jList.push({ id: d.id, ...d.data() }));
-        setJournals(jList);
-
-        // Closed Periods
-        const cpList = [];
-        closedSnap.forEach((d) => cpList.push(d.id));
-        setClosedPeriods(cpList);
-
-        // POs
-        const poList = [];
-        poSnap.forEach((d) => poList.push({ id: d.id, ...d.data() }));
-        setPurchaseOrders(poList);
-
-        // Freight
-        const fList = [];
-        freightSnap.forEach((d) => fList.push({ id: d.id, ...d.data() }));
-        setFreightIn(fList);
-
-        // SOs
-        const soList = [];
-        soSnap.forEach((d) => soList.push({ id: d.id, ...d.data() }));
-        setSalesOrders(soList);
-
-      } catch (err) {
-        if (String(err).includes('quota') || String(err).includes('Quota')) {
-           console.warn('Quota exceeded while fetching InventoryTab data');
-        } else {
-           console.error('Error fetching data for InventoryTab:', err);
-        }
+      setData({
+        books: catalogList,
+        inventoryList: invList,
+        ledgerEntries: ledgerList,
+        damagedRecords: damagedList,
+        journals: journalList,
+        closedPeriods: closedList,
+        purchaseOrders: poList,
+        freightIn: freightList,
+        salesOrders: soList,
+      });
+      setFetchedAt(Date.now());
+      setStatus('ready');
+    } catch (err) {
+      if (String(err).includes('quota') || String(err).includes('Quota')) {
+        console.warn('Quota exceeded while fetching InventoryTab data');
+      } else {
+        console.error('Error fetching data for InventoryTab:', err);
       }
-    };
-
-    loadData();
+      setStatus('error');
+    } finally {
+      setIsRefreshing(false);
+    }
   }, []);
 
-  // Auto-repair existing damagedStock COA account and journal entries
-  useEffect(() => {
-    const repairDamagedStockJournals = async () => {
-      try {
-        // 1. Ensure COA 5500 is named 'Beban Lain-lain'
-        const coa5500Ref = doc(db, 'coa', '5500');
-        const coa5500Snap = await getDoc(coa5500Ref);
-        if (!coa5500Snap.exists() || coa5500Snap.data()?.name !== 'Beban Lain-lain') {
-          await setDoc(coa5500Ref, {
-            id: '5500',
-            code: '5500',
-            name: 'Beban Lain-lain',
-            type: 'Expenses',
-            subType: 'Biaya Umum dan Administrasi',
-            isActive: true
-          }, { merge: true });
-        }
-
-        // 2. Fetch all damagedStock and journalEntries
-        const damagedSnap = await getDocs(collection(db, 'damagedStock'));
-        const journalsSnap = await getDocs(collection(db, 'journalEntries'));
-
-        if (damagedSnap.empty && journalsSnap.empty) return;
-
-        const batch = writeBatch(db);
-        let updatedCount = 0;
-
-        const inventorySnap = await getDocs(collection(db, 'inventory'));
-        const inventoryMap = new Map();
-        inventorySnap.forEach(doc => inventoryMap.set(doc.id, doc.data()));
-
-        const damagedList: DamagedStock[] = [];
-        damagedSnap.forEach((dDoc) => {
-          const d = dDoc.data() as any;
-          let needsFix = false;
-          let newUnitCost = d.unitCost || 0;
-          let newTotalCost = d.totalCost || 0;
-          let newNotes = d.notes || d.note || '';
-          let newAdjustmentType = d.adjustmentType || 'Barang Rusak';
-          const qty = d.qty || 0;
-
-          if (d.totalLossNTD !== undefined && d.totalLossNTD > 0 && newTotalCost === 0) {
-              newTotalCost = d.totalLossNTD;
-              newUnitCost = d.landedCostNTD || (qty > 0 ? d.totalLossNTD / qty : 0);
-              needsFix = true;
-          }
-
-          if (newTotalCost === 0 && qty > 0) {
-              const inv = inventoryMap.get(d.bookId);
-              if (inv) {
-                  newUnitCost = inv.movingAverageCost || 0;
-                  newTotalCost = newUnitCost * qty;
-                  needsFix = true;
-              }
-          }
-          
-          if (!d.adjustmentType || (d.note && !d.notes)) needsFix = true;
-
-          if (needsFix) {
-              batch.update(dDoc.ref, {
-                  unitCost: newUnitCost,
-                  totalCost: newTotalCost,
-                  notes: newNotes,
-                  adjustmentType: newAdjustmentType,
-                  ...(d.landedCostNTD !== undefined ? { landedCostNTD: deleteField() } : {}),
-                  ...(d.totalLossNTD !== undefined ? { totalLossNTD: deleteField() } : {}),
-                  ...(d.note !== undefined ? { note: deleteField() } : {})
-              });
-
-              batch.set(doc(db, 'inventoryLedger', `LEDGER-${dDoc.id}`), {
-                  unitCost: newUnitCost,
-                  costPerUnitCents: deleteField()
-              }, { merge: true });
-              
-              d.unitCost = newUnitCost;
-              d.totalCost = newTotalCost;
-              d.notes = newNotes;
-              d.adjustmentType = newAdjustmentType;
-              updatedCount++;
-          }
-          
-          damagedList.push(d as DamagedStock);
-        });
-
-        journalsSnap.forEach((jDoc) => {
-          const jData = jDoc.data() as JournalEntry;
-          let needsUpdate = false;
-          let newDescription = jData.description || '';
-          let newLines = jData.lines ? [...jData.lines] : [];
-
-          // Find if this journal belongs to a damagedStock entry
-          const matchedDamaged = damagedList.find(
-            (d) => d.journalId === jDoc.id || d.id === jData.refId || d.id === jData.id
-          );
-
-          if (matchedDamaged) {
-            const isDamage = matchedDamaged.adjustmentType === 'Barang Rusak' || (matchedDamaged as any).type !== 'surplus';
-            const rawQty = matchedDamaged.qty || 0;
-            const bookName = matchedDamaged.bookName || 'Barang';
-            const notes = matchedDamaged.notes || '';
-            const totalAmount = (matchedDamaged.totalCost && matchedDamaged.totalCost > 0)
-              ? matchedDamaged.totalCost
-              : rawQty * (matchedDamaged.unitCost || 0);
-
-            // Format description
-            const baseDesc = isDamage
-              ? `Barang Rusak - ${bookName} ${rawQty} pcs`
-              : `Pendapatan Lain-lain - Barang Lebih - ${bookName} ${rawQty} pcs`;
-            const expectedDesc = `${baseDesc}${notes ? ' - ' + notes : ''}`;
-
-            if (jData.description !== expectedDesc) {
-              newDescription = expectedDesc;
-              needsUpdate = true;
-            }
-
-            // Amount from existing journal line if totalAmount is 0
-            const existingAmount = totalAmount > 0
-              ? totalAmount
-              : (jData.lines?.[0]?.debit || jData.lines?.[0]?.credit || jData.lines?.[1]?.debit || jData.lines?.[1]?.credit || 0);
-
-            const expectedLines = isDamage ? [
-              { account: 'Beban Lain-lain', accountCode: '5500', debit: existingAmount, credit: 0 },
-              { account: 'Inventory On Hand', accountCode: '1201', debit: 0, credit: existingAmount }
-            ] : [
-              { account: 'Inventory On Hand', accountCode: '1201', debit: existingAmount, credit: 0 },
-              { account: 'Beban Lain-lain', accountCode: '5500', debit: 0, credit: existingAmount }
-            ];
-
-            if (JSON.stringify(newLines) !== JSON.stringify(expectedLines)) {
-              newLines = expectedLines;
-              needsUpdate = true;
-            }
-          } else {
-            // Unmatched journals that mention stock adjustment or damaged stock
-            const descLower = (jData.description || '').toLowerCase();
-            const isAdjustment = descLower.includes('barang rusak') || descLower.includes('barang lebih') || descLower.includes('penyesuaian stok') || descLower.includes('damaged stock');
-
-            if (isAdjustment && jData.lines && Array.isArray(jData.lines)) {
-              const updatedLines = jData.lines.map((l) => {
-                if (l.account === 'Beban Kerugian Pembelian' || l.account === 'Beban Barang Rusak' || l.accountCode === '5140') {
-                  needsUpdate = true;
-                  return { ...l, accountCode: '5500', account: 'Beban Lain-lain' };
-                }
-                if (l.accountCode === '5500' && l.account !== 'Beban Lain-lain') {
-                  needsUpdate = true;
-                  return { ...l, account: 'Beban Lain-lain' };
-                }
-                return l;
-              });
-
-              if (needsUpdate) {
-                newLines = updatedLines;
-              }
-            }
-          }
-
-          if (needsUpdate) {
-            updatedCount++;
-            batch.update(jDoc.ref, {
-              description: newDescription,
-              lines: newLines
-            });
-          }
-        });
-
-        if (updatedCount > 0) {
-          await batch.commit();
-          console.log(`[DamagedStock Migration] Repaired ${updatedCount} damaged stock journal entries to Beban Lain-lain (5500).`);
-        }
-      } catch (err) {
-        console.error('Error repairing damaged stock journals:', err);
-      }
-    };
-
-    repairDamagedStockJournals();
-  }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
   // Keep Book Ledger timeline in sync with updates to ledgerEntries or inventoryList
   useEffect(() => {
@@ -731,6 +584,9 @@ export const InventoryTab: React.FC = () => {
       }
 
       await batch.commit();
+      // Data lokal tidak pernah diperbarui handler ini; sebelum ada cache, UI hanya
+      // ikut berubah karena remount memuat ulang. Tarik ulang eksplisit di sini.
+      await loadData(true);
       setFormSuccess('Catatan penyesuaian berhasil diperbarui!');
       showAlert('Berhasil', 'Catatan penyesuaian berhasil diperbarui.', 'success');
       setTimeout(() => {
@@ -877,6 +733,9 @@ export const InventoryTab: React.FC = () => {
       } as JournalEntry);
 
       await batch.commit();
+      // Data lokal tidak pernah diperbarui handler ini; sebelum ada cache, UI hanya
+      // ikut berubah karena remount memuat ulang. Tarik ulang eksplisit di sini.
+      await loadData(true);
 
       showAlert('Berhasil Diubah', 'Penyesuaian stok berhasil diperbarui, stok disesuaikan, dan jurnal baru diposting.', 'success');
       setIsDamageModalOpen(false);
@@ -1068,6 +927,9 @@ export const InventoryTab: React.FC = () => {
       } as JournalEntry);
 
       await batch.commit();
+      // Data lokal tidak pernah diperbarui handler ini; sebelum ada cache, UI hanya
+      // ikut berubah karena remount memuat ulang. Tarik ulang eksplisit di sini.
+      await loadData(true);
 
       setFormSuccess(`Penyesuaian stok (${adjustmentType}) berhasil diproses!`);
       showAlert('Transaksi Berhasil', `Penyesuaian stok (${adjustmentType}) berhasil dan jurnal terposting otomatis.`, 'success');
@@ -1139,6 +1001,9 @@ export const InventoryTab: React.FC = () => {
       }
 
       await batch.commit();
+      // Data lokal tidak pernah diperbarui handler ini; sebelum ada cache, UI hanya
+      // ikut berubah karena remount memuat ulang. Tarik ulang eksplisit di sini.
+      await loadData(true);
 
       showAlert('Berhasil Dibatalkan', `Penyesuaian stok berhasil dibatalkan, stok ${recordToDelete.bookName} telah dikembalikan.`, 'success');
     } catch (error) {
@@ -1700,15 +1565,9 @@ export const InventoryTab: React.FC = () => {
       batch.set(journalRef, journalEntry);
       await batch.commit();
 
-      setJournals(prev => {
-        const existingIdx = prev.findIndex(j => j.id === journalRef.id);
-        if (existingIdx >= 0) {
-          const newArr = [...prev];
-          newArr[existingIdx] = { id: journalRef.id, ...journalEntry } as JournalEntry;
-          return newArr;
-        }
-        return [...prev, { id: journalRef.id, ...journalEntry } as JournalEntry];
-      });
+      // Menggantikan update optimistis manual: tarik ulang dari sumbernya supaya
+      // seluruh turunan (banner rekonsiliasi, Laporan Bulanan) ikut konsisten.
+      await loadData(true);
 
       showAlert('Berhasil Rekonsiliasi', `Jurnal Penyesuaian Selisih Pembulatan sebesar ${formatNTD(absDiffCents)} telah berhasil diposting.`, 'success');
     } catch (err: any) {
@@ -1741,6 +1600,16 @@ export const InventoryTab: React.FC = () => {
   }, [books, inventoryList, ledgerEntries, purchaseOrders, salesOrders, damagedRecords]);
 
   const allMinus = allBooksWithStock.filter(b => b.status === 'minus');
+
+  // stokDigudang dari getAllBooksStockData dihitung dengan predikat yang PERSIS sama
+  // dengan getPhysicalOnHandStockForBook (initial + purchase_received ber-validPoId
+  // - SO packed/shipped/confirmed/completed/returned-belum-diambil - rusak dengan
+  // surplus mengurangi). Bedanya cuma ini sudah ter-index, jadi dropdown Penyesuaian
+  // tidak perlu men-scan ulang 4 koleksi untuk tiap buku di tiap ketikan.
+  const physicalStockByBookId = React.useMemo(
+    () => new Map(allBooksWithStock.map((b: any) => [b.id, b.stokDigudang])),
+    [allBooksWithStock]
+  );
 
   const sortedBooksList = React.useMemo(() => {
     let list = [...allBooksWithStock].sort((a, b) => {
@@ -1854,6 +1723,20 @@ export const InventoryTab: React.FC = () => {
           </h2>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {fetchedAt && (
+            <span className="text-[11px] text-neutral-400 whitespace-nowrap">
+              Data per {new Date(fetchedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          <button
+            className="kbi-btn-download-pdf"
+            onClick={() => loadData(true)}
+            disabled={isRefreshing || status === 'loading'}
+            title="Ambil ulang data terbaru dari server"
+          >
+            <RotateCw className={`h-[15px] w-[15px] ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Menyegarkan...' : 'Segarkan'}
+          </button>
           <button className="kbi-btn-download-pdf" onClick={handleDownloadPdf}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download PDF
@@ -1866,7 +1749,7 @@ export const InventoryTab: React.FC = () => {
           <div className="kbi-tabs">
             {hasPerm('inventory.kontrol') && (
               <button
-                onClick={() => setActiveSubTab('kontrol_stok')}
+                onClick={() => startSubTabTransition(() => setActiveSubTab('kontrol_stok'))}
                 className={activeSubTab === 'kontrol_stok' ? 'active' : ''}
               >
                 KONTROL STOK
@@ -1874,7 +1757,7 @@ export const InventoryTab: React.FC = () => {
             )}
             {hasPerm('inventory.laporan') && (
               <button
-                onClick={() => setActiveSubTab('monthly')}
+                onClick={() => startSubTabTransition(() => setActiveSubTab('monthly'))}
                 className={activeSubTab === 'monthly' ? 'active' : ''}
               >
                 LAPORAN BULANAN
@@ -1882,13 +1765,19 @@ export const InventoryTab: React.FC = () => {
             )}
             {isStaffValue && (
               <button
-                onClick={() => setActiveSubTab('adjustments')}
+                onClick={() => startSubTabTransition(() => setActiveSubTab('adjustments'))}
                 className={activeSubTab === 'adjustments' ? 'active' : ''}
               >
                 PENYESUAIAN
               </button>
             )}
           </div>
+
+          {isSubTabPending && (
+            <span className="kbi-subtab-chip">
+              <RotateCw className="h-3 w-3 animate-spin" /> Menghitung...
+            </span>
+          )}
           
           {activeSubTab === 'kontrol_stok' && (
             <div className="kbi-filter-chips">
@@ -1963,9 +1852,39 @@ export const InventoryTab: React.FC = () => {
         </div>
       )}
 
+      {/* Memuat: header + bar sub-tab di atas tetap terender dan bisa diklik,
+          hanya isi tabelnya yang jadi kerangka. */}
+      {status === 'loading' && (
+        <div className="kbi-skel-wrap" role="status" aria-label="Memuat data persediaan">
+          <div className="kbi-skel-note">Memuat data persediaan...</div>
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="kbi-skel-row">
+              <div className="kbi-skel-cell" style={{ flex: 3 }} />
+              <div className="kbi-skel-cell" style={{ flex: 1 }} />
+              <div className="kbi-skel-cell" style={{ flex: 1 }} />
+              <div className="kbi-skel-cell" style={{ flex: 1 }} />
+              <div className="kbi-skel-cell" style={{ flex: 1 }} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {status === 'error' && (
+        <div className="kbi-load-error">
+          <TriangleAlert className="h-5 w-5 shrink-0" />
+          <div style={{ flex: 1 }}>
+            <strong>Gagal memuat data persediaan.</strong>
+            <span className="sub">Periksa koneksi internet Anda, lalu coba lagi.</span>
+          </div>
+          <button onClick={() => loadData(true)} disabled={isRefreshing}>
+            {isRefreshing ? 'Mencoba...' : 'Coba Lagi'}
+          </button>
+        </div>
+      )}
+
       {/* Sub-tab A: Kontrol Stok view */}
-      {activeSubTab === 'kontrol_stok' && (
-        <div className="space-y-4">
+      {status === 'ready' && activeSubTab === 'kontrol_stok' && (
+        <div className={`space-y-4 ${isSubTabPending ? 'kbi-subtab-pending' : ''}`}>
           {allMinus.length > 0 && (
             <div className="kbi-minus-banner">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -2056,8 +1975,8 @@ export const InventoryTab: React.FC = () => {
       )}
 
       {/* Sub-tab B: Monthly Report view */}
-      {activeSubTab === 'monthly' && (
-        <div className="space-y-6">
+      {status === 'ready' && activeSubTab === 'monthly' && (
+        <div className={`space-y-6 ${isSubTabPending ? 'kbi-subtab-pending' : ''}`}>
           {/* Mismatch Reconciliation Warning Banner */}
           <div className={`p-4 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xs transition-all ${
             hasMismatch 
@@ -2385,8 +2304,8 @@ export const InventoryTab: React.FC = () => {
       )}
 
       {/* Sub-tab C: Penyesuaian Stok view */}
-      {activeSubTab === 'adjustments' && (
-        <div className="space-y-6">
+      {status === 'ready' && activeSubTab === 'adjustments' && (
+        <div className={`space-y-6 ${isSubTabPending ? 'kbi-subtab-pending' : ''}`}>
           {/* Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 p-5 rounded-2xl shadow-xs flex items-center gap-4">
@@ -2790,7 +2709,7 @@ export const InventoryTab: React.FC = () => {
                         }
 
                         return matches.map((b) => {
-                          const physicalStock = getPhysicalOnHandStockForBook(b.id, inventoryList, ledgerEntries, purchaseOrders, salesOrders, damagedRecords);
+                          const physicalStock = physicalStockByBookId.get(b.id) ?? 0;
                           return (
                             <button
                               key={b.id}

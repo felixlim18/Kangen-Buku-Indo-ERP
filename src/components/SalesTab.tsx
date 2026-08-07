@@ -355,7 +355,6 @@ export const SalesTab: React.FC = () => {
   const [platformOrder, setPlatformOrder] = useState<string>('Shopee');
   const [orderType, setOrderType] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<SalesOrder['paymentMethod']>('COD');
-  const [paymentTermsDays, setPaymentTermsDays] = useState<30 | 60 | 90>(30);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [pickupLogistics, setPickupLogistics] = useState<SalesOrder['pickupLogistics']>('');
   const [pickupDetails, setPickupDetails] = useState('');
@@ -672,10 +671,20 @@ export const SalesTab: React.FC = () => {
   // Tab-Specific confirmation overlays
   const [confirmingSelesaiOrderId, setConfirmingSelesaiOrderId] = useState<string | null>(null);
   const [isSelesaiSubmitting, setIsSelesaiSubmitting] = useState(false);
+  // Umur piutang dipilih saat order diselesaikan, bukan saat dibuat - jatuh temponya
+  // baru mulai berjalan begitu order benar-benar masuk Piutang Usaha.
+  const [selesaiTermsDays, setSelesaiTermsDays] = useState<30 | 60 | 90>(30);
   const [isProsesSubmitting, setIsProsesSubmitting] = useState(false);
   const [confirmingDiambilOrder, setConfirmingDiambilOrder] = useState<SalesOrder | null>(null);
   const [selectedReturnMode, setSelectedReturnMode] = useState<'stock' | 'writeoff'>('stock');
   const [revertConfirmState, setRevertConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
+
+  // Order lama (dibuat saat umur piutang masih ada di form) sudah punya nilainya -
+  // pakai itu sebagai nilai awal, selain itu default 30 hari.
+  const openSelesaiConfirm = (order: SalesOrder) => {
+    setSelesaiTermsDays((order.paymentTermsDays as 30 | 60 | 90) || 30);
+    setConfirmingSelesaiOrderId(order.id);
+  };
 
   const [categoryChangeConfirm, setCategoryChangeConfirm] = useState<{
     currentCategory: 'marketplace' | 'langsung' | 'reseller';
@@ -1316,10 +1325,16 @@ export const SalesTab: React.FC = () => {
         e.stopPropagation();
         const triggerSelesaiConfirm = async () => {
           if (isSelesaiSubmitting) return;
+          // Guard yang sama seperti tombol "Ya, Selesai & Berhasil" di modal - tanpa ini
+          // Enter melewati pengecekan dan user cuma dapat alert error dari server.
+          const targetOrder = orders.find(o => o.id === confirmingSelesaiOrderId);
+          const isTransfer = targetOrder?.paymentMethod === 'Transfer';
+          const transferAlreadyPaid = targetOrder?.paymentStatus === 'paid' || (targetOrder?.amountPaid || 0) >= (targetOrder?.totalPrice || 0) - 5;
+          if (isTransfer && !transferAlreadyPaid) return;
           if (!(await promptDoubleConfirmation("Menyelesaikan Pembayaran dan Status Orderan"))) return;
           try {
             setIsSelesaiSubmitting(true);
-            await completeSalesOrderTransaction(confirmingSelesaiOrderId, user?.uid || 'anonymous');
+            await completeSalesOrderTransaction(confirmingSelesaiOrderId, user?.uid || 'anonymous', selesaiTermsDays);
             setConfirmingSelesaiOrderId(null);
           } catch (err: any) {
             console.error("Error setting order completed", err);
@@ -1413,6 +1428,9 @@ export const SalesTab: React.FC = () => {
     prosesResi,
     prosesDate,
     confirmingSelesaiOrderId,
+    isSelesaiSubmitting,
+    selesaiTermsDays,
+    orders,
     confirmingDiambilOrder,
     selectedReturnMode,
     revertConfirmState,
@@ -1539,7 +1557,6 @@ export const SalesTab: React.FC = () => {
           platformOrder: finalPlatformOrder,
           orderType: finalOrderType,
           paymentMethod: finalPaymentMethod,
-          paymentTermsDays: (finalPaymentMethod === 'COD') ? paymentTermsDays : null,
           phoneNumber: finalPhone,
           pickupLogistics: finalPickupLogistics,
           pickupDetails: finalPickupDetails,
@@ -1580,7 +1597,6 @@ export const SalesTab: React.FC = () => {
           platformOrder: finalPlatformOrder,
           orderType: finalOrderType,
           paymentMethod: finalPaymentMethod,
-          paymentTermsDays: (finalPaymentMethod === 'COD') ? paymentTermsDays : null,
           phoneNumber: finalPhone,
           pickupLogistics: finalPickupLogistics,
           pickupDetails: finalPickupDetails,
@@ -1658,7 +1674,6 @@ export const SalesTab: React.FC = () => {
     setPlatformOrder(resolvedPlatforms[0]?.name || 'Shopee');
     setOrderType('');
     setPaymentMethod('COD');
-    setPaymentTermsDays(30);
     setPhoneNumber('');
     setPickupLogistics(resolvedLogistics[0]?.name || '');
     setPickupDetails('');
@@ -3519,7 +3534,6 @@ export const SalesTab: React.FC = () => {
     setPlatformOrder(order.platformOrder || 'Shopee');
     setOrderType(order.orderType || '');
     setPaymentMethod(order.paymentMethod || 'COD');
-    setPaymentTermsDays(order.paymentTermsDays || 30);
     setPhoneNumber((order.phoneNumber || '').replace(/\D/g, '').slice(0, 10));
     setPickupLogistics(order.pickupLogistics || resolvedLogistics[0]?.name || '');
     setPickupDetails(order.pickupDetails || '');
@@ -4235,9 +4249,8 @@ export const SalesTab: React.FC = () => {
                         type="button"
                         className="btn text-white bg-[#0f7a52] hover:bg-[#0c6342]"
                         onClick={() => {
-                          const orderId = o.id;
                           setViewingOrderDetail(null);
-                          setConfirmingSelesaiOrderId(orderId);
+                          openSelesaiConfirm(o);
                         }}
                       >
                         Selesai
@@ -5136,7 +5149,7 @@ export const SalesTab: React.FC = () => {
                 ) : (order.status === 'shipped' || order.status === 'confirmed') && isStaffValue ? (
                   <div className="kbi-ocard__ctagroup">
                     <button type="button" className="kbi-ocard__cta" style={{ backgroundColor: '#0f7a52' }}
-                      onClick={() => { setConfirmingSelesaiOrderId(order.id); }}>Selesai</button>
+                      onClick={() => { openSelesaiConfirm(order); }}>Selesai</button>
                     <button type="button" className="kbi-ocard__cta kbi-ocard__cta--ghost"
                       onClick={() => handleTransitionToReturned(order.id)}>Return</button>
                   </div>
@@ -5677,7 +5690,7 @@ export const SalesTab: React.FC = () => {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setConfirmingSelesaiOrderId(order.id);
+                                  openSelesaiConfirm(order);
                                 }}
                                 className="px-3.5 py-1.5 rounded-[7px] bg-[#0f7a52] hover:bg-[#0c6342] text-white font-['Lexend'] font-semibold text-[12px] transition shadow-2xs cursor-pointer select-none text-center"
                               >
@@ -6383,6 +6396,23 @@ export const SalesTab: React.FC = () => {
                 <span>Metode <b>COD</b> &rarr; order akan otomatis masuk <b>Piutang Usaha</b> (Dr Piutang Usaha / Cr Revenue).</span>
               )}
             </div>
+            {!isTransfer && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-300">Umur Piutang</label>
+                <select
+                  value={selesaiTermsDays}
+                  onChange={(e) => setSelesaiTermsDays(Number(e.target.value) as 30 | 60 | 90)}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-200 cursor-pointer"
+                >
+                  <option value={30}>30 Hari</option>
+                  <option value={60}>60 Hari</option>
+                  <option value={90}>90 Hari</option>
+                </select>
+                <p className="text-[10px] text-neutral-400 leading-relaxed">
+                  Jatuh tempo dihitung {selesaiTermsDays} hari sejak hari ini.
+                </p>
+              </div>
+            )}
             <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs">
               <button
                 onClick={() => setConfirmingSelesaiOrderId(null)}
@@ -6397,7 +6427,7 @@ export const SalesTab: React.FC = () => {
                   if (!(await promptDoubleConfirmation("Menyelesaikan Pembayaran dan Status Orderan"))) return;
                   try {
                     setIsSelesaiSubmitting(true);
-                    await completeSalesOrderTransaction(confirmingSelesaiOrderId!, user?.uid || 'anonymous');
+                    await completeSalesOrderTransaction(confirmingSelesaiOrderId!, user?.uid || 'anonymous', selesaiTermsDays);
                     setConfirmingSelesaiOrderId(null);
                   } catch (err: any) {
                     console.error("Error setting order completed", err);
@@ -6760,19 +6790,6 @@ export const SalesTab: React.FC = () => {
                           <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                         </div>
                       </div>
-                      {paymentMethod === 'COD' && (
-                        <div>
-                          <label className="kbi-so-label">Umur Piutang</label>
-                          <div className="kbi-so-select-wrap">
-                            <select className="kbi-so-ledger-input" value={paymentTermsDays} onChange={(e: any) => setPaymentTermsDays(Number(e.target.value) as 30 | 60 | 90)}>
-                              <option value={30}>30 Hari</option>
-                              <option value={60}>60 Hari</option>
-                              <option value={90}>90 Hari</option>
-                            </select>
-                            <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                          </div>
-                        </div>
-                      )}
                     </div>
 
                     <div className="kbi-so-field-row" style={{ alignItems: 'start' }}>
@@ -6921,17 +6938,17 @@ export const SalesTab: React.FC = () => {
                       {matchingBooks.map(b => {
                         const stok = getCurrentKontrolStokForBook(b.id, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords);
                         const tone = stok <= 0 ? 'zero' : stok <= 10 ? 'low' : 'ok';
-                        const chipText = stok <= 0 ? 'Stok 0 — Backorder' : `${stok} pcs`;
+                        const chipText = `Stok : ${stok}`;
                         const price = buyerType === 'marketplace'
                           ? (b.shopeePrice || b.generalPrice || 0)
                           : buyerType === 'reseller'
                             ? (b.resellerPrice || b.generalPrice || 0)
                             : (platformChannel === 'Shopee' ? (b.shopeePrice || b.generalPrice || 0) : (b.generalPrice || 0));
-                        const priceLabel = buyerType === 'marketplace'
-                          ? `${formatNTD(price)}/pcs (Marketplace)`
-                          : buyerType === 'reseller'
-                            ? `${formatNTD(price)}/pcs (Reseller)`
-                            : `${formatNTD(price)}/pcs`;
+                        // Cuma harga - tanpa "/pcs" dan tanpa suffix (Marketplace)/(Reseller).
+                        // buyerType berlaku untuk seluruh order, jadi semua baris di dropdown
+                        // selalu memakai daftar harga yang sama; suffix-nya cuma memakan lebar
+                        // yang dibutuhkan judul buku. Warnanya tetap jadi penanda daftar harga.
+                        const priceLabel = formatNTD(price);
                         return (
                           <button key={b.id} type="button" className="kbi-so-suggestion-row" onMouseDown={(e) => {
                             e.preventDefault();

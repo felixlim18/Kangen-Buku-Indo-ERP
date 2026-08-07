@@ -145,7 +145,10 @@ textarea.kbi-so-ledger-input { resize: vertical; min-height: 48px; }
 .kbi-so-item-actions button:hover.remove-btn { color: #B5502F; background: #F4E3DA; }
 
 /* Stock awareness: search chip */
-.kbi-so-suggestion-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+/* Kolom tegak (harga di atas, stok di bawah), bukan berjajar mendatar: berjajar
+   membuat kolom kanan selebar ~280px sehingga judul buku di kiri tersisa terlalu
+   sempit dan terpotong jadi "Filsaf…" saat mengetik. */
+.kbi-so-suggestion-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
 .kbi-so-stock-chip { font-family: var(--font-numeric); font-size: 10px; font-weight: 700; letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
 .kbi-so-stock-chip.ok { background: #DCEEE0; color: #3D7A4F; }
 .kbi-so-stock-chip.low { background: #F3E6CE; color: #B67F2A; }
