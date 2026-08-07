@@ -116,7 +116,11 @@ async function peekNextJournalId(dateStr: string, offset: number): Promise<strin
   const batch = db.batch();
   for (const p of plan) {
     const src = bad.find((d) => d.id === p.oldId)!;
-    batch.set(db.doc(`journalEntries/${p.newId}`), src.data()); // isi identik
+    // PENTING: dokumen jurnal menyimpan nomornya juga di field `id` internal, dan
+    // aplikasi membacanya dengan { id: d.id, ...d.data() } - spread menaruh field
+    // internal TERAKHIR sehingga ia MENANG atas ID dokumen. Kalau field ini tidak
+    // ikut diperbarui, UI tetap menampilkan nomor lama walau dokumennya sudah benar.
+    batch.set(db.doc(`journalEntries/${p.newId}`), { ...src.data(), id: p.newId });
     batch.delete(db.doc(`journalEntries/${p.oldId}`));
   }
   for (const r of refs) {
@@ -128,6 +132,7 @@ async function peekNextJournalId(dateStr: string, offset: number): Promise<strin
   // Verifikasi ulang dari database, bukan dari asumsi.
   const after = await db.collection('journalEntries').get();
   const stillBad = after.docs.filter((d) => !VALID_ID.test(d.id));
+  const idFieldMismatch = after.docs.filter((d) => d.data().id !== undefined && d.data().id !== d.id);
   let danglingRefs = 0;
   for (const col of await db.listCollections()) {
     if (col.id === 'journalEntries') continue;
@@ -140,8 +145,8 @@ async function peekNextJournalId(dateStr: string, offset: number): Promise<strin
   }
 
   console.log(`\nSelesai. ${plan.length} jurnal dinomori ulang, ${refs.length} referensi diperbarui.`);
-  console.log(`Verifikasi: total jurnal ${after.size} (sebelumnya ${journalsSnap.size}), format salah tersisa ${stillBad.length}, referensi menggantung ${danglingRefs}.`);
-  if (stillBad.length || danglingRefs || after.size !== journalsSnap.size) {
+  console.log(`Verifikasi: total jurnal ${after.size} (sebelumnya ${journalsSnap.size}), format salah tersisa ${stillBad.length}, referensi menggantung ${danglingRefs}, field .id tidak sinkron ${idFieldMismatch.length}.`);
+  if (stillBad.length || danglingRefs || idFieldMismatch.length || after.size !== journalsSnap.size) {
     console.log('PERINGATAN: hasil verifikasi tidak seperti yang diharapkan - periksa manual.');
     process.exit(1);
   }
