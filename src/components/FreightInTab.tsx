@@ -43,6 +43,7 @@ import {
   X
 } from 'lucide-react';
 import { generateReceivingJournals } from '../lib/journalAuto';
+import { getNextJournalId } from '../lib/journalUtils';
 
 const formatFreightDateDisplay = (createdAt: any): string => {
   if (!createdAt) return '-';
@@ -683,23 +684,13 @@ export default function FreightInTab() {
       const amountNTDCents = Math.round(totalHargaPengirimanNTD * 100);
       const amountIDR = Math.round(totalHargaPengiriman);
 
-      // Generate sequential journal ID format: JU[YY][MM][DD][2-digit sequence]
-      const prefix = `JU${dateStrYYMMDD}`;
-      const matching = journalEntries
-        .map(j => j.id)
-        .filter(id => id && id.startsWith(prefix));
-      
-      let maxSeq = 0;
-      matching.forEach(id => {
-        const seqPart = id.substring(prefix.length);
-        const seq = parseInt(seqPart, 10);
-        if (!isNaN(seq) && seq > maxSeq) {
-          maxSeq = seq;
-        }
-      });
-      
-      const nextJournalSeq = String(maxSeq + 1).padStart(2, '0');
-      const journalId = `${prefix}${nextJournalSeq}`;
+      // Nomor jurnal HARUS lewat generator bersama: ia menaikkan penghitung
+      // counters/JURNAL_YYMMDD di dalam transaksi, jadi formatnya dijamin
+      // JU+YYMMDD+4 digit dan aman dari dua user yang menyimpan bersamaan.
+      // Versi lama menebak nomor urut dengan memindai state React lalu memakai
+      // padStart(2) - itu sumber ID pendek seperti JU26080701 sekaligus penyebab
+      // error "Nomor Jurnal sudah terpakai" yang membuat freight gagal dijurnalkan.
+      const journalId = await getNextJournalId(selectedDateObj.toISOString());
 
       const freightRef = doc(db, 'freightIn', codeToUse);
       const journalRef = doc(db, 'journalEntries', journalId);
@@ -712,7 +703,7 @@ export default function FreightInTab() {
 
         const existingJournalSnap = await transaction.get(journalRef);
         if (existingJournalSnap.exists()) {
-          throw new Error(`No Jurnal "${journalId}" sudah terpakai di database!`);
+          throw new Error(`Nomor jurnal ${journalId} ternyata sudah dipakai. Ini tidak seharusnya terjadi karena nomor diambil dari penghitung bersama - coba simpan ulang, dan laporkan kalau berulang.`);
         }
 
         // WRITE PHASE
@@ -1204,27 +1195,10 @@ export default function FreightInTab() {
       }
       const amountNTDCents = Math.round(totalNTD * 100);
 
-      // Generate daily journal ID
+      // Kapitalisasi terjadi sekarang, jadi nomor jurnalnya memakai tanggal hari ini.
+      // Lihat catatan di handleSaveFreightIn soal kenapa generator bersama ini wajib.
       const today = new Date();
-      const yy = String(today.getFullYear()).slice(-2);
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const dd = String(today.getDate()).padStart(2, '0');
-      const prefix = `JU${yy}${mm}${dd}`;
-      const matching = journalEntries
-        .map(j => j.id)
-        .filter(id => id && id.startsWith(prefix));
-      
-      let maxSeq = 0;
-      matching.forEach(id => {
-        const seqPart = id.substring(prefix.length);
-        const seq = parseInt(seqPart, 10);
-        if (!isNaN(seq) && seq > maxSeq) {
-          maxSeq = seq;
-        }
-      });
-      
-      const nextJournalSeq = String(maxSeq + 1).padStart(2, '0');
-      const journalId = `${prefix}${nextJournalSeq}`;
+      const journalId = await getNextJournalId(today.toISOString());
 
       const freightRef = doc(db, 'freightIn', rec.freightCode);
       const journalRef = doc(db, 'journalEntries', journalId);
@@ -1237,7 +1211,7 @@ export default function FreightInTab() {
 
         const journalSnap = await transaction.get(journalRef);
         if (journalSnap.exists()) {
-          throw new Error(`Nomor Jurnal ${journalId} sudah terpakai.`);
+          throw new Error(`Nomor jurnal ${journalId} ternyata sudah dipakai. Ini tidak seharusnya terjadi karena nomor diambil dari penghitung bersama - coba kapitalisasi ulang, dan laporkan kalau berulang.`);
         }
 
         // WRITE PHASE
