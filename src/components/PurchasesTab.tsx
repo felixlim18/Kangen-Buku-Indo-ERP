@@ -62,7 +62,7 @@ import { Decimal } from 'decimal.js';
 import { Eye, Pencil, ChevronLeft, Edit2, LayoutGrid, PackageCheck, Package, X, Check, Search, Calendar, ChevronDown, ChevronUp, Trash2, Printer, Plus } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
-import { FileSpreadsheet, Download, Upload, CheckCircle2, BookOpen, Copy, Loader2, AlertTriangle, RefreshCw, RotateCcw, Scan, Truck, ChevronRight, AlertCircle, MessageSquareWarning, Barcode } from 'lucide-react';
+import { FileSpreadsheet, Download, Upload, CheckCircle2, BookOpen, Copy, Loader2, AlertTriangle, RefreshCw, RotateCcw, Scan, Truck, ChevronRight, AlertCircle, MessageSquareWarning } from 'lucide-react';
 
 const PriceMismatchBadge = ({ item, idx, pricingTiers, currentFXRate, selectedPlatform, catalogBook, onReviewAction }: any) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -330,7 +330,14 @@ export const PurchasesTab = () => {
   const [expandedScannedPoId, setExpandedScannedPoId] = useState<string|null>(null);
   const scanStepRef = useRef(1);
   const [bulkCameraFacingMode, setBulkCameraFacingMode] = useState('environment');
-  const toggleBulkCameraFacingMode = () => setBulkCameraFacingMode(p => p === 'environment' ? 'user' : 'environment');
+  // true selama kamera dibongkar-pasang ulang (efek di bawah stop lalu start lagi
+  // setiap bulkCameraFacingMode berubah) - dipakai untuk overlay "Mengganti kamera…"
+  // supaya kotak videonya tidak terlihat kosong selama jeda itu.
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
+  const toggleBulkCameraFacingMode = () => {
+    setIsSwitchingCamera(true);
+    setBulkCameraFacingMode(p => p === 'environment' ? 'user' : 'environment');
+  };
   const [bulkScanSearchQuery, setBulkScanSearchQuery] = useState('');
 
   const { collapsed: sidebarCollapsed } = useSidebar();
@@ -628,9 +635,16 @@ export const PurchasesTab = () => {
     setTimeout(() => setScanErrorToast(null), 4000);
   };
 
-  const handleSaveBulkScannedPO = async (scannedId: string) => {
+  // Inti logika penyimpanan, TANPA alert() blocking - dipakai baik oleh tombol
+  // "Terima" per-kartu (lewat wrapper di bawah) maupun oleh handleAcceptAllScanned
+  // ("Terima Semua"), yang harus bisa melewati PO gagal tanpa dialog yang
+  // menghentikan seluruh antrean.
+  // Tipe hasil datar (bukan union bertanda) - proyek ini tidak mengaktifkan
+  // strictNullChecks, jadi narrowing `if (!result.ok)` pada union tidak reliable
+  // dan `result.reason` tetap ditolak compiler di cabang yang sudah dipersempit.
+  const saveBulkScannedPoCore = async (scannedId: string): Promise<{ ok: boolean; reason?: string }> => {
     const entry = scannedPos.find(s => s.id === scannedId);
-    if (!entry || entry.isSaved) return;
+    if (!entry || entry.isSaved) return { ok: false, reason: 'PO tidak ditemukan di antrean atau sudah tersimpan.' };
 
     const po = entry.po;
     const receiveState = entry.receiveItemsState || {};
@@ -751,8 +765,7 @@ export const PurchasesTab = () => {
       }
 
       if (totalReceivedThisRunSum === 0 && !allCancelled) {
-        alert("Tidak ada jumlah barang diterima yang dimasukkan.");
-        return;
+        return { ok: false, reason: 'Tidak ada jumlah barang diterima yang dimasukkan.' };
       }
 
       let overallStatus = 'received';
@@ -824,12 +837,103 @@ export const PurchasesTab = () => {
 
       setScanSuccessToast(`Penerimaan PO #${po.purchaseCode || po.id} berhasil disimpan!`);
       setTimeout(() => setScanSuccessToast(null), 3500);
+      return { ok: true };
     } catch (err: any) {
       console.error("Gagal menyimpan penerimaan bulk scan:", err);
-      alert("Gagal menyimpan penerimaan: " + (err.message || err));
+      return { ok: false, reason: err.message || String(err) };
     }
   };
-  
+
+  // Wrapper untuk tombol "Terima" per-kartu - perilakunya dipertahankan persis
+  // seperti sebelum refactor (alert() saat gagal).
+  const handleSaveBulkScannedPO = async (scannedId: string) => {
+    const result = await saveBulkScannedPoCore(scannedId);
+    if (!result.ok) {
+      alert("Gagal menyimpan penerimaan: " + result.reason);
+    }
+  };
+
+  // Satu sumber kebenaran untuk "qty yang diketik melebihi qty dipesan" - dipakai
+  // baik oleh render kartu (mematikan tombol Terima per-kartu) maupun validasi
+  // pra-loop di handleAcceptAllScanned, supaya keduanya selalu sepakat.
+  const computeHasAnyQtyExceeded = (entry: any): boolean => {
+    const hasItems = entry.po?.items && entry.po.items.length > 0;
+    const localItemsList = hasItems ? entry.po.items : [{
+      bookId: entry.po?.bookId,
+      qty: entry.po?.qty
+    }];
+    return localItemsList.some((item: any) => {
+      const progressState = entry.receiveItemsState?.[item.bookId] || { qtyReceivedThisTime: '0', isCancelled: false };
+      if (progressState.isCancelled) return false;
+      const qtyThisTime = Number(progressState.qtyReceivedThisTime || '0') || 0;
+      return qtyThisTime > item.qty;
+    });
+  };
+
+  const [isAcceptingAll, setIsAcceptingAll] = useState(false); // true HANYA selama loop berjalan (untuk spinner)
+  const [acceptAllDone, setAcceptAllDone] = useState(false);   // true permanen setelah user mengonfirmasi & proses selesai
+
+  const handleAcceptAllScanned = async () => {
+    if (isAcceptingAll) return;
+
+    const pending = scannedPos.filter(e => !e.isSaved);
+    if (pending.length === 0) return;
+
+    // Saring dulu yang qty-nya sudah pasti melebihi pesanan - jangan sampai
+    // Terima Semua mengirim data tidak valid, dan biar user tahu sebelum menekan
+    // konfirmasi, bukan sesudah.
+    const toProcess: any[] = [];
+    const preSkipped: Array<{ code: string; reason: string }> = [];
+    for (const entry of pending) {
+      if (computeHasAnyQtyExceeded(entry)) {
+        preSkipped.push({ code: entry.purchaseCode || entry.id, reason: 'Qty melebihi pesanan' });
+      } else {
+        toProcess.push(entry);
+      }
+    }
+
+    const totalPcs = pending.reduce((sum, entry) => {
+      const hasItems = entry.po?.items && entry.po.items.length > 0;
+      const items = hasItems ? entry.po.items : [{ bookId: entry.po?.bookId }];
+      return sum + items.reduce((s: number, item: any) => {
+        const st = entry.receiveItemsState?.[item.bookId];
+        return s + (Number(st?.qtyReceivedThisTime || '0') || 0);
+      }, 0);
+    }, 0);
+
+    const confirmMsg = preSkipped.length > 0
+      ? `Terima ${toProcess.length} PO (${totalPcs} pcs)?\n\n${preSkipped.length} PO dilewati karena qty melebihi pesanan:\n${preSkipped.map(s => `- ${s.code}`).join('\n')}`
+      : `Terima ${toProcess.length} PO, ${totalPcs} pcs sekaligus?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsAcceptingAll(true);
+
+    const failed: Array<{ code: string; reason: string }> = [...preSkipped];
+    let succeeded = 0;
+
+    for (const entry of toProcess) {
+      const result = await saveBulkScannedPoCore(entry.id);
+      if (result.ok) {
+        succeeded++;
+      } else {
+        failed.push({ code: entry.purchaseCode || entry.id, reason: result.reason });
+      }
+    }
+
+    const summary = failed.length === 0
+      ? `${succeeded} dari ${pending.length} PO berhasil diterima.`
+      : `${succeeded} dari ${pending.length} PO berhasil diterima. Gagal: ${failed.map(f => `${f.code} (${f.reason})`).join(', ')}`;
+    setScanSuccessToast(summary);
+    setTimeout(() => setScanSuccessToast(null), 6000);
+
+    setIsAcceptingAll(false);
+    // acceptAllDone TIDAK pernah direset - tombol nonaktif permanen untuk sisa
+    // sesi modal ini, sesuai keputusan user (mencegah klik ganda yang memproses
+    // ulang PO yang sama, dan menandai dengan jelas bahwa antrean sudah dieksekusi).
+    setAcceptAllDone(true);
+  };
+
   const [isNewPoOpen, setIsNewPoOpen] = useState(false);
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
   const [isClosePoModalOpen, setIsClosePoModalOpen] = useState(false);
@@ -986,14 +1090,17 @@ export const PurchasesTab = () => {
               }
             ).then(() => {
               localStorage.setItem('cameraPermissionGranted', 'true');
+              setIsSwitchingCamera(false);
             }).catch((err) => {
               console.error("Camera sweep start failed:", err);
               setScanErrorToast("Gagal menyalakan kamera. Silakan aktifkan izin kamera.");
+              setIsSwitchingCamera(false);
             });
 
           } catch (initErr) {
             console.error("Scanner setup error:", initErr);
             setScanErrorToast("Inisialisasi kamera gagal.");
+            setIsSwitchingCamera(false);
           }
         }
       }, 300);
@@ -1015,10 +1122,14 @@ export const PurchasesTab = () => {
       setScanStep(1);
       scanStepRef.current = 1;
       setKodeEkspedisi("");
+      setIsAcceptingAll(false);
+      setAcceptAllDone(false);
     } else {
       setScanStep(1);
       scanStepRef.current = 1;
       setKodeEkspedisi("");
+      setIsAcceptingAll(false);
+      setAcceptAllDone(false);
     }
   }, [isBulkReceiveScanOpen]);
 
@@ -8293,8 +8404,17 @@ export const PurchasesTab = () => {
                       </button>
                     </div>
 
-                    {/* Camera Viewport Frame */}
-                    <div className="relative rounded-[18px] overflow-hidden bg-gradient-to-br from-[#2b2a35] to-[#1a1922] min-h-[250px] flex items-center justify-center shadow-inner">
+                    {/* Camera Viewport Frame - rasio tetap 4:3 supaya ukurannya TIDAK
+                        berubah saat kamera dibalik depan/belakang, apa pun resolusi
+                        asli tiap lensa atau lamanya jeda bongkar-pasang stream. */}
+                    <div className="relative rounded-[18px] overflow-hidden bg-gradient-to-br from-[#2b2a35] to-[#1a1922] aspect-[4/3] w-full flex items-center justify-center shadow-inner">
+                      {isSwitchingCamera && (
+                        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-black/55 backdrop-blur-sm text-white text-[12.5px] font-medium">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Mengganti kamera…
+                        </div>
+                      )}
+
                       <div className="absolute top-3.5 left-3.5 z-20 flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full text-[11.5px] text-white font-medium">
                         <span className="w-2 h-2 rounded-full bg-[#5FD08A] animate-pulse" />
                         Live Ready
@@ -8358,23 +8478,6 @@ export const PurchasesTab = () => {
                       </div>
                     </div>
 
-                    {/* Simulate Scan Button (Demo) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const activePos = purchaseOrders.filter(po => po.status !== 'cancelled' && po.status !== 'completed');
-                        const targetPo = activePos.length > 0 ? activePos[Math.floor(Math.random() * activePos.length)] : purchaseOrders[0];
-                        if (targetPo) {
-                          handleProcessScannedCode(targetPo.purchaseCode || targetPo.id);
-                        } else {
-                          setScanErrorToast("Tidak ada PO aktif untuk disimulasikan.");
-                        }
-                      }}
-                      className="w-full h-[42px] justify-center bg-white dark:bg-[#1B1922] border border-dashed border-[#D9D0BC] dark:border-[#48454F] text-[#6E6B78] dark:text-[#AEA9B7] rounded-[10px] text-[13px] font-semibold hover:border-[#B8763A] hover:text-[#B8763A] hover:bg-[#B8763A]/5 transition cursor-pointer flex items-center gap-2"
-                    >
-                      <Scan className="w-4 h-4" />
-                      Simulasikan Scan Barang (Demo)
-                    </button>
                   </div>
 
                   {/* Right Column: Scanned Queue Ledger */}
@@ -8457,6 +8560,17 @@ export const PurchasesTab = () => {
                                     <div className="min-w-0">
                                       <span className="font-['Inter'] font-bold text-[13px] text-[#211F29] dark:text-[#F4F2ED] block truncate">
                                         #{entry.purchaseCode?.replace(/^#?P(?!O)/, 'PO').replace(/^#/, '')}
+                                        {/* Nomor pembelian dari supplier/marketplace - beda dari nomor
+                                            dokumen internal di sebelah kiri. Disembunyikan kalau kosong
+                                            supaya tidak muncul pemisah "|" yang menggantung. */}
+                                        {entry.po?.supplierOrderNumber && (
+                                          <>
+                                            <span className="text-[#A19DAA] font-normal mx-1.5">|</span>
+                                            <span className="text-[#6E6B78] dark:text-[#AEA9B7] font-semibold">
+                                              {entry.po.supplierOrderNumber}
+                                            </span>
+                                          </>
+                                        )}
                                       </span>
                                       <span className="text-[11.5px] font-medium text-[#C1622A] block truncate">
                                         {platforms.find(p => p.id === (entry.po?.supplierId || entry.supplierId))?.name || entry.supplierName || 'Supplier'}
@@ -8508,7 +8622,6 @@ export const PurchasesTab = () => {
                                       const isCancelled = progressState.isCancelled;
                                       const bookDetails = books.find(b => b.id === item.bookId || b.title === item.bookName || b.bookName === item.bookName);
                                       const bookCover = bookDetails?.cover;
-                                      const itemBarcode = item.barcode || item.isbn || item.sku || item.productId || bookDetails?.barcode || bookDetails?.isbn || bookDetails?.sku || bookDetails?.productId || (item.bookId !== item.bookName ? item.bookId : null);
                                       const qtyVal = Number(progressState.qtyReceivedThisTime || '0') || 0;
 
                                       return (
@@ -8549,27 +8662,22 @@ export const PurchasesTab = () => {
                                               <p className="font-['Lexend'] font-medium text-[13px] text-[#211F29] dark:text-[#F4F2ED] m-0 mb-1 leading-snug line-clamp-2" title={item.bookName}>
                                                 {item.bookName}
                                               </p>
-                                              <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#6E6B78] dark:text-[#AEA9B7]">
-                                                {itemBarcode && (
-                                                  <span className="inline-flex items-center gap-1 font-mono text-[10.5px] font-bold bg-[#EFEADC] dark:bg-[#2C2A38] text-[#B8763A] dark:text-[#D89963] px-2 py-0.5 rounded-[5px] border border-[#D9D0BC] dark:border-[#48454F]" title="Barcode / ISBN Barang">
-                                                    <Barcode className="w-3.5 h-3.5 shrink-0" />
-                                                    <span>{itemBarcode}</span>
-                                                  </span>
-                                                )}
-                                                <span>Pesan <b className="font-['Inter'] font-bold text-[#211F29] dark:text-[#F4F2ED]">{item.qty} pcs</b></span>
-                                                
-                                                {/* Qty status note tag */}
+                                              {/* Qty + status digabung jadi satu baris kontinu untuk
+                                                  menghemat ruang; chip barcode buku sengaja dihapus. */}
+                                              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[#6E6B78] dark:text-[#AEA9B7]">
+                                                <span>Pesan <b className="font-['Inter'] font-bold text-[#211F29] dark:text-[#F4F2ED]">{item.qty} Buku</b></span>
+
                                                 {qtyVal <= 0 ? (
                                                   <span className="bg-[#EFEADC] dark:bg-[#2C2A38] text-[#A19DAA] font-bold text-[10.5px] px-2 py-0.5 rounded-[6px]">
-                                                    Belum diterima
+                                                    Belum Diterima
                                                   </span>
                                                 ) : qtyVal >= item.qty ? (
                                                   <span className="bg-[#2F7D5A]/13 text-[#2F7D5A] dark:text-[#75C49D] font-bold text-[10.5px] px-2 py-0.5 rounded-[6px]">
-                                                    ✓ Lengkap
+                                                    Lengkap
                                                   </span>
                                                 ) : (
-                                                  <span className="bg-[#B8763A]/14 text-[#B8763A] dark:text-[#D89963] font-bold text-[10.5px] px-2 py-0.5 rounded-[6px]">
-                                                    ◐ Sebagian — kurang {item.qty - qtyVal}
+                                                  <span className="inline-flex items-center gap-1 bg-[#B8763A]/14 text-[#B8763A] dark:text-[#D89963] font-bold text-[10.5px] px-2 py-0.5 rounded-[6px]">
+                                                    ◐ Kurang {item.qty - qtyVal} buku
                                                   </span>
                                                 )}
                                               </div>
@@ -8662,7 +8770,7 @@ export const PurchasesTab = () => {
                                             : 'bg-[#B8763A] hover:bg-[#B8763A]/90 text-white shadow-sm'
                                         }`}
                                       >
-                                        {entry.isSaved ? 'Tersimpan' : 'Simpan'}
+                                        {entry.isSaved ? 'Tersimpan' : 'Terima'}
                                       </button>
                                     </div>
                                   </div>
@@ -8732,18 +8840,48 @@ export const PurchasesTab = () => {
                 </div>
               </div>
 
-              {/* Finish Button */}
-              <button
-                type="button"
-                onClick={async () => {
-                  await handleStopBulkReceiveScan();
-                  setIsBulkReceiveScanOpen(false);
-                }}
-                className="h-[44px] px-5 bg-[#6E2A3A] hover:bg-[#6E2A3A]/90 text-white rounded-[11px] font-semibold text-[13.5px] flex items-center gap-2 cursor-pointer shadow-sm transition"
-              >
-                <Check className="w-4 h-4 stroke-[2.5]" />
-                Tutup Antrean & Selesai
-              </button>
+              {/* Accept All + Finish Buttons */}
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  disabled={acceptAllDone || isAcceptingAll || scannedPos.filter(e => !e.isSaved).length === 0}
+                  onClick={handleAcceptAllScanned}
+                  className={`h-[44px] px-5 rounded-[11px] font-semibold text-[13.5px] flex items-center gap-2 transition shadow-sm ${
+                    acceptAllDone || isAcceptingAll || scannedPos.filter(e => !e.isSaved).length === 0
+                      ? 'bg-[#EFEADC] dark:bg-[#2C2A38] text-[#A19DAA] border border-[#D9D0BC] dark:border-[#48454F] cursor-not-allowed'
+                      : 'bg-[#2F7D5A] hover:bg-[#2F7D5A]/90 text-white cursor-pointer'
+                  }`}
+                >
+                  {isAcceptingAll ? (
+                    <>
+                      <Loader2 className="w-4 h-4 stroke-[2.5] animate-spin" />
+                      Memproses…
+                    </>
+                  ) : acceptAllDone ? (
+                    <>
+                      <Check className="w-4 h-4 stroke-[2.5]" />
+                      Sudah Diterima Semua
+                    </>
+                  ) : (
+                    <>
+                      <PackageCheck className="w-4 h-4 stroke-[2.5]" />
+                      Terima Semua
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleStopBulkReceiveScan();
+                    setIsBulkReceiveScanOpen(false);
+                  }}
+                  className="h-[44px] px-5 bg-[#6E2A3A] hover:bg-[#6E2A3A]/90 text-white rounded-[11px] font-semibold text-[13.5px] flex items-center gap-2 cursor-pointer shadow-sm transition"
+                >
+                  <Check className="w-4 h-4 stroke-[2.5]" />
+                  Tutup
+                </button>
+              </div>
             </div>
 
           </div>
