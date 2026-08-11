@@ -668,11 +668,11 @@ export const BusinessPartnerTab: React.FC = () => {
               </div>
               <div>
                 <span className="block text-[10px] font-semibold tracking-widest uppercase text-neutral-400 mb-1">Komisi Belum Dibayar</span>
-                <span className="block font-bold text-lg text-[#6B4C9A] font-mono">{formatNTD(partners.reduce((s,p) => s + komisiBelumDibayar(p.id), 0))}</span>
+                <span className="block font-bold text-lg text-[#6B4C9A] font-mono font-numbers">{formatNTD(partners.reduce((s,p) => s + komisiBelumDibayar(p.id), 0))}</span>
               </div>
               <div>
                 <span className="block text-[10px] font-semibold tracking-widest uppercase text-neutral-400 mb-1">Komisi Sudah Dibayar</span>
-                <span className="block font-bold text-lg font-mono">{formatNTD(partners.reduce((s,p) => s + komisiSudahDibayar(p.id), 0))}</span>
+                <span className="block font-bold text-lg font-mono font-numbers">{formatNTD(partners.reduce((s,p) => s + komisiSudahDibayar(p.id), 0))}</span>
               </div>
             </div>
           </div>
@@ -702,11 +702,11 @@ export const BusinessPartnerTab: React.FC = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[15px] font-semibold">{p.name}</div>
-                  <div className="text-xs text-neutral-500 mt-0.5 font-mono">{totalBukuTerjual(p.id)} buku terjual · Omzet {formatNTD(totalOmzet(p.id))}</div>
+                  <div className="text-xs text-neutral-500 mt-0.5 font-mono font-numbers">{totalBukuTerjual(p.id)} buku terjual · Omzet {formatNTD(totalOmzet(p.id))}</div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-[17px] font-bold text-[#6B4C9A] font-mono">{formatNTD(komisiBelumDibayar(p.id))}</div>
-                  <div className="text-[11px] text-neutral-400 mt-0.5 font-mono">Sudah dibayar: {formatNTD(komisiSudahDibayar(p.id))}</div>
+                  <div className="text-[17px] font-bold text-[#6B4C9A] font-mono font-numbers">{formatNTD(komisiBelumDibayar(p.id))}</div>
+                  <div className="text-[11px] text-neutral-400 mt-0.5 font-mono font-numbers">Sudah dibayar: {formatNTD(komisiSudahDibayar(p.id))}</div>
                 </div>
                 <ChevronRight className="text-neutral-400 w-5 h-5 shrink-0 ml-1" />
               </div>
