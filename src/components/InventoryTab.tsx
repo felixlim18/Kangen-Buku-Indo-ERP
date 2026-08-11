@@ -1,6 +1,7 @@
 import { getNextJournalId } from '../lib/journalUtils';
 import { FALLBACK_NTD_PER_IDR } from '../lib/exchangeRateConstants';
-import React, { useState, useEffect, useMemo, useCallback, useTransition } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useTransition, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Decimal } from 'decimal.js';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import {
@@ -2627,6 +2628,19 @@ export const InventoryTab: React.FC = () => {
         books={books} 
         inventoryList={inventoryList} 
       />
+
+      {/* Mobile FAB for adding new Adjustment */}
+      {isStaffValue && createPortal(
+        <button
+          type="button"
+          className="kbi-sofab md:hidden"
+          onClick={handleOpenAddModal}
+          aria-label="Tambah Penyesuaian"
+        >
+          <Plus className="w-6 h-6" />
+        </button>,
+        document.body,
+      )}
     </div>
   );
 };

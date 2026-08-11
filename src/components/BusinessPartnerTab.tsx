@@ -1,5 +1,6 @@
 import { getNextJournalId } from '../lib/journalUtils';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   collection, 
@@ -34,6 +35,7 @@ import { useModalEsc, getModalOverlayClass } from '../lib/use-modal-esc';
 export const BusinessPartnerTab: React.FC = () => {
   const { sidebarHidden } = useSidebar();
   const { profile } = useAuth();
+  const isStaffValue = profile?.role === 'owner' || profile?.role === 'staff';
   const [partners, setPartners] = useState<BusinessPartner[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   const [paymentBatches, setPaymentBatches] = useState<PaymentBatch[]>([]);
@@ -1150,8 +1152,22 @@ export const BusinessPartnerTab: React.FC = () => {
         );
       })()}
 
+      {/* Mobile FAB for adding new Partner */}
+      {view === 'list' && isStaffValue && createPortal(
+        <button
+          type="button"
+          className="kbi-sofab md:hidden"
+          onClick={() => {
+            setNewPartnerName(''); setNewPartnerRate(''); setAddPartnerError('');
+            setIsAddPartnerOpen(true);
+          }}
+          aria-label="Tambah Partner"
+        >
+          <Plus className="w-6 h-6" />
+        </button>,
+        document.body,
+      )}
     </div>
-
   );
 };
 

@@ -1,6 +1,7 @@
 import { ImagePreviewModal } from "./ui/ImagePreviewModal";
 import { TruncatedTooltip } from "./ui/TruncatedTooltip";
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, storage, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 

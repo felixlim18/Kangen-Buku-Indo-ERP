@@ -8889,6 +8889,33 @@ export const PurchasesTab = () => {
         </div>
       )}
 
+      {/* Mobile FAB for adding new Purchase Order */}
+      {isStaffValue && createPortal(
+        <button
+          type="button"
+          className="kbi-sofab md:hidden"
+          onClick={() => {
+            setEditingPoId(null);
+            setAddedItems([]);
+            setPoDate(formatToHTMLDate(new Date()));
+            const defaultPlat = platforms.find(p => p.name.includes("Shopee Indonesia") && p.currency === 'IDR') || platforms[0];
+            if (defaultPlat) {
+              setPlatformId(defaultPlat.id);
+            } else {
+              setPlatformId('');
+            }
+            setSupplierOrderNumber('');
+            setSupplierTrackingNumber('');
+            setPoDiscount('0');
+            setActualReceiptTotal('');
+            setIsNewPoOpen(true);
+          }}
+          aria-label="Tambah Pembelian Buku"
+        >
+          <Plus className="w-6 h-6" />
+        </button>,
+        document.body,
+      )}
     </div>
   );
 }
