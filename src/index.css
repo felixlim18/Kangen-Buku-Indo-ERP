@@ -1056,11 +1056,12 @@ input[type="number"] {
   color: #7e22ce;
 }
 @layer base {
-  label, th, input {
-    font-family: var(--font-text);
+  *, ::before, ::after {
+    font-family: 'Lexend', ui-sans-serif, system-ui, sans-serif;
   }
-  input[type="number"] {
-    font-family: var(--font-numeric);
+  .font-numbers, .font-numeric, .font-mono, input[type="number"] {
+    font-family: 'Inter', monospace !important;
+    font-feature-settings: "tnum" 1, "cv05" 1;
   }
 }
 
