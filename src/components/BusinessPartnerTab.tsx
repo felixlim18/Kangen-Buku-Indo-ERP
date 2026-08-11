@@ -10,9 +10,10 @@ import {
   doc,
   writeBatch,
   setDoc,
+  updateDoc,
   Timestamp
 } from 'firebase/firestore';
-import { SalesOrder, BusinessPartner, PaymentBatch, JournalEntry, CoaAccount } from '../types';
+import { SalesOrder, BusinessPartner, PaymentBatch, JournalEntry, CoaAccount, CoProducedBook, AgreedPriceEntry, Book } from '../types';
 import { formatNTD, formatIDR } from '../lib/decimal-utils';
 import { 
   ChevronLeft, 
@@ -37,6 +38,7 @@ export const BusinessPartnerTab: React.FC = () => {
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   const [paymentBatches, setPaymentBatches] = useState<PaymentBatch[]>([]);
   const [coaAccounts, setCoaAccounts] = useState<CoaAccount[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
   
   const [view, setView] = useState<'list' | 'detail'>('list');
   const [activePartnerId, setActivePartnerId] = useState<string | null>(null);
@@ -45,9 +47,11 @@ export const BusinessPartnerTab: React.FC = () => {
   // Modals
   const [isAddPartnerOpen, setIsAddPartnerOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isKoProduksiModalOpen, setIsKoProduksiModalOpen] = useState(false);
   
   useModalEsc(isAddPartnerOpen, () => setIsAddPartnerOpen(false));
   useModalEsc(isPaymentModalOpen, () => setIsPaymentModalOpen(false));
+  useModalEsc(isKoProduksiModalOpen, () => setIsKoProduksiModalOpen(false));
   
   // Add partner state
   const [newPartnerName, setNewPartnerName] = useState('');
@@ -61,6 +65,13 @@ export const BusinessPartnerTab: React.FC = () => {
   const [modalOverrides, setModalOverrides] = useState<Map<string, { mode: 'persen' | 'nominal', value: number }>>(new Map());
   const [selectedAkun, setSelectedAkun] = useState('Cash: NTD');
 
+  // Ko-Produksi modal state
+  const [kpBookSearch, setKpBookSearch] = useState('');
+  const [kpDrafts, setKpDrafts] = useState<CoProducedBook[]>([]); // working copy
+  const [kpEditIdx, setKpEditIdx] = useState<number | null>(null); // index being edited
+  const [kpForm, setKpForm] = useState({ bookId: '', bookName: '', sharePercent: '', newPrice: '' });
+  const [kpSaving, setKpSaving] = useState(false);
+
   useEffect(() => {
     const unsubPartners = onSnapshot(collection(db, 'partners'), (snap) => {
       const list: BusinessPartner[] = [];
@@ -72,6 +83,12 @@ export const BusinessPartnerTab: React.FC = () => {
       } else {
         console.error("Snapshot error:", err);
       }
+    });
+
+    const unsubBooks = onSnapshot(collection(db, 'catalog'), (snap) => {
+      const list: Book[] = [];
+      snap.forEach(d => list.push({ id: d.id, ...d.data() } as Book));
+      setBooks(list.filter(b => b.isActive));
     });
 
     const unsubOrders = onSnapshot(collection(db, 'salesOrders'), (snap) => {
@@ -112,6 +129,7 @@ export const BusinessPartnerTab: React.FC = () => {
 
     return () => {
       unsubPartners();
+      unsubBooks();
       unsubOrders();
       unsubBatches();
       unsubCoa();
@@ -123,6 +141,7 @@ export const BusinessPartnerTab: React.FC = () => {
     setTimeout(() => setToastMsg(''), 3000);
   };
 
+  // -------- Core helpers --------
   const AVATAR_COLORS = ["#6B4C9A", "#2B5A9E", "#3D7A4F", "#B67F2A", "#B5502F", "#52397A"];
   const avatarColor = (name: string) => {
     let s = 0; 
@@ -131,24 +150,134 @@ export const BusinessPartnerTab: React.FC = () => {
   };
   const initials = (name: string) => name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
 
-  const soFor = (pid: string) => salesOrders.filter(s => s.partnerId === pid);
-  const komisiOf = (so: SalesOrder) => {
-    if (so.paidKomisi !== undefined) return so.paidKomisi;
-    const val = so.komisiValue || 0;
-    return so.komisiMode === 'nominal' ? val : (so.totalPrice * (val / 100));
+  /**
+   * Returns SOs belonging to this partner:
+   * - Skenario B/C: SO where partnerId === pid
+   * - Skenario A: ANY SO containing a co-produced book item
+   * Deduped so mixed SOs appear only once.
+   */
+  const soForPartner = (pid: string, partner?: BusinessPartner): SalesOrder[] => {
+    const p = partner || partners.find(x => x.id === pid);
+    const resellerSOs = salesOrders.filter(s => s.partnerId === pid);
+    if (!p?.coProducedBooks?.length) return resellerSOs;
+    const kpBookIds = new Set(p.coProducedBooks.map(b => b.bookId));
+    const kpSOs = salesOrders.filter(s =>
+      !s.dibayar && // only unpaid ones for "siap dibayar" context – we still return all for display
+      s.items?.some(item => kpBookIds.has(item.bookId))
+    );
+    // Union (dedup by id)
+    const seen = new Set<string>();
+    const result: SalesOrder[] = [];
+    for (const so of [...resellerSOs, ...kpSOs]) {
+      if (!seen.has(so.id)) { seen.add(so.id); result.push(so); }
+    }
+    return result;
   };
+
+  // Legacy alias (for cases where we only need reseller SOs, e.g. stat summaries)
+  const soFor = (pid: string) => salesOrders.filter(s => s.partnerId === pid);
+
+  const getAgreedPriceForDate = (kp: CoProducedBook, dateStr: string): number => {
+    if (!kp.agreedPriceHistory?.length) return 0;
+    const sorted = [...kp.agreedPriceHistory].sort((a, b) => 
+      a.effectiveFrom.localeCompare(b.effectiveFrom)
+    );
+    let price = sorted[0]?.price || 0;
+    for (const entry of sorted) {
+      if (entry.effectiveFrom <= dateStr) price = entry.price;
+      else break;
+    }
+    return price;
+  };
+
+  /**
+   * Calculate komisi for a single SO for a given partner.
+   * Priority per item:
+   *  1. Ko-Produksi (Skenario A) — dynamic partnerShare based on price history and cogsSnapshot
+   *  2. Per-item override (Skenario C) — itemKomisiMode/itemKomisiValue
+   *  3. SO-level komisi (Skenario B) — applied to non-kp items' subtotal
+   *  4. Partner-level komisi fallback
+   *
+   * If so.paidKomisi is set (already paid), return that directly.
+   */
+  const komisiOf = (so: SalesOrder, partner?: BusinessPartner): number => {
+    if (so.paidKomisi !== undefined) return so.paidKomisi;
+    const p = partner || partners.find(x => x.id === so.partnerId);
+    const kpBooks = p?.coProducedBooks || [];
+    const kpMap = new Map<string, CoProducedBook>(kpBooks.map(b => [b.bookId, b]));
+
+    let total = 0;
+    let nonKpSubtotal = 0;
+    const soDateStr = new Date(so.createdAt?.seconds * 1000).toISOString().slice(0, 10);
+
+    for (const item of (so.items || [])) {
+      const kp = kpMap.get(item.bookId);
+      if (kp) {
+        // Skenario A: Ko-Produksi — dynamic calculation
+        const agreedPrice = getAgreedPriceForDate(kp, soDateStr);
+        const profitPerUnit = agreedPrice - (item.cogsSnapshot || 0);
+        total += Math.max(0, profitPerUnit) * (kp.sharePercent / 100) * item.qty;
+      } else if (item.itemKomisiMode !== undefined && item.itemKomisiValue !== undefined) {
+        // Skenario C: Per-item override
+        const v = item.itemKomisiValue;
+        total += item.itemKomisiMode === 'nominal' ? v * item.qty : item.lineTotal * (v / 100);
+      } else {
+        // Accumulate subtotal for SO-level komisi (Skenario B)
+        nonKpSubtotal += item.lineTotal;
+      }
+    }
+
+    // Apply SO-level or partner-level komisi to non-kp items
+    const mode = so.komisiMode || p?.komisiMode || 'persen';
+    const val = so.komisiValue ?? p?.komisiValue ?? 0;
+    if (nonKpSubtotal > 0 && val > 0) {
+      total += mode === 'nominal' ? val : nonKpSubtotal * (val / 100);
+    }
+
+    return total;
+  };
+
+  /** Komisi for Ko-Produksi items within a SO (Skenario A only) */
+  const komisiKoProduksi = (so: SalesOrder, partner: BusinessPartner): number => {
+    const kpMap = new Map((partner.coProducedBooks || []).map(b => [b.bookId, b]));
+    const soDateStr = new Date(so.createdAt?.seconds * 1000).toISOString().slice(0, 10);
+    return (so.items || []).reduce((acc, item) => {
+      const kp = kpMap.get(item.bookId);
+      if (!kp) return acc;
+      const agreedPrice = getAgreedPriceForDate(kp, soDateStr);
+      const profitPerUnit = agreedPrice - (item.cogsSnapshot || 0);
+      return acc + (Math.max(0, profitPerUnit) * (kp.sharePercent / 100) * item.qty);
+    }, 0);
+  };
+
   const komisiLabel = (mode?: string, val?: number) => {
     if (!val && val !== 0) return '-';
     return mode === 'nominal' ? `${formatNTD(val)} (flat)` : `${val}%`;
   };
 
-  const siapDibayar = (pid: string) => soFor(pid).filter(s => s.status === 'completed' && !s.dibayar);
-  const dalamProses = (pid: string) => soFor(pid).filter(s => s.status === 'shipped' || (s.status !== 'completed' && s.status !== 'cancelled' && s.status !== 'returned' && s.status !== 'draft'));
+  const siapDibayar = (pid: string) => {
+    const p = partners.find(x => x.id === pid);
+    return soForPartner(pid, p).filter(s => s.status === 'completed' && !s.dibayar);
+  };
+
+  const dalamProses = (pid: string) => {
+    const p = partners.find(x => x.id === pid);
+    return soForPartner(pid, p).filter(s =>
+      s.status !== 'completed' &&
+      s.status !== 'cancelled' &&
+      s.status !== 'returned' &&
+      !(s.status === 'draft' && s.isDraft === true)
+    );
+  };
+
   const batchesFor = (pid: string) => paymentBatches.filter(b => b.partnerId === pid);
 
   const totalBukuTerjual = (pid: string) => soFor(pid).filter(s => s.status === 'completed').reduce((s, o) => s + (o.items?.reduce((a,b)=>a+b.qty,0)||0), 0);
   const totalOmzet = (pid: string) => soFor(pid).filter(s => s.status === 'completed').reduce((s, o) => s + o.totalPrice, 0);
-  const komisiBelumDibayar = (pid: string) => siapDibayar(pid).reduce((s, o) => s + komisiOf(o), 0);
+  const komisiBelumDibayar = (pid: string) => {
+    const p = partners.find(x => x.id === pid);
+    return siapDibayar(pid).reduce((s, o) => s + komisiOf(o, p), 0);
+  };
   const komisiSudahDibayar = (pid: string) => batchesFor(pid).reduce((s, b) => s + b.totalKomisi, 0);
 
   const statusClass = (st: string) => {
@@ -191,12 +320,93 @@ export const BusinessPartnerTab: React.FC = () => {
   const getOverride = (so: SalesOrder) => {
     const o = modalOverrides.get(so.id);
     if (o) return o;
-    return { mode: so.komisiMode || activePartner?.komisiMode || 'persen', value: so.komisiValue || activePartner?.komisiValue || 0 };
+    // For payment modal, if SO has an explicit komisi set use it, else compute from new logic
+    const autoKomisi = komisiOf(so, activePartner);
+    return { mode: 'nominal' as const, value: autoKomisi };
   };
   
   const effectiveKomisi = (so: SalesOrder) => {
     const o = getOverride(so);
     return o.mode === 'persen' ? so.totalPrice * (o.value / 100) : o.value;
+  };
+
+  // -------- Ko-Produksi modal handlers --------
+  const openKoProduksiModal = () => {
+    setKpDrafts(activePartner?.coProducedBooks ? [...activePartner.coProducedBooks] : []);
+    setKpForm({ bookId: '', bookName: '', sharePercent: '', newPrice: '' });
+    setKpEditIdx(null);
+    setKpBookSearch('');
+    setIsKoProduksiModalOpen(true);
+  };
+
+  const kpAddOrUpdate = () => {
+    const shareVal = parseFloat(kpForm.sharePercent);
+    const priceCents = Math.round(parseFloat(kpForm.newPrice) * 100);
+    if (!kpForm.bookId || isNaN(shareVal) || isNaN(priceCents)) {
+      showToast('Isi semua field buku ko-produksi dengan benar.'); return;
+    }
+    
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const newDrafts = [...kpDrafts];
+    
+    if (kpEditIdx !== null) {
+      // Edit existing
+      const existing = newDrafts[kpEditIdx];
+      const history = [...(existing.agreedPriceHistory || [])];
+      
+      // If we don't have history (migration), or adding a new price today
+      const todayIdx = history.findIndex(h => h.effectiveFrom === todayStr);
+      if (todayIdx >= 0) {
+        history[todayIdx].price = priceCents;
+      } else {
+        // If history is empty (shouldn't happen with new structure, but safe check)
+        if (history.length === 0) {
+           history.push({ price: priceCents, effectiveFrom: "2026-01-01" });
+        } else {
+           // Add new price starting today
+           history.push({ price: priceCents, effectiveFrom: todayStr });
+        }
+      }
+      
+      newDrafts[kpEditIdx] = {
+        ...existing,
+        sharePercent: shareVal,
+        agreedPriceHistory: history
+      };
+    } else {
+      // Add new
+      newDrafts.push({
+        bookId: kpForm.bookId,
+        bookName: kpForm.bookName,
+        sharePercent: shareVal,
+        agreedPriceHistory: [
+          { price: priceCents, effectiveFrom: "2026-01-01" }
+        ]
+      });
+    }
+    
+    setKpDrafts(newDrafts);
+    setKpForm({ bookId: '', bookName: '', sharePercent: '', newPrice: '' });
+    setKpEditIdx(null);
+  };
+
+  const kpRemove = (idx: number) => {
+    setKpDrafts(kpDrafts.filter((_, i) => i !== idx));
+  };
+
+  const handleSaveKoProduksi = async () => {
+    if (!activePartner) return;
+    setKpSaving(true);
+    try {
+      await updateDoc(doc(db, 'partners', activePartner.id), { coProducedBooks: kpDrafts });
+      setIsKoProduksiModalOpen(false);
+      showToast('Daftar buku Ko-Produksi berhasil disimpan.');
+    } catch (e) {
+      console.error(e);
+      showToast('Gagal menyimpan.');
+    } finally {
+      setKpSaving(false);
+    }
   };
 
   const handleBulkApply = () => {
@@ -528,9 +738,18 @@ export const BusinessPartnerTab: React.FC = () => {
               </div>
               <div>
                 <div className="text-lg font-bold">{activePartner.name}</div>
-                <span className="inline-flex items-center gap-1 bg-[#EDE5F5] text-[#52397A] dark:bg-[#52397A]/30 dark:text-[#6B4C9A] text-[11px] font-bold px-2.5 py-0.5 rounded-full mt-1 font-mono">
-                  Komisi {komisiLabel(activePartner.komisiMode, activePartner.komisiValue || activePartner.profitSharePercent)}
-                </span>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {(activePartner.komisiMode || activePartner.komisiValue) && (
+                    <span className="inline-flex items-center gap-1 bg-[#EDE5F5] text-[#52397A] dark:bg-[#52397A]/30 dark:text-[#6B4C9A] text-[11px] font-bold px-2.5 py-0.5 rounded-full font-mono">
+                      Komisi {komisiLabel(activePartner.komisiMode, activePartner.komisiValue || activePartner.profitSharePercent)}
+                    </span>
+                  )}
+                  {activePartner.coProducedBooks?.length ? (
+                    <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                      📚 Ko-Produksi {activePartner.coProducedBooks.length} buku
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
             <div className="flex gap-6">
@@ -551,12 +770,48 @@ export const BusinessPartnerTab: React.FC = () => {
             >
               <Wallet className="w-4 h-4" /> Bayar Komisi
             </button>
+            <button
+              onClick={openKoProduksiModal}
+              className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white border-none py-3 px-5 rounded-xl text-sm font-bold cursor-pointer whitespace-nowrap transition"
+            >
+              📚 Atur Ko-Produksi
+            </button>
           </div>
+
+          {/* Ko-Produksi Summary */}
+          {activePartner.coProducedBooks?.length ? (
+            <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-xl overflow-hidden mb-4">
+              <div className="flex items-center gap-2.5 p-3.5 px-5 border-b border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20">
+                <h3 className="m-0 text-sm font-bold text-emerald-800 dark:text-emerald-300">📚 Buku Ko-Produksi</h3>
+                <span className="text-[11px] text-emerald-600">{activePartner.coProducedBooks.length} buku terdaftar · Berlaku untuk semua kategori SO</span>
+              </div>
+              <div>
+                {activePartner.coProducedBooks.map((kp, i) => {
+                  const currentPrice = kp.agreedPriceHistory?.[kp.agreedPriceHistory.length - 1]?.price || 0;
+                  return (
+                    <div key={kp.bookId} className={`flex items-center gap-3 p-3 px-5 text-sm ${i > 0 ? 'border-t border-emerald-100 dark:border-emerald-900' : ''}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold truncate">{kp.bookName}</div>
+                        <div className="text-[11px] text-neutral-500 font-mono mt-0.5">
+                          Harga kesepakatan (saat ini): {formatNTD(currentPrice)} · {kp.agreedPriceHistory?.length || 0} riwayat harga
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-bold text-emerald-700 font-mono">{kp.sharePercent}%</div>
+                        <div className="text-[10px] text-neutral-400">bagian partner</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
 
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden mb-4">
             <div className="flex items-center gap-2.5 p-3.5 px-5 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50">
               <h3 className="m-0 text-sm font-bold">Siap Dibayar</h3>
               <span className="text-[11px] text-neutral-400">{siapDibayar(activePartner.id).length} SO</span>
+
             </div>
             <div>
               {siapDibayar(activePartner.id).length === 0 ? (
@@ -567,7 +822,12 @@ export const BusinessPartnerTab: React.FC = () => {
                   <div className="font-mono text-neutral-600">{new Date(s.createdAt?.seconds * 1000).toISOString().slice(0,10)}</div>
                   <div className="font-mono text-neutral-600">{s.items?.reduce((a,b)=>a+b.qty,0)||0} pcs</div>
                   <div className="font-mono text-neutral-600">{formatNTD(s.totalPrice)}</div>
-                  <div className="font-mono font-bold">{formatNTD(komisiOf(s))} <span className="text-neutral-400 font-normal">({komisiLabel(s.komisiMode || activePartner.komisiMode, s.komisiValue || activePartner.komisiValue)})</span></div>
+                  <div className="font-mono font-bold text-right">
+                    {formatNTD(komisiOf(s, activePartner))}
+                    {activePartner.coProducedBooks?.some(kp => s.items?.some(it => it.bookId === kp.bookId)) && (
+                      <span className="ml-1.5 text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">KP</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -753,7 +1013,145 @@ export const BusinessPartnerTab: React.FC = () => {
         </div>
       )}
 
+      {/* Ko-Produksi Modal */}
+      {isKoProduksiModalOpen && activePartner && (() => {
+        const filteredBooks = books.filter(b =>
+          (b.bookName || '').toLowerCase().includes(kpBookSearch.toLowerCase()) &&
+          !kpDrafts.some(d => d.bookId === b.id && kpDrafts.indexOf(d) !== kpEditIdx)
+        );
+        return (
+          <div className={getModalOverlayClass(sidebarHidden, 'z-50')}>
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl w-[94%] max-w-xl max-h-[90vh] flex flex-col overflow-hidden my-auto">
+              <div className="flex items-center justify-between p-4 px-5 border-b border-neutral-200 dark:border-neutral-800">
+                <h3 className="m-0 text-base font-bold">📚 Ko-Produksi — {activePartner.name}</h3>
+                <button onClick={() => setIsKoProduksiModalOpen(false)} className="bg-transparent border-none text-neutral-400 hover:bg-red-50 hover:text-red-600 p-1.5 rounded-lg cursor-pointer transition">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-4 px-5 overflow-y-auto flex-1 flex flex-col gap-4">
+
+                {/* Existing entries */}
+                {kpDrafts.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[10.5px] font-semibold uppercase tracking-wider text-neutral-500">Buku Terdaftar</span>
+                    {kpDrafts.map((kp, idx) => (
+                      <div key={kp.bookId} className="flex items-center gap-3 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 px-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold truncate">{kp.bookName}</div>
+                          <div className="text-[11px] text-neutral-500 font-mono">
+                            Kesepakatan (saat ini): {formatNTD(kp.agreedPriceHistory?.[kp.agreedPriceHistory.length - 1]?.price || 0)} · Bagian: <span className="font-bold text-emerald-700">{kp.sharePercent}%</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            onClick={() => {
+                              setKpEditIdx(idx);
+                              const currentPrice = kp.agreedPriceHistory?.[kp.agreedPriceHistory.length - 1]?.price || 0;
+                              setKpForm({
+                                bookId: kp.bookId, bookName: kp.bookName,
+                                newPrice: (currentPrice / 100).toString(),
+                                sharePercent: kp.sharePercent.toString(),
+                              });
+                            }}
+                            className="text-[11px] border border-neutral-300 bg-white dark:bg-neutral-800 px-2.5 py-1 rounded-lg font-semibold cursor-pointer hover:border-[#6B4C9A] hover:text-[#6B4C9A] transition"
+                          >Edit</button>
+                          <button onClick={() => kpRemove(idx)} className="text-[11px] border border-red-200 bg-red-50 text-red-500 px-2.5 py-1 rounded-lg font-semibold cursor-pointer hover:border-red-400 transition">Hapus</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add/Edit form */}
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-xl p-4">
+                  <span className="text-[10.5px] font-semibold uppercase tracking-wider text-neutral-500 block mb-3">
+                    {kpEditIdx !== null ? '✏️ Edit Buku Ko-Produksi' : '+ Tambah Buku Ko-Produksi'}
+                  </span>
+
+                  {/* Book search */}
+                  <div className="mb-3">
+                    <label className="block text-[10.5px] font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">Pilih Buku *</label>
+                    <input
+                      value={kpForm.bookId ? kpForm.bookName : kpBookSearch}
+                      onChange={e => { setKpBookSearch(e.target.value); setKpForm(f => ({ ...f, bookId: '', bookName: '' })); }}
+                      className="w-full border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                      placeholder="Cari nama buku..."
+                    />
+                    {kpBookSearch && !kpForm.bookId && filteredBooks.length > 0 && (
+                      <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg mt-1 overflow-hidden shadow-lg max-h-36 overflow-y-auto">
+                        {filteredBooks.slice(0, 6).map(b => (
+                          <button key={b.id} onClick={() => { setKpForm(f => ({ ...f, bookId: b.id, bookName: b.bookName })); setKpBookSearch(''); }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20 border-none bg-white dark:bg-neutral-900 cursor-pointer">
+                            {b.bookName}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {kpForm.bookId && (
+                      <div className="mt-1 text-[11px] text-emerald-700 font-semibold">✓ {kpForm.bookName}</div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-[10.5px] font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
+                        Harga Kesepakatan (NT$) *
+                      </label>
+                      <input type="number" min="0" step="0.01"
+                        value={kpForm.newPrice}
+                        onChange={e => setKpForm(f => ({ ...f, newPrice: e.target.value }))}
+                        className="w-full border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-emerald-500"
+                        placeholder="700"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10.5px] font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
+                        Share Partner (%) *
+                      </label>
+                      <input type="number" min="0" max="100" step="1"
+                        value={kpForm.sharePercent}
+                        onChange={e => setKpForm(f => ({ ...f, sharePercent: e.target.value }))}
+                        className="w-full border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-emerald-500"
+                        placeholder="50"
+                      />
+                    </div>
+                  </div>
+                  {kpEditIdx !== null && (
+                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg mb-4">
+                      <div className="text-[11px] text-amber-800 font-semibold mb-1">ℹ️ Riwayat Harga</div>
+                      <div className="text-[11px] text-amber-700">
+                        Mengubah harga kesepakatan akan menambah riwayat baru yang berlaku per hari ini.
+                        Transaksi SO lama tetap akan menggunakan harga sebelumnya sesuai tanggal SO.
+                      </div>
+                    </div>
+                  )}
+                  <button onClick={kpAddOrUpdate}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white border-none px-4 py-2 rounded-lg text-sm font-bold cursor-pointer transition">
+                    {kpEditIdx !== null ? 'Update' : '+ Tambahkan'}
+                  </button>
+                  {kpEditIdx !== null && (
+                    <button onClick={() => { setKpEditIdx(null); setKpForm({ bookId: '', bookName: '', sharePercent: '', newPrice: '' }); }}
+                      className="ml-2 bg-transparent border border-neutral-300 text-neutral-500 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer hover:bg-neutral-100 transition">
+                      Batal Edit
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 px-5 border-t border-neutral-200 dark:border-neutral-800 flex justify-end gap-2">
+                <button onClick={() => setIsKoProduksiModalOpen(false)} className="bg-transparent border-none px-4 py-2 rounded-lg text-sm font-semibold text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer">Batal</button>
+                <button onClick={handleSaveKoProduksi} disabled={kpSaving}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-neutral-200 disabled:text-neutral-400 text-white border-none px-5 py-2 rounded-lg text-sm font-bold cursor-pointer transition">
+                  {kpSaving ? 'Menyimpan...' : 'Simpan Ko-Produksi'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
+
   );
 };
 

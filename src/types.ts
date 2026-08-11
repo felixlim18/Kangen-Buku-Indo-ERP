@@ -44,6 +44,9 @@ export interface SalesOrderItem {
   isFree?: boolean;
   markedRefund?: boolean;     // flag if marked as not shipped / refund
   markedTertinggal?: boolean; // flag if item was left behind / split to child SO
+  // Skenario C: komisi per-item (diinput manual di BusinessPartner tab)
+  itemKomisiMode?: 'persen' | 'nominal'; // 'persen' = % dari lineTotal, 'nominal' = NT$ per unit
+  itemKomisiValue?: number;              // nilai komisi
 }
 
 export interface OrderTypeConfig {
@@ -253,14 +256,47 @@ export interface Payroll {
   cashflowId?: string;
 }
 
+/**
+ * Satu entri riwayat harga kesepakatan untuk Ko-Produksi.
+ * Ketika harga diubah, entri baru ditambahkan — entri lama tetap ada
+ * sehingga SO lama dihitung menggunakan harga yang berlaku saat itu.
+ */
+export interface AgreedPriceEntry {
+  price: number;         // NT$ cents per unit
+  effectiveFrom: string; // YYYY-MM-DD — tanggal mulai berlaku
+}
+
+/**
+ * Ko-Produksi: Buku yang dibuat bareng dengan partner.
+ * Komisi dihitung OTOMATIS:
+ *   partnerKomisi = (agreedPriceForDate - item.cogsSnapshot) × sharePercent/100 × qty
+ *
+ * - agreedPriceForDate: harga kesepakatan yang berlaku di tanggal SO (dari riwayat)
+ * - cogsSnapshot: moving avg COGS saat SO diproses (field existing di SalesOrderItem)
+ * - sharePercent: persentase bagi hasil untuk partner
+ *
+ * Berlaku untuk SEMUA SO yang mengandung buku ini, tanpa filter kategori SO.
+ */
+export interface CoProducedBook {
+  bookId: string;
+  bookName: string;                       // snapshot nama buku
+  sharePercent: number;                   // % bagi hasil untuk partner, mis. 50
+  agreedPriceHistory: AgreedPriceEntry[]; // riwayat harga kesepakatan (tidak pernah dihapus)
+}
+
 export interface BusinessPartner {
   id: string;
   name: string;
   profitSharePercent?: number; // legacy
   bookLines?: string[];        // legacy
   payableBalance?: number;     // legacy
+
+  // Skenario B: Reseller biasa — komisi per SO (sudah ada)
   komisiMode?: 'persen' | 'nominal';
   komisiValue?: number;
+
+  // Skenario A: Ko-Produksi — buku yang dikerjakan bareng
+  coProducedBooks?: CoProducedBook[];
 }
 
 export interface CoaAccount {

@@ -247,6 +247,7 @@ export const PurchasesTab = () => {
   const { user, profile } = useAuth();
   const isStaffValue = profile?.role === "staff" || profile?.role === "owner";
   const hasPerm = (perm: string) => { if (profile?.role === "owner") return true; return profile?.permissions?.[perm] === true; };
+  const canViewAmount = hasPerm('purchases.viewAmount');
 
 
 
@@ -4592,15 +4593,15 @@ export const PurchasesTab = () => {
                     </span>
                     <span className="text-[12.5px] text-[#9ca3af]">
                       {poStatusFilter === 'Semua' ? (
-                        <>semua PO · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSumNTD)}</b> menunggu</>
+                        <>semua PO{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSumNTD)}</b> menunggu</>}</>
                       ) : poStatusFilter === 'Menunggu' ? (
-                        <>PO Menunggu · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSumNTD)}</b></>
+                        <>PO Menunggu{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSumNTD)}</b></>}</>
                       ) : poStatusFilter === 'Sebagian' ? (
-                        <>PO Sebagian · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(partialSumNTD)}</b></>
+                        <>PO Sebagian{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(partialSumNTD)}</b></>}</>
                       ) : poStatusFilter === 'Diterima' ? (
-                        <>PO Diterima · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(receivedSumNTD)}</b></>
+                        <>PO Diterima{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(receivedSumNTD)}</b></>}</>
                       ) : (
-                        <>PO Cancel · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(cancelledSumNTD)}</b></>
+                        <>PO Cancel{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(cancelledSumNTD)}</b></>}</>
                       )}
                     </span>
                   </div>
@@ -4704,7 +4705,7 @@ export const PurchasesTab = () => {
                       {pendingPOs.length}
                     </div>
                     <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-                      {pendingPOs.length > 0 ? `${formatNTD(pendingSumNTD)}` : '—'}
+                      {canViewAmount ? (pendingPOs.length > 0 ? `${formatNTD(pendingSumNTD)}` : '—') : ''}
                     </div>
                   </button>
 
@@ -4735,7 +4736,7 @@ export const PurchasesTab = () => {
                       {partialPOs.length}
                     </div>
                     <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-                      {partialPOs.length > 0 ? `${formatNTD(partialSumNTD)}` : '—'}
+                      {canViewAmount ? (partialPOs.length > 0 ? `${formatNTD(partialSumNTD)}` : '—') : ''}
                     </div>
                   </button>
 
@@ -4766,7 +4767,7 @@ export const PurchasesTab = () => {
                       {receivedPOs.length}
                     </div>
                     <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-                      {receivedPOs.length > 0 ? `${formatNTD(receivedSumNTD)}` : '—'}
+                      {canViewAmount ? (receivedPOs.length > 0 ? `${formatNTD(receivedSumNTD)}` : '—') : ''}
                     </div>
                   </button>
 
@@ -4797,7 +4798,7 @@ export const PurchasesTab = () => {
                       {cancelledPOs.length}
                     </div>
                     <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-                      {cancelledPOs.length > 0 ? `${formatNTD(cancelledSumNTD)}` : '—'}
+                      {canViewAmount ? (cancelledPOs.length > 0 ? `${formatNTD(cancelledSumNTD)}` : '—') : ''}
                     </div>
                   </button>
                 </div>
@@ -5028,7 +5029,7 @@ export const PurchasesTab = () => {
                         <div className="text-left lg:text-right">
                           <span className="block text-[10px] font-bold uppercase tracking-wider text-[#AB9F92] mb-1">TOTAL</span>
                           <div className="font-text text-[14px] font-bold text-neutral-900 dark:text-neutral-100 leading-none">
-                            {(() => {
+                            {canViewAmount ? (() => {
                               const poPlatform = platforms.find(p => p.id === po.supplierId);
                               const poCurrency = poPlatform?.currency || (po.purchasePriceIDR > 0 ? 'IDR' : (po.purchasePriceUSD > 0 ? 'USD' : 'NTD'));
                               const platAmt = poCurrency === 'IDR' ? po.purchasePriceIDR : (poCurrency === 'USD' ? po.purchasePriceUSD : po.purchasePriceNTD / 100);
@@ -5052,7 +5053,7 @@ export const PurchasesTab = () => {
                                   <span className="text-[#6B1F3D] dark:text-rose-400 font-bold">{formatNTD(po.purchasePriceNTD)}</span>
                                 );
                               }
-                            })()}
+                            })() : null}
                           </div>
                         </div>
 

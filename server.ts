@@ -31,8 +31,11 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
+    const viteConfig = (await import('./vite.config')).default;
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      ...viteConfig,
+      configFile: false,
+      server: { ...viteConfig.server, middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);

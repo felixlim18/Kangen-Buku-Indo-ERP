@@ -84,12 +84,17 @@ exports.sendMetaPurchaseEvent = onDocumentCreated(
       userData.ph = [phHash];
     }
 
+    // Generate unique event_id untuk deduplication
+    const eventId = `purchase_${metaOrderId}_${Date.now()}`;
+
     const payload = {
       data: [
         {
           event_name: "Purchase",
           event_time: eventTimeSeconds,
-          action_source: "system_generated",
+          event_id: eventId,
+          action_source: "website",
+          event_source_url: "https://kangenbukuindo.com",
           user_data: userData,
           custom_data: {
             currency: "TWD",
@@ -97,9 +102,7 @@ exports.sendMetaPurchaseEvent = onDocumentCreated(
             order_id: metaOrderId
           }
         }
-      ],
-      // TESTING (HAPUS BARIS INI SEBELUM PRODUCTION)
-      test_event_code: "TEST45313" 
+      ]
     };
 
     // 8. KIRIM via HTTPS POST
@@ -119,7 +122,11 @@ exports.sendMetaPurchaseEvent = onDocumentCreated(
       const result = await response.json();
 
       if (!response.ok) {
-        logger.error(`Gagal kirim ke Meta untuk order [${orderId}]:`, result);
+        logger.error(`Gagal kirim ke Meta untuk order [${orderId}]:`, {
+          status: response.status,
+          statusText: response.statusText,
+          result: JSON.stringify(result)
+        });
         return; // Jangan throw error supaya tidak retry berulang
       }
 

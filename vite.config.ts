@@ -6,9 +6,9 @@ import {defineConfig} from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: {
-      '@': path.resolve(process.cwd(), '.'),
-    },
+    alias: [
+      { find: /^@\/(.*)/, replacement: path.resolve(process.cwd(), './src/$1') }
+    ],
   },
   build: {
     rollupOptions: {

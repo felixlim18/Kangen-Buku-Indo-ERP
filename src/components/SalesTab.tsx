@@ -13,7 +13,8 @@ import { BulkProcessModal } from './BulkProcessModal';
 import './SalesOrderForm.css';
 import './SalesOrderForm.dark.css';
 import './SalesOrderDetail.css';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, storage, handleFirestoreError, OperationType } from '../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { fetchCurrentExchangeRate } from '../lib/period-closing-utils';
 import { 
   collection, 
@@ -213,6 +214,8 @@ export const SalesTab: React.FC = () => {
     if (profile?.role === 'owner') return true;
     return !!profile?.permissions?.[key];
   };
+
+  const canViewAmount = hasPerm('sales.viewAmount');
 
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
@@ -1458,6 +1461,76 @@ export const SalesTab: React.FC = () => {
     triggerShake
   ]);
 
+  // Compress image via canvas (returns a Blob)
+  const compressSalesImage = (file: File | Blob, maxWidth = 600, maxHeight = 800, quality = 0.7): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file instanceof Blob ? file : file);
+      reader.onload = (event) => {
+        const img = new window.Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { reject(new Error('Failed to get canvas context')); return; }
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => { blob ? resolve(blob) : reject(new Error('Failed to compress image')); },
+            'image/jpeg',
+            quality
+          );
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
+
+  // Upload address photo to Firebase Storage; returns download URL.
+  // Falls back to compressed base64 if Storage upload fails.
+  const uploadAddressPhoto = async (dataUrl: string): Promise<string> => {
+    // Convert data URL to Blob for compression
+    const resp = await fetch(dataUrl);
+    const originalBlob = await resp.blob();
+    const compressedBlob = await compressSalesImage(originalBlob, 600, 800, 0.7);
+
+    try {
+      const storagePath = `sales-photos/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.jpg`;
+      const storageRef = ref(storage, storagePath);
+      await uploadBytes(storageRef, compressedBlob, { contentType: 'image/jpeg' });
+      return await getDownloadURL(storageRef);
+    } catch (storageErr) {
+      console.warn('Firebase Storage upload failed for address photo, falling back to compressed base64:', storageErr);
+      // Fallback: return compressed base64 (much smaller than original)
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(compressedBlob);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
+      });
+    }
+  };
+
+  // Strip bookCover from items to keep Firestore document small
+  const stripItemCovers = (items: SalesOrderItem[]): SalesOrderItem[] => {
+    return items.map(({ bookCover, ...rest }) => ({ ...rest, bookCover: '' }));
+  };
+
   // Submit order to Firestore (Supports Create and Edit)
   const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
     if (e.key === 'Enter') {
@@ -1549,6 +1622,13 @@ export const SalesTab: React.FC = () => {
         // Edit mode
         if (!(await promptDoubleConfirmation("Menyimpan Perubahan Orderan"))) return;
         const orderRef = doc(db, 'salesOrders', editingOrder.id);
+
+        // Upload address photo to Storage if it's a base64 data URL
+        let resolvedAddressPhotoUrl = addressPhotoUrl;
+        if (addressPhotoUrl && addressPhotoUrl.startsWith('data:')) {
+          resolvedAddressPhotoUrl = await uploadAddressPhoto(addressPhotoUrl);
+        }
+
         const updatePayload: any = {
           orderDate: orderDateTs,
           customerName: finalCustomerName,
@@ -1566,9 +1646,9 @@ export const SalesTab: React.FC = () => {
           buyerType,
           partnerId: isMarketplace ? '' : (selectedPartner?.id || ''),
           partnerName: isMarketplace ? '' : (selectedPartner?.name || ''),
-          addressPhotoUrl,
+          addressPhotoUrl: resolvedAddressPhotoUrl,
           isDraft: options.isDraft ?? false,
-          items: cartItems,
+          items: stripItemCovers(cartItems),
           subtotal: cartSubtotal,
           discount: discountCents,
           platformFee: platformFeeCents,
@@ -1586,6 +1666,12 @@ export const SalesTab: React.FC = () => {
         const orderCode = await generateOrderCode('S');
         const orderId = doc(collection(db, 'salesOrders')).id;
         const orderRef = doc(db, 'salesOrders', orderId);
+
+        // Upload address photo to Storage if it's a base64 data URL
+        let resolvedAddressPhotoUrl = addressPhotoUrl;
+        if (addressPhotoUrl && addressPhotoUrl.startsWith('data:')) {
+          resolvedAddressPhotoUrl = await uploadAddressPhoto(addressPhotoUrl);
+        }
 
         const orderPayload: any = {
           id: orderId,
@@ -1606,9 +1692,9 @@ export const SalesTab: React.FC = () => {
           buyerType,
           partnerId: isMarketplace ? '' : (selectedPartner?.id || ''),
           partnerName: isMarketplace ? '' : (selectedPartner?.name || ''),
-          addressPhotoUrl,
+          addressPhotoUrl: resolvedAddressPhotoUrl,
           isDraft: options.isDraft ?? false,
-          items: cartItems,
+          items: stripItemCovers(cartItems),
           subtotal: cartSubtotal,
           discount: discountCents,
           platformFee: platformFeeCents,
@@ -4069,20 +4155,21 @@ export const SalesTab: React.FC = () => {
                         >
                           {o.items?.map((it, idx) => {
                             const isTertinggal = it.markedTertinggal || it.markedRefund;
+                            const resolvedCover = it.bookCover || books.find(b => b.id === it.bookId)?.cover || '';
                             return (
                               <div key={idx} className={`book ${isTertinggal ? '!bg-neutral-100 dark:!bg-neutral-800/80 opacity-60 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700/60 mb-2' : ''}`}>
                                 <div 
                                   className="cov"
                                   onClick={(e) => {
-                                    if (it.bookCover) {
+                                    if (resolvedCover) {
                                       e.stopPropagation();
-                                      setPreviewImage({ url: it.bookCover, title: it.bookName });
+                                      setPreviewImage({ url: resolvedCover, title: it.bookName });
                                     }
                                   }}
-                                  style={{ cursor: it.bookCover ? 'pointer' : 'default' }}
+                                  style={{ cursor: resolvedCover ? 'pointer' : 'default' }}
                                 >
-                                  {it.bookCover ? (
-                                    <img referrerPolicy="no-referrer" src={it.bookCover} alt="" className="w-full h-full object-cover rounded-[5px]" />
+                                  {resolvedCover ? (
+                                    <img referrerPolicy="no-referrer" src={resolvedCover} alt="" className="w-full h-full object-cover rounded-[5px]" />
                                   ) : (
                                     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                       <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5V5.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
@@ -4115,24 +4202,32 @@ export const SalesTab: React.FC = () => {
                         <span className="rule"></span>
                       </div>
                       <div className="summary">
-                        <div className="srow">
-                          <span className="k">Subtotal</span>
-                          <span className="v n">{formatNTD(o.subtotal)}</span>
-                        </div>
-                        <div className="srow disc">
-                          <span className="k">Diskon</span>
-                          <span className="v n">−{formatNTD(o.discount || 0)}</span>
-                        </div>
-                        {o.platformFee ? (
-                          <div className="srow" style={{ color: '#d97706' }}>
-                            <span className="k">Biaya Platform</span>
-                            <span className="v n">−{formatNTD(o.platformFee)}</span>
+                        {canViewAmount ? (
+                          <>
+                            <div className="srow">
+                              <span className="k">Subtotal</span>
+                              <span className="v n">{formatNTD(o.subtotal)}</span>
+                            </div>
+                            <div className="srow disc">
+                              <span className="k">Diskon</span>
+                              <span className="v n">−{formatNTD(o.discount || 0)}</span>
+                            </div>
+                            {o.platformFee ? (
+                              <div className="srow" style={{ color: '#d97706' }}>
+                                <span className="k">Biaya Platform</span>
+                                <span className="v n">−{formatNTD(o.platformFee)}</span>
+                              </div>
+                            ) : null}
+                            <div className="srow grand">
+                              <span className="k">Total Akhir (TWD)</span>
+                              <span className="v n">{formatNTD(o.totalPrice)}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="srow" style={{ color: '#9ca3af', fontStyle: 'italic' }}>
+                            <span className="k">Nilai disembunyikan</span>
                           </div>
-                        ) : null}
-                        <div className="srow grand">
-                          <span className="k">Total Akhir (TWD)</span>
-                          <span className="v n">{formatNTD(o.totalPrice)}</span>
-                        </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -4539,19 +4634,19 @@ export const SalesTab: React.FC = () => {
             </span>
             <span className="text-[12.5px] text-[#9ca3af]">
               {activeFilterTab === 'Semua' ? (
-                <>orderan · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSum)}</b> pending</>
+                <>orderan{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSum)}</b> pending</>}</>
               ) : activeFilterTab === 'Pending' ? (
-                <>orderan Pending · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSum)}</b></>
+                <>orderan Pending{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSum)}</b></>}</>
               ) : activeFilterTab === 'Dikemas' ? (
-                <>orderan Dikemas · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(packedSum)}</b></>
+                <>orderan Dikemas{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(packedSum)}</b></>}</>
               ) : activeFilterTab === 'Dikirim' ? (
-                <>orderan Dikirim · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(shippedSum)}</b></>
+                <>orderan Dikirim{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(shippedSum)}</b></>}</>
               ) : activeFilterTab === 'Return' ? (
-                <>orderan Return · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(returnedSum)}</b></>
+                <>orderan Return{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(returnedSum)}</b></>}</>
               ) : activeFilterTab === 'Berhasil' || activeFilterTab === 'Selesai' ? (
-                <>orderan Selesai · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(completedSum)}</b></>
+                <>orderan Selesai{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(completedSum)}</b></>}</>
               ) : (
-                <>orderan Cancel · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(cancelledSum)}</b></>
+                <>orderan Cancel{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(cancelledSum)}</b></>}</>
               )}
             </span>
           </div>
@@ -4657,7 +4752,7 @@ export const SalesTab: React.FC = () => {
               {pendingOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-              {pendingOrders.length > 0 ? formatNTD(pendingSum) : '—'}
+              {canViewAmount ? (pendingOrders.length > 0 ? formatNTD(pendingSum) : '—') : ''}
             </div>
           </button>
 
@@ -4688,7 +4783,7 @@ export const SalesTab: React.FC = () => {
               {packedOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-              {packedOrders.length > 0 ? formatNTD(packedSum) : '—'}
+              {canViewAmount ? (packedOrders.length > 0 ? formatNTD(packedSum) : '—') : ''}
             </div>
           </button>
 
@@ -4719,7 +4814,7 @@ export const SalesTab: React.FC = () => {
               {shippedOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-              {shippedOrders.length > 0 ? formatNTD(shippedSum) : '—'}
+              {canViewAmount ? (shippedOrders.length > 0 ? formatNTD(shippedSum) : '—') : ''}
             </div>
           </button>
 
@@ -4750,7 +4845,7 @@ export const SalesTab: React.FC = () => {
               {completedOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-              {completedOrders.length > 0 ? formatNTD(completedSum) : '—'}
+              {canViewAmount ? (completedOrders.length > 0 ? formatNTD(completedSum) : '—') : ''}
             </div>
           </button>
 
@@ -4781,7 +4876,7 @@ export const SalesTab: React.FC = () => {
               {returnedOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-              {returnedOrders.length > 0 ? formatNTD(returnedSum) : '—'}
+              {canViewAmount ? (returnedOrders.length > 0 ? formatNTD(returnedSum) : '—') : ''}
             </div>
           </button>
 
@@ -4812,7 +4907,7 @@ export const SalesTab: React.FC = () => {
               {cancelledOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-              {cancelledOrders.length > 0 ? formatNTD(cancelledSum) : '—'}
+              {canViewAmount ? (cancelledOrders.length > 0 ? formatNTD(cancelledSum) : '—') : ''}
             </div>
           </button>
         </div>
@@ -5045,10 +5140,12 @@ export const SalesTab: React.FC = () => {
 
                 <div className="kbi-ocard__pricerow">
                   <span className="kbi-ocard__qty">Qty <b>{orderQty}</b></span>
-                  <div className="kbi-ocard__figures">
-                    <div className="kbi-ocard__total">{formatNTD(order.totalPrice)}</div>
-                    {!!order.discount && <div className="kbi-ocard__disc">−{formatNTD(order.discount)}</div>}
-                  </div>
+                  {canViewAmount && (
+                    <div className="kbi-ocard__figures">
+                      <div className="kbi-ocard__total">{formatNTD(order.totalPrice)}</div>
+                      {!!order.discount && <div className="kbi-ocard__disc">−{formatNTD(order.discount)}</div>}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -5135,7 +5232,18 @@ export const SalesTab: React.FC = () => {
 
                 {isDraftLike && isStaffValue ? (
                   <button type="button" className="kbi-ocard__cta" style={{ backgroundColor: '#6366f1' }}
-                    onClick={() => setConfirmingKemasOrder(order)}>Kemas</button>
+                    onClick={() => {
+                      if (order.estimatedShippingDate) {
+                        const shipDate = new Date(order.estimatedShippingDate + 'T00:00:00');
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        if (shipDate > today) {
+                          safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate.replace(/-/g, '/')}`);
+                          return;
+                        }
+                      }
+                      setConfirmingKemasOrder(order);
+                    }}>Kemas</button>
                 ) : order.status === 'packed' && isStaffValue ? (
                   <button type="button" className="kbi-ocard__cta" style={{ backgroundColor: '#2b5a9e' }}
                     onClick={() => {
@@ -5220,7 +5328,7 @@ export const SalesTab: React.FC = () => {
                 </div>
                 <div className="kbi-orow__buyer">{order.customerName}</div>
                 <div className="kbi-orow__bottom">
-                  <span className="kbi-orow__total">{formatNTD(order.totalPrice)}</span>
+                  <span className="kbi-orow__total">{canViewAmount ? formatNTD(order.totalPrice) : ''}</span>
                   <span className="kbi-orow__status" style={{ backgroundColor: pillBg, color: pillColor }}>
                     <span className="kbi-orow__statusdot" style={{ backgroundColor: pillColor }} />
                     {pillLabel}
@@ -5478,12 +5586,18 @@ export const SalesTab: React.FC = () => {
 
                       {/* Total */}
                       <td className="py-3.5 px-4.5 text-right align-middle">
-                        <div className="font-['Inter'] font-bold text-[13.5px] text-[#0d1117] dark:text-neutral-100 tracking-tight">
-                          {formatNTD(order.totalPrice)}
-                        </div>
-                        <div className={`font-['Inter'] text-[11px] mt-0.5 ${order.discount ? 'text-[#a8323b]' : 'text-[#9ca3af]'}`}>
-                          {order.discount ? `−${formatNTD(order.discount)}` : 'tanpa diskon'}
-                        </div>
+                        {canViewAmount ? (
+                          <>
+                            <div className="font-['Inter'] font-bold text-[13.5px] text-[#0d1117] dark:text-neutral-100 tracking-tight">
+                              {formatNTD(order.totalPrice)}
+                            </div>
+                            <div className={`font-['Inter'] text-[11px] mt-0.5 ${order.discount ? 'text-[#a8323b]' : 'text-[#9ca3af]'}`}>
+                              {order.discount ? `−${formatNTD(order.discount)}` : 'tanpa diskon'}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="font-['Inter'] text-[13.5px] text-[#9ca3af]">—</div>
+                        )}
                       </td>
 
                       {/* Status */}
@@ -5662,6 +5776,15 @@ export const SalesTab: React.FC = () => {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (order.estimatedShippingDate) {
+                                  const shipDate = new Date(order.estimatedShippingDate + 'T00:00:00');
+                                  const today = new Date();
+                                  today.setHours(0, 0, 0, 0);
+                                  if (shipDate > today) {
+                                    safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate.replace(/-/g, '/')}`);
+                                    return;
+                                  }
+                                }
                                 setConfirmingKemasOrder(order);
                               }}
                               className="px-3.5 py-1.5 rounded-[7px] bg-[#6366f1] hover:bg-[#4f46e5] text-white font-['Lexend'] font-semibold text-[12px] transition shadow-2xs cursor-pointer select-none ml-1"
@@ -5942,20 +6065,22 @@ export const SalesTab: React.FC = () => {
                 </tbody>
               </table>
 
-              <div className="w-1/2 ml-auto space-y-2 pt-4 border-t-2 border-neutral-200 text-xs text-right">
-                <div className="flex justify-between font-medium">
-                  <span className="text-neutral-550">Subtotal:</span>
-                  <span className="font-numeric">{formatNTD(printInvoiceOrder.subtotal)}</span>
+              {canViewAmount && (
+                <div className="w-1/2 ml-auto space-y-2 pt-4 border-t-2 border-neutral-200 text-xs text-right">
+                  <div className="flex justify-between font-medium">
+                    <span className="text-neutral-550">Subtotal:</span>
+                    <span className="font-numeric">{formatNTD(printInvoiceOrder.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between font-medium text-rose-500">
+                    <span>Diskon Platform:</span>
+                    <span className="font-numeric">-{formatNTD(printInvoiceOrder.discount || 0)}</span>
+                  </div>
+                  <div className="flex justify-between font-black text-sm text-neutral-900 border-t border-neutral-205 pt-2">
+                    <span>GRAND TOTAL (TWD):</span>
+                    <span className="font-numeric text-brand-600">{formatNTD(printInvoiceOrder.totalPrice)}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between font-medium text-rose-500">
-                  <span>Diskon Platform:</span>
-                  <span className="font-numeric">-{formatNTD(printInvoiceOrder.discount || 0)}</span>
-                </div>
-                <div className="flex justify-between font-black text-sm text-neutral-900 border-t border-neutral-205 pt-2">
-                  <span>GRAND TOTAL (TWD):</span>
-                  <span className="font-numeric text-brand-600">{formatNTD(printInvoiceOrder.totalPrice)}</span>
-                </div>
-              </div>
+              )}
 
               <div className="pt-10 text-center text-[10px] text-neutral-400 italic">
                 Terima kasih atas pesanan Anda. Hubungi kami bila ada ketidaksesuaian barang.
@@ -6032,16 +6157,17 @@ export const SalesTab: React.FC = () => {
                     <div className="max-h-28 overflow-y-auto space-y-2">
                       {(selectedOrderForProses.items || []).map((it, idx) => {
                         const isTertinggal = it.markedTertinggal || it.markedRefund;
+                        const resolvedCover = it.bookCover || books.find(b => b.id === it.bookId)?.cover || '';
                         return (
                           <div key={idx} className={`flex items-center gap-3 p-1.5 rounded-lg ${isTertinggal ? 'bg-neutral-200/60 dark:bg-neutral-800/80 opacity-60 border border-neutral-300 dark:border-neutral-700' : ''}`}>
                             <span className="text-neutral-400 dark:text-neutral-500">•</span>
-                            {it.bookCover ? (
+                            {resolvedCover ? (
                               <img 
-                                src={it.bookCover} 
+                                src={resolvedCover} 
                                 alt={it.bookName} 
                                 referrerPolicy="no-referrer"
                                 className="w-10 h-12 object-cover rounded border border-neutral-200 dark:border-neutral-800 shrink-0 cursor-pointer hover:opacity-80 transition" 
-                                onClick={(e) => { e.stopPropagation(); setPreviewImage({ url: it.bookCover!, title: it.bookName }); }}
+                                onClick={(e) => { e.stopPropagation(); setPreviewImage({ url: resolvedCover, title: it.bookName }); }}
                               />
                             ) : (
                               <div className="w-10 h-12 bg-neutral-100 dark:bg-neutral-800 rounded flex items-center justify-center shrink-0 border border-neutral-200 dark:border-neutral-800">
@@ -6079,18 +6205,20 @@ export const SalesTab: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="pt-2.5 border-t border-dashed border-neutral-250 dark:border-neutral-800 space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-semibold text-neutral-500 font-text">Diskon</span>
-                      <span className="font-numeric text-xs font-bold text-red-600 dark:text-red-400">
-                        {selectedOrderForProses.discount ? `- ${formatNTD(selectedOrderForProses.discount)}` : formatNTD(0)}
-                      </span>
+                  {canViewAmount && (
+                    <div className="pt-2.5 border-t border-dashed border-neutral-250 dark:border-neutral-800 space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-semibold text-neutral-500 font-text">Diskon</span>
+                        <span className="font-numeric text-xs font-bold text-red-600 dark:text-red-400">
+                          {selectedOrderForProses.discount ? `- ${formatNTD(selectedOrderForProses.discount)}` : formatNTD(0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1 border-t border-neutral-200/50 dark:border-neutral-800/50">
+                        <span className="text-xs font-bold text-neutral-600 dark:text-neutral-350 font-text">Total Tagihan</span>
+                        <span className="font-numeric text-sm font-black text-[#2b5a9e]">{formatNTD(selectedOrderForProses.totalPrice)}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center pt-1 border-t border-neutral-200/50 dark:border-neutral-800/50">
-                      <span className="text-xs font-bold text-neutral-600 dark:text-neutral-350 font-text">Total Tagihan</span>
-                      <span className="font-numeric text-sm font-black text-[#2b5a9e]">{formatNTD(selectedOrderForProses.totalPrice)}</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* 3. [Modal Lower Form Fields Refactoring] */}
@@ -6980,18 +7108,18 @@ export const SalesTab: React.FC = () => {
                     const b = books.find(book => book.id === it.bookId);
                     return (
                       <div key={`${it.bookId}-${idx}`} className="kbi-so-item-card">
-                        {it.bookCover ? (
+                        {(() => { const resolvedCover = it.bookCover || b?.cover || ''; return resolvedCover ? (
                           <div 
                             className="w-14 bg-neutral-50 dark:bg-neutral-900 overflow-hidden flex-shrink-0 flex items-center justify-center border-r border-neutral-200 dark:border-neutral-800 cursor-pointer transition hover:opacity-80"
-                            onClick={() => setPreviewImage({ url: it.bookCover!, title: it.bookName })}
+                            onClick={() => setPreviewImage({ url: resolvedCover, title: it.bookName })}
                           >
-                            <img referrerPolicy="no-referrer" src={it.bookCover} alt="" className="w-full h-full object-cover" />
+                            <img referrerPolicy="no-referrer" src={resolvedCover} alt="" className="w-full h-full object-cover" />
                           </div>
                         ) : (
                           <div className="w-14 bg-neutral-100 dark:bg-neutral-800 overflow-hidden flex-shrink-0 flex items-center justify-center border-r border-neutral-200 dark:border-neutral-800" style={{backgroundColor: b?.color || '#2B5A9E'}}>
                             <BookOpen className="w-4 h-4 text-white" />
                           </div>
-                        )}
+                        ); })()}
                         <div className="kbi-so-item-info">
                           <div className="flex items-center gap-2 max-w-full overflow-hidden">
                             <TruncatedTooltip content={it.bookName} className="kbi-so-item-title">
@@ -7171,15 +7299,16 @@ export const SalesTab: React.FC = () => {
         document.body,
       )}
 
-      {/* Category Change Confirmation Overlay */}
-      {categoryChangeConfirm && (
+      {/* Category Change Confirmation Overlay — rendered via portal so it always
+          floats above the order-form portal (kbi-so-overlay z-index 40). */}
+      {categoryChangeConfirm && createPortal(
         <div 
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setCategoryChangeConfirm(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-[90]')}
+          className={getModalOverlayClass(sidebarHidden, 'z-[200]')}
         >
           <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-md overflow-hidden animate-scaleIn p-6 space-y-4 my-auto">
             <div className="flex items-center gap-3">
@@ -7232,7 +7361,7 @@ export const SalesTab: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* Revert Status Confirmation Overlay */}
       {revertConfirmState && (
@@ -8127,7 +8256,7 @@ export const SalesTab: React.FC = () => {
 
             <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs space-y-2 text-neutral-700 dark:text-neutral-300">
               <p>
-                Sistem akan memposting Jurnal Otomatis sebesar <strong className="text-rose-600 dark:text-rose-400">{formatNTD(refundConfirmOrder.totalPrice)}</strong>:
+                Sistem akan memposting Jurnal Otomatis{canViewAmount && <> sebesar <strong className="text-rose-600 dark:text-rose-400">{formatNTD(refundConfirmOrder.totalPrice)}</strong></>}:
               </p>
               <div className="font-mono text-[11px] bg-white dark:bg-neutral-900 p-2.5 rounded-lg border border-neutral-200 dark:border-neutral-800 space-y-1">
                 <div className="text-emerald-700 dark:text-emerald-400">Debit: 5500 Beban Lain-lain</div>

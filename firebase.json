@@ -5,7 +5,21 @@
     "edition": "ENTERPRISE",
     "dataAccessMode": "FIRESTORE_NATIVE"
   },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
   "hosting": {
+    "site": "gen-lang-client-0501656267",
     "public": "dist",
     "ignore": [
       "firebase.json",

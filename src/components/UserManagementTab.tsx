@@ -21,12 +21,14 @@ const MODULES = [
     ] 
   },
   { key: 'sales', label: 'Sales Orders', sub: [
+      { key: 'sales.viewAmount', label: 'Lihat Nilai Penjualan', sensitive: true },
       { key: 'sales.proses', label: 'Tombol "Proses"', sensitive: true },
       { key: 'sales.prosesMassal', label: 'Fitur "Proses Massal"', sensitive: true },
       { key: 'sales.reverse', label: 'Tombol "Reverse"', sensitive: true }
     ]
   },
   { key: 'purchases', label: 'Purchase Orders', sub: [
+      { key: 'purchases.viewAmount', label: 'Lihat Nilai Pembelian', sensitive: true },
       { key: 'purchases.import', label: 'Tombol "Import Excel / CSV"' },
       { key: 'purchases.receive', label: 'Tombol "Terima Barang"' }
     ] 
