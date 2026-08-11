@@ -7,7 +7,7 @@ import {
   persistentMultipleTabManager 
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import firebaseConfig from '../../firebase-applet-config.json';
+import firebaseConfig from '../../firebase-applet-config.json' with { type: 'json' };
 
 const app = initializeApp(firebaseConfig);
 

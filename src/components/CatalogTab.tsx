@@ -2024,9 +2024,67 @@ service firebase.storage {
           })}
         </div>
       ) : (
-        /* Dense Table View */
-        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
+        /* Table / Mobile Stacked View */
+        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden shadow-xs">
+          {/* Mobile Stacked Cards (<768px) */}
+          <div className="block md:hidden divide-y divide-neutral-100 dark:divide-neutral-800">
+            {paginatedBooks.map((book) => (
+              <div key={`m-${book.id}`} className="p-4 flex gap-3 items-start bg-white dark:bg-neutral-900">
+                <div 
+                  className="h-16 w-16 bg-neutral-100 dark:bg-neutral-950 rounded-lg overflow-hidden shrink-0 border border-neutral-200 dark:border-neutral-800 flex items-center justify-center cursor-pointer"
+                  onClick={() => {
+                    if (!brokenImages[book.id] && book.cover) {
+                      setPreviewImage({ url: book.cover, title: book.bookName });
+                    }
+                  }}
+                >
+                  {!brokenImages[book.id] && book.cover ? (
+                    <img referrerPolicy="no-referrer" src={book.cover} alt="" className="w-full h-full object-contain" onError={() => setBrokenImages(prev => ({ ...prev, [book.id]: true }))} />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold">
+                      {book.bookName ? book.bookName.substring(0, 2).toUpperCase() : 'B'}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono font-numbers text-[11px] text-neutral-400 font-semibold">{book.productId || '-'}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${book.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'}`}>
+                      {book.isActive ? 'Aktif' : 'Nonaktif'}
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-neutral-900 dark:text-neutral-100 text-xs mt-0.5 truncate">{book.bookName}</h4>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400">{book.author || 'Anonim'}</p>
+                  
+                  <div className="mt-2.5 pt-2 border-t border-neutral-100 dark:border-neutral-800/60 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] text-neutral-400 block">Harga Mkt</span>
+                      <span className="font-bold font-numbers text-indigo-600 dark:text-indigo-400">{formatNTD(book.shopeePrice)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-neutral-400 block">Harga Umum</span>
+                      <span className="font-semibold font-numbers text-neutral-700 dark:text-neutral-300">{formatNTD(book.generalPrice)}</span>
+                    </div>
+                    {isStaffValue && (
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openBookModal(book)} className="p-1.5 text-neutral-600 hover:text-indigo-600 dark:text-neutral-400 rounded-md">
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        {isOwner && (
+                          <button onClick={() => deleteBook(book.id)} className="p-1.5 text-neutral-600 hover:text-rose-600 dark:text-neutral-400 rounded-md">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table (>=768px) */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-neutral-50 dark:bg-neutral-950 text-neutral-500 dark:text-neutral-400 text-xs font-semibold uppercase border-b border-neutral-200 dark:border-neutral-800">

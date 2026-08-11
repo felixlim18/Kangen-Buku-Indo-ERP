@@ -49,13 +49,24 @@
   --color-forest-bg: #eaf3ee;
   --color-status-green: #2f7a52;
   --color-status-green-bg: #e8f4ec;
-  --font-sans: "Lexend", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Inter", ui-monospace, SFMono-Regular, monospace;
-  --font-display: "Lexend", sans-serif;
-  --font-serif: "Fraunces", serif;
-  --font-ibm-mono: "Inter", monospace;
-  --font-text: "Lexend", ui-sans-serif, system-ui, sans-serif;
-  --font-numeric: "Inter", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: 'Lexend', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Inter', ui-monospace, SFMono-Regular, monospace;
+  --font-display: 'Lexend', sans-serif;
+  --font-serif: 'Fraunces', serif;
+  --font-ibm-mono: 'Inter', monospace;
+  --font-text: 'Lexend', ui-sans-serif, system-ui, sans-serif;
+  --font-numeric: 'Inter', ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    font-family: 'Lexend', sans-serif;
+  }
+}
+
+.font-numbers, .font-numeric, .font-mono {
+  font-family: 'Inter', monospace !important;
+  font-feature-settings: "tnum" 1, "cv05" 1;
 }
 
 /* Custom CSS Scrollbar and print rules */

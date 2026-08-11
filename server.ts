@@ -2,14 +2,14 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { importPoHandler } from './src/server/importPo';
-import { categoryAiHandler } from './src/server/categoryAi';
+import { importPoHandler } from './src/server/importPo.ts';
+import { categoryAiHandler } from './src/server/categoryAi.ts';
 import { 
   lineWebhookHandler, 
   lineNotifyOrderEndpoint, 
   lineSendTestEndpoint, 
   lineGetRecentUsersEndpoint 
-} from './src/server/line';
+} from './src/server/line.ts';
 
 async function startServer() {
   const app = express();
@@ -31,7 +31,7 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
-    const viteConfig = (await import('./vite.config')).default;
+    const viteConfig = (await import('./vite.config.ts')).default;
     const vite = await createViteServer({
       ...viteConfig,
       configFile: false,
