@@ -7151,14 +7151,15 @@ export const SalesTab: React.FC = () => {
                 <div className="kbi-so-field" style={{ marginBottom: 4 }}>
                   <label className="kbi-so-label">Konfirmasi Sebelum Dikirim</label>
                   <label className="kbi-so-toggle-wrapper" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
-                    <div className="kbi-so-toggle">
+                    <div className="kbi-so-toggle relative w-10 h-5">
                       <input 
                         type="checkbox" 
                         checked={perluKonfirmasiSebelumKirim} 
                         onChange={e => setPerluKonfirmasiSebelumKirim(e.target.checked)} 
-                        className="sr-only peer"
+                        className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer peer"
                       />
-                      <div className="w-10 h-5 bg-neutral-300 dark:bg-neutral-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6366f1] relative"></div>
+                      <div className="absolute inset-0 bg-neutral-300 dark:bg-neutral-600 rounded-full peer-checked:bg-[#6366f1] transition-colors duration-200"></div>
+                      <div className="absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-4 w-4 transition-transform duration-200 peer-checked:translate-x-5 peer-checked:border-white shadow-sm"></div>
                     </div>
                     <span className="text-[13px] font-semibold text-neutral-700 dark:text-neutral-300">
                       {perluKonfirmasiSebelumKirim ? 'ON' : 'OFF'}
