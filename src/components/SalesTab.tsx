@@ -5218,6 +5218,14 @@ export const SalesTab: React.FC = () => {
                   <span className="font-semibold text-neutral-700 dark:text-neutral-300">
                     {order.paymentMethod || 'COD'}
                   </span>
+                  {order.pickupLogistics && (
+                    <>
+                      <span className="text-neutral-300 dark:text-neutral-600">•</span>
+                      <span className="font-semibold text-neutral-700 dark:text-neutral-300">
+                        {order.pickupLogistics}
+                      </span>
+                    </>
+                  )}
                 </div>
 
                 {/* Baris 5: Qty + Diskon + Total */}
