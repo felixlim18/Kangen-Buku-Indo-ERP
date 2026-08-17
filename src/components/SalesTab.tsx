@@ -4745,7 +4745,7 @@ export const SalesTab: React.FC = () => {
         </div>
 
         {/* CHIPS */}
-        <div className="kbi-sostat flex overflow-x-auto snap-x hide-scrollbar gap-2.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-4 lg:grid-cols-7 sm:overflow-visible sm:pb-0 mb-3">
+        <div className="kbi-sostat flex overflow-x-auto snap-x hide-scrollbar gap-2.5 pb-2 sm:grid sm:grid-cols-4 lg:grid-cols-7 sm:overflow-visible sm:pb-0 mb-3">
           {/* Semua */}
           <button
             type="button"
