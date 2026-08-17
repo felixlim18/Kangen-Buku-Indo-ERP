@@ -301,7 +301,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       {/* ── TOP BAR · the "bound edge" ────────────────────────────────────── */}
       <header className="md:hidden kbi-mtop">
         <div className="kbi-mtop__left">
-          {currentTab !== 'dashboard' && currentTab !== 'sales' ? (
+          {currentTab !== 'dashboard' && currentTab !== 'sales' && currentTab !== 'purchases' ? (
             <button
               type="button"
               onClick={handleBackClick}
