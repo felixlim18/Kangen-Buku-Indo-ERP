@@ -69,7 +69,7 @@
 
     /* Shell geometry */
     --m-topbar-h: calc(60px + env(safe-area-inset-top, 0px));
-    --m-dock-h:   68px;
+    --m-dock-h:   58px; /* Slightly taller compact height */
   }
 
   .dark {
@@ -335,12 +335,12 @@
     padding: 0 4px;
     display: flex;
     align-items: stretch;
-    border-radius: 22px;
-    background: color-mix(in srgb, var(--m-surface) 88%, transparent);
+    border-radius: 999px; /* Pill shape */
+    background: color-mix(in srgb, var(--m-surface) 25%, transparent);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border: 1px solid var(--m-line);
-    box-shadow: var(--m-shadow-3);
+    border: 1px solid color-mix(in srgb, var(--m-line) 50%, transparent);
+    box-shadow: 0 10px 40px -10px rgba(0,0,0,0.15);
     user-select: none;
   }
 
@@ -351,9 +351,9 @@
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
-    box-shadow: inset 0 1px 0 0 rgba(255,255,255,.6);
+    box-shadow: inset 0 1px 0 0 rgba(255,255,255,.3);
   }
-  .dark .kbi-mdock::after { box-shadow: inset 0 1px 0 0 rgba(255,255,255,.06); }
+  .dark .kbi-mdock::after { box-shadow: inset 0 1px 0 0 rgba(255,255,255,.04); }
 
   .kbi-mdock__btn {
     position: relative;
@@ -378,37 +378,53 @@
     justify-content: center;
     border-radius: 10px;
     transition: background .28s var(--m-ease), transform .28s var(--m-ease);
+    position: relative;
+    z-index: 1;
   }
   .kbi-mdock__btn:active .kbi-mdock__icon { transform: scale(.86); }
 
   .kbi-mdock__label {
-    font-family: 'Lexend', sans-serif;
-    font-size: 9.5px;
-    font-weight: 500;
-    letter-spacing: -.01em;
-    line-height: 1;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    transition: font-weight .2s var(--m-ease);
+    display: none; /* Hidden as requested */
   }
 
   .kbi-mdock__btn.is-active { color: var(--m-forest); }
-  .kbi-mdock__btn.is-active .kbi-mdock__icon { background: var(--m-forest-tint); }
+  .kbi-mdock__btn.is-active .kbi-mdock__icon { background: transparent; }
   .kbi-mdock__btn.is-active .kbi-mdock__label { font-weight: 700; }
 
-  /* ★ The bookmark ribbon — a notched tab hanging from the shelf's top edge. */
-  .kbi-mdock__btn.is-active::before {
-    content: '';
+  /* ★ The liquid glass bubble — chromatic aberration & water drop reflection */
+  .kbi-mdock__bubble {
     position: absolute;
-    top: -1px;
-    left: 50%;
-    width: 20px; height: 11px;
-    background: linear-gradient(180deg, var(--m-forest) 0%, var(--m-forest-deep) 100%);
-    clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 58%, 0 100%);
-    transform-origin: top center;
-    animation: kbi-ribbon .42s var(--m-ease-out) both;
+    inset: 4px;
+    border-radius: 999px; /* pill shape */
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.05));
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+    border-right-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 
+      inset 2px 2px 4px rgba(255, 255, 255, 0.9),
+      inset -2px -2px 6px rgba(0, 0, 0, 0.05),
+      inset 4px 0 12px rgba(0, 200, 255, 0.15),
+      inset -4px 0 12px rgba(255, 0, 200, 0.15),
+      0 4px 12px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(16px) saturate(120%);
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    z-index: 0;
+  }
+
+  .dark .kbi-mdock__bubble {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02));
+    border-color: rgba(255, 255, 255, 0.3);
+    border-bottom-color: rgba(255, 255, 255, 0.05);
+    border-right-color: rgba(255, 255, 255, 0.05);
+    box-shadow: 
+      inset 1px 1px 3px rgba(255, 255, 255, 0.4),
+      inset -2px -2px 5px rgba(0, 0, 0, 0.6),
+      inset 6px 0 16px rgba(0, 150, 255, 0.6), /* strong cyan chromatic edge */
+      inset -6px 0 16px rgba(0, 255, 150, 0.5), /* strong green edge */
+      inset 0 4px 10px rgba(100, 50, 255, 0.4), /* purple top glow */
+      0 6px 16px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────

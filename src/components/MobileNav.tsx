@@ -374,7 +374,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 <motion.div
                   layoutId="activeDockBubble"
                   className="kbi-mdock__bubble"
-                  transition={{ type: "spring", bounce: 0.4, duration: 0.6 }}
+                  transition={{ type: "spring", bounce: 0.55, duration: 0.55 }}
                   style={{ scaleX: dockScaleX, originX: dockOriginX }}
                 />
               )}
@@ -401,7 +401,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 <motion.div
                   layoutId="activeDockBubble"
                   className="kbi-mdock__bubble"
-                  transition={{ type: "spring", bounce: 0.4, duration: 0.6 }}
+                  transition={{ type: "spring", bounce: 0.55, duration: 0.55 }}
                   style={{ scaleX: dockScaleX, originX: dockOriginX }}
                 />
               )}
