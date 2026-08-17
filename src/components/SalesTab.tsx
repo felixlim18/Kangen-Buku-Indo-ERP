@@ -410,6 +410,7 @@ export const SalesTab: React.FC = () => {
   const [exchangeRateTWDtoIDR, setExchangeRateTWDtoIDR] = useState<number>(500);
   const [orderNumber, setOrderNumber] = useState('');
   const [estimatedShippingDate, setEstimatedShippingDate] = useState('');
+  const [perluKonfirmasiSebelumKirim, setPerluKonfirmasiSebelumKirim] = useState<boolean>(false);
   
   const [buyerType, setBuyerType] = useState<'langsung' | 'reseller' | 'marketplace'>('marketplace');
   const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string, profitSharePercent: number} | null>(null);
@@ -464,6 +465,7 @@ export const SalesTab: React.FC = () => {
   };
 
   // Kemas modal confirmation state
+  const [confirmingCustomerPreKemasOrder, setConfirmingCustomerPreKemasOrder] = useState<SalesOrder | null>(null);
   const [confirmingKemasOrder, setConfirmingKemasOrder] = useState<SalesOrder | null>(null);
   const [isKemasSubmitting, setIsKemasSubmitting] = useState<boolean>(false);
 
@@ -1823,6 +1825,7 @@ export const SalesTab: React.FC = () => {
     setCustomerNote('');
     setOrderNumber('');
     setEstimatedShippingDate('');
+    setPerluKonfirmasiSebelumKirim(false);
     setPhoneWarning('');
     setBuyerType('langsung');
     setSelectedPartner(null);
@@ -3133,6 +3136,7 @@ export const SalesTab: React.FC = () => {
             customerNote: customerNoteInput,
             orderNumber: orderNumberInput,
             estimatedShippingDate: estimatedShippingDateInput,
+            perluKonfirmasiSebelumKirim: false,
             buyerType: buyerTypeInput,
             partnerId: isImportMkp ? '' : partnerId,
             partnerName: isImportMkp ? '' : partnerName,
@@ -3683,6 +3687,7 @@ export const SalesTab: React.FC = () => {
     setCustomerNote(order.customerNote || '');
     setOrderNumber(order.orderNumber || '');
       setEstimatedShippingDate(order.estimatedShippingDate || '');
+      setPerluKonfirmasiSebelumKirim(order.perluKonfirmasiSebelumKirim || false);
     setPhoneWarning('');
     const initialBuyerType = order.buyerType || (
       (order.platformOrder && ['Shopee', 'Tokopedia', 'TikTok Shop', 'Lazada'].includes(order.platformOrder)) || order.orderType === 'Marketplace'
@@ -5327,7 +5332,11 @@ export const SalesTab: React.FC = () => {
                           return;
                         }
                       }
-                      setConfirmingKemasOrder(order);
+                      if (order.perluKonfirmasiSebelumKirim) {
+                        setConfirmingCustomerPreKemasOrder(order);
+                      } else {
+                        setConfirmingKemasOrder(order);
+                      }
                     }}>Kemas</button>
                 ) : order.status === 'packed' && isStaffValue ? (
                   <button type="button" className="kbi-ocard__cta" style={{ backgroundColor: '#2b5a9e' }}
@@ -5879,7 +5888,11 @@ export const SalesTab: React.FC = () => {
                                     return;
                                   }
                                 }
-                                setConfirmingKemasOrder(order);
+                                if (order.perluKonfirmasiSebelumKirim) {
+                                  setConfirmingCustomerPreKemasOrder(order);
+                                } else {
+                                  setConfirmingKemasOrder(order);
+                                }
                               }}
                               className="px-3.5 py-1.5 rounded-[7px] bg-[#6366f1] hover:bg-[#4f46e5] text-white font-['Lexend'] font-semibold text-[12px] transition shadow-2xs cursor-pointer select-none ml-1"
                             >
@@ -7128,6 +7141,24 @@ export const SalesTab: React.FC = () => {
                 </div>
 
                 <div className="kbi-so-field" style={{ marginBottom: 4 }}>
+                  <label className="kbi-so-label">Konfirmasi Sebelum Dikirim</label>
+                  <label className="kbi-so-toggle-wrapper" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
+                    <div className="kbi-so-toggle">
+                      <input 
+                        type="checkbox" 
+                        checked={perluKonfirmasiSebelumKirim} 
+                        onChange={e => setPerluKonfirmasiSebelumKirim(e.target.checked)} 
+                        className="sr-only peer"
+                      />
+                      <div className="w-10 h-5 bg-neutral-300 dark:bg-neutral-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#6366f1] relative"></div>
+                    </div>
+                    <span className="text-[13px] font-semibold text-neutral-700 dark:text-neutral-300">
+                      {perluKonfirmasiSebelumKirim ? 'ON' : 'OFF'}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="kbi-so-field" style={{ marginBottom: 4 }}>
                   <label className="kbi-so-label">Tanggal Diminta Kirim</label>
                   <div className="relative group">
                     <input 
@@ -8004,6 +8035,63 @@ export const SalesTab: React.FC = () => {
            salesOrders={orders}
            damagedRecords={damagedRecords}
         />
+      )}
+
+      {/* ================= MODAL: Konfirmasi Customer Pre-Kemas ================= */}
+      {confirmingCustomerPreKemasOrder && (
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setConfirmingCustomerPreKemasOrder(null);
+            }
+          }}
+          className={getModalOverlayClass(sidebarHidden, 'z-50')}
+        >
+          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[90%] p-5 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
+            <div className="h-12 w-12 rounded-2xl bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+              <AlertCircle className="h-6 w-6" />
+            </div>
+
+            <div className="text-center">
+              <h3 className="text-base font-bold text-neutral-900 dark:text-white">Apakah udah di konfirmasi ke Customer ?</h3>
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-3 text-left space-y-2 bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-neutral-500">Kategori:</span>
+                  <span className="font-bold text-neutral-900 dark:text-neutral-100 capitalize">{confirmingCustomerPreKemasOrder.buyerType || '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-neutral-500">Sumber Order:</span>
+                  <span className="font-bold text-neutral-900 dark:text-neutral-100">{confirmingCustomerPreKemasOrder.platformChannel || confirmingCustomerPreKemasOrder.platformOrder || '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-semibold text-neutral-500">Nomor Order:</span>
+                  <span className="font-bold text-neutral-900 dark:text-neutral-100">{confirmingCustomerPreKemasOrder.orderNumber || confirmingCustomerPreKemasOrder.orderCode}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmingCustomerPreKemasOrder(null)}
+                className="flex-1 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 rounded-xl transition cursor-pointer"
+              >
+                Belum
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const ord = confirmingCustomerPreKemasOrder;
+                  setConfirmingCustomerPreKemasOrder(null);
+                  setConfirmingKemasOrder(ord);
+                }}
+                className="flex-1 py-2 text-xs font-bold text-white bg-[#6366f1] hover:bg-[#4f46e5] rounded-xl shadow-xs transition cursor-pointer"
+              >
+                Sudah
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ================= MODAL: Konfirmasi Kemas Orderan ================= */}
