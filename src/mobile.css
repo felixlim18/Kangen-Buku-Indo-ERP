@@ -336,24 +336,44 @@
     display: flex;
     align-items: stretch;
     border-radius: 999px; /* Pill shape */
-    background: color-mix(in srgb, var(--m-surface) 25%, transparent);
+    
+    /* Transparent Frosted Glass Background */
+    background: color-mix(in srgb, var(--m-surface) 35%, transparent);
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border: 1px solid color-mix(in srgb, var(--m-line) 50%, transparent);
-    box-shadow: 0 10px 40px -10px rgba(0,0,0,0.15);
+    
+    /* Liquid Glass Effect (Light Mode Default) */
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-top-color: rgba(255, 255, 255, 0.8);
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+    
+    box-shadow: 
+      inset 0 3px 6px rgba(255, 255, 255, 0.6), /* Top inner glow */
+      inset 0 -5px 8px rgba(0, 0, 0, 0.15), /* Bottom inner shadow */
+      inset 3px 0 6px rgba(255, 255, 255, 0.4), /* Left inner glow */
+      inset -3px 0 6px rgba(0, 0, 0, 0.05), /* Right inner shadow */
+      0 10px 40px -10px rgba(0,0,0,0.15); /* Outer drop shadow */
+      
     user-select: none;
   }
 
-  /* Hairline highlight along the shelf edge — reads as polished wood/paper. */
-  .kbi-mdock::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    box-shadow: inset 0 1px 0 0 rgba(255,255,255,.3);
+  /* Liquid Glass Effect (Dark Mode Overrides) */
+  .dark .kbi-mdock {
+    border-color: rgba(255, 255, 255, 0.15);
+    border-top-color: rgba(255, 255, 255, 0.4);
+    border-bottom-color: rgba(0, 0, 0, 0.6);
+    box-shadow: 
+      inset 0 3px 6px rgba(255, 255, 255, 0.2), 
+      inset 0 -5px 8px rgba(0, 0, 0, 0.6), 
+      inset 3px 0 6px rgba(255, 255, 255, 0.1), 
+      inset -3px 0 6px rgba(0, 0, 0, 0.4), 
+      0 10px 40px -10px rgba(0,0,0,0.5); 
   }
-  .dark .kbi-mdock::after { box-shadow: inset 0 1px 0 0 rgba(255,255,255,.04); }
+
+  /* Remove the hairline highlight since we have robust box-shadow on the parent now */
+  .kbi-mdock::after {
+    display: none;
+  }
 
   .kbi-mdock__btn {
     position: relative;
@@ -365,7 +385,7 @@
     justify-content: center;
     gap: 4px;
     padding: 0 2px;
-    color: var(--m-ink-3);
+    color: var(--m-ink-3); /* Adapts to light/dark mode */
     background: none;
     border: 0;
     transition: color .2s var(--m-ease);
@@ -387,44 +407,25 @@
     display: none; /* Hidden as requested */
   }
 
-  .kbi-mdock__btn.is-active { color: var(--m-forest); }
+  .kbi-mdock__btn.is-active { color: var(--m-forest); } /* Brand color for active */
   .kbi-mdock__btn.is-active .kbi-mdock__icon { background: transparent; }
   .kbi-mdock__btn.is-active .kbi-mdock__label { font-weight: 700; }
 
-  /* ★ The liquid glass bubble — chromatic aberration & water drop reflection */
+  /* ★ Subtle highlight for the active menu indicator */
   .kbi-mdock__bubble {
     position: absolute;
     inset: 4px;
     border-radius: 999px; /* pill shape */
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.05));
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    border-bottom-color: rgba(255, 255, 255, 0.2);
-    border-right-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 
-      inset 2px 2px 4px rgba(255, 255, 255, 0.9),
-      inset -2px -2px 6px rgba(0, 0, 0, 0.05),
-      inset 4px 0 12px rgba(0, 200, 255, 0.15),
-      inset -4px 0 12px rgba(255, 0, 200, 0.15),
-      0 4px 12px rgba(0, 0, 0, 0.1);
-    backdrop-filter: blur(16px) saturate(120%);
-    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    background: color-mix(in srgb, var(--m-forest) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--m-forest) 20%, transparent);
+    box-shadow: inset 0 2px 4px color-mix(in srgb, var(--m-forest) 10%, transparent);
     z-index: 0;
   }
 
   .dark .kbi-mdock__bubble {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02));
-    border-color: rgba(255, 255, 255, 0.3);
-    border-bottom-color: rgba(255, 255, 255, 0.05);
-    border-right-color: rgba(255, 255, 255, 0.05);
-    box-shadow: 
-      inset 1px 1px 3px rgba(255, 255, 255, 0.4),
-      inset -2px -2px 5px rgba(0, 0, 0, 0.6),
-      inset 6px 0 16px rgba(0, 150, 255, 0.6), /* strong cyan chromatic edge */
-      inset -6px 0 16px rgba(0, 255, 150, 0.5), /* strong green edge */
-      inset 0 4px 10px rgba(100, 50, 255, 0.4), /* purple top glow */
-      0 6px 16px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    background: color-mix(in srgb, var(--m-forest) 20%, transparent);
+    border-color: color-mix(in srgb, var(--m-forest) 30%, transparent);
+    box-shadow: inset 0 2px 4px color-mix(in srgb, var(--m-forest) 20%, transparent);
   }
 
   /* ─────────────────────────────────────────────────────────────────────────
