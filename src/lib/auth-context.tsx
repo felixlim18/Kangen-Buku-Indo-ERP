@@ -18,6 +18,7 @@ interface AuthContextType {
   setAuthError: (err: string | null) => void;
   loginWithGoogle: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  loginWithEmailPassword: (e: string, p: string) => Promise<void>;
   logout: () => Promise<void>;
   loginAsDemo: (role: 'owner' | 'staff') => Promise<void>;
   updateDisplayName: (newName: string) => Promise<void>;
@@ -236,6 +237,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(false);
   };
 
+  const loginWithEmailPassword = async (rawEmail: string, rawPass: string) => {
+    const email = rawEmail.trim();
+    const pass = rawPass.trim();
+    setLoading(true);
+    setAuthError(null);
+
+    const ownerUsername = (import.meta.env.VITE_OWNER_USERNAME || 'kangenbukuindo@gmail.com').trim();
+    const ownerPassword = (import.meta.env.VITE_OWNER_PASSWORD || 'kangenbukuindo123').trim();
+    
+    // Fallback local mock user login for preview / iframe environments if owner credentials are correct
+    if (email === ownerUsername && pass === ownerPassword) {
+      console.warn("Using local mock demo user fallback for preview environment");
+      const mockUser = {
+        uid: 'demo-owner-uid',
+        email,
+        displayName: 'Login Owner',
+        emailVerified: true,
+        isAnonymous: false,
+        metadata: {},
+        providerData: [],
+        refreshToken: '',
+        tenantId: null,
+        delete: async () => {},
+        getIdToken: async () => 'mock-token',
+        getIdTokenResult: async () => ({
+          authTime: '',
+          expirationTime: '',
+          issuedAtTime: '',
+          signInProvider: 'demo',
+          signInSecondFactor: null,
+          token: 'mock-token',
+          claims: { role: 'owner' }
+        }),
+        reload: async () => {},
+        toJSON: () => ({}),
+        phoneNumber: null,
+        photoURL: null,
+        providerId: 'demo'
+      } as unknown as User;
+
+      setUser(mockUser);
+      setProfile({
+        uid: mockUser.uid,
+        email,
+        role: 'owner',
+        displayName: 'Login Owner',
+        permissions: {},
+        status: 'aktif'
+      });
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+    } catch (err: any) {
+      console.warn("Firebase email auth attempt notice:", err?.code || err);
+      setAuthError("Username atau password salah.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loginAsDemo = async (role: 'owner' | 'staff') => {
     setLoading(true);
     setAuthError(null);
@@ -328,7 +392,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, authError, setAuthError, loginWithGoogle, signInWithGoogle, logout, loginAsDemo, updateDisplayName }}>
+    <AuthContext.Provider value={{ user, profile, loading, authError, setAuthError, loginWithEmailPassword, loginWithGoogle, signInWithGoogle, logout, loginAsDemo, updateDisplayName }}>
       {children}
     </AuthContext.Provider>
   );

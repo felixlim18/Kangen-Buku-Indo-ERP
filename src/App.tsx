@@ -51,10 +51,14 @@ const TabLoader: React.FC = () => (
 );
 
 const MainAppContent: React.FC = () => {
-  const { user, profile, loading, signInWithGoogle, loginAsDemo, authError } = useAuth();
+  const { user, profile, loading, signInWithGoogle, loginAsDemo, loginWithEmailPassword, authError } = useAuth();
   const { sidebarHidden, setSidebarHidden } = useSidebar();
   const [activeTab, setActiveTab ] = useState('dashboard');
   const [activeSubTab, setActiveSubTab] = useState<'cashflow' | 'profit-loss' | 'payroll' | 'partners' | 'prive' | 'neraca' | 'equity-change' | 'utang'>('cashflow');
+
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   const hasPerm = (key: string) => {
     if (key === 'settings') return true;
@@ -181,20 +185,54 @@ const MainAppContent: React.FC = () => {
 
             <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 text-center space-y-2">
               <p className="text-xs text-neutral-400 font-medium">Atau Masuk Cepat (Ideal untuk Preview):</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => loginAsDemo('owner')}
-                  className="py-2.5 px-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-semibold rounded-xl text-xs transition cursor-pointer"
-                >
-                  Demo Owner
-                </button>
-                <button
-                  onClick={() => loginAsDemo('staff')}
-                  className="py-2.5 px-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-semibold rounded-xl text-xs transition cursor-pointer"
-                >
-                  Demo Staff
-                </button>
-              </div>
+              {!showEmailForm ? (
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    onClick={() => setShowEmailForm(true)}
+                    className="py-2.5 px-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-semibold rounded-xl text-xs transition cursor-pointer"
+                  >
+                    Login Owner
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 text-left bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Username / Email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full text-xs p-2.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-neutral-900 dark:text-neutral-100"
+                    />
+                    <input
+                      type="password"
+                      placeholder="Password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full text-xs p-2.5 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-neutral-900 dark:text-neutral-100"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          loginWithEmailPassword(email, password);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowEmailForm(false)}
+                      className="flex-1 py-2 px-3 bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold rounded-lg text-xs transition cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      onClick={() => loginWithEmailPassword(email, password)}
+                      className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-xs transition cursor-pointer shadow-sm"
+                    >
+                      Login
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
