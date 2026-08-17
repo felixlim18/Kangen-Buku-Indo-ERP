@@ -23,6 +23,7 @@ import { PriveTab } from './PriveTab';
 import { PiutangUtangTab } from './PiutangUtangTab';
 import { formatNTD, formatIDR, getAccountBalanceForPeriod, formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
 import { isPeriodClosed } from '../lib/period-closing-utils';
+import { formatDate } from '../lib/date-utils';
 import { ensureAutoAccountExists, AUTO_ACCOUNTS, findAccountByRole, getLiveAutoAccounts, AutoAccount } from '../lib/journalAuto';
 import { useAuth } from '../lib/auth-context';
 import { 
@@ -330,7 +331,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
           ? editingPayroll.paidAt 
           : new Date(editingPayroll.paidAt);
       if (isPeriodClosed(originalPaidAtDate, closedPeriods)) {
-        setErrorMsg(`Tidak dapat mengubah transaksi. Tanggal transaksi awal (${originalPaidAtDate.toLocaleDateString()}) berada di periode yang sudah ditutup.`);
+        setErrorMsg(`Tidak dapat mengubah transaksi. Tanggal transaksi awal (${formatDate(originalPaidAtDate)}) berada di periode yang sudah ditutup.`);
         return;
       }
     }
@@ -489,7 +490,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
         : new Date(payroll.paidAt);
     
     if (isPeriodClosed(paidAtDate, closedPeriods)) {
-      alert(`Tidak dapat menghapus transaksi. Tanggal transaksi awal (${paidAtDate.toLocaleDateString()}) berada di periode yang sudah ditutup.`);
+      alert(`Tidak dapat menghapus transaksi. Tanggal transaksi awal (${formatDate(paidAtDate)}) berada di periode yang sudah ditutup.`);
       return;
     }
 
@@ -728,7 +729,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
                       <td className="p-4 text-center font-bold">{p.payee}</td>
                       <td className="p-4 text-center text-neutral-500 font-medium">{p.period}</td>
                       <td className="p-4 text-center text-xs">
-                        <div>{p.paidAt?.seconds ? new Date(p.paidAt.seconds * 1000).toLocaleDateString() : 'N/A'}</div>
+                        <div>{formatDate(p.paidAt)}</div>
                         {isClosed && (
                           <span className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-rose-500/10 text-rose-500 border border-rose-500/20">
                             Terkunci

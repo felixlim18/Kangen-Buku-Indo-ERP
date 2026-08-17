@@ -6,6 +6,7 @@ import { formatNumber, cleanCommas } from '../lib/decimal-utils';
 import { AUTO_ACCOUNTS, ensureAutoAccountExists, getLiveAutoAccounts, AutoAccount } from '../lib/journalAuto';
 import { Receipt, X, Trash2, Edit2, Search, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { isPeriodClosed } from '../lib/period-closing-utils';
+import { formatDate } from '../lib/date-utils';
 
 // Categories mapping for UI
 const CATEGORIES = {
@@ -474,10 +475,7 @@ const BebanLainnyaTab: React.FC = () => {
           ) : (
             filteredList.map((entry) => {
               const cat = CATEGORIES[entry.kategori as keyof typeof CATEGORIES] || CATEGORIES.lain;
-              const dt = new Date(entry.tanggal + 'T00:00:00');
-              const d = dt.getDate().toString().padStart(2, '0');
-              const m = dt.toLocaleString('id-ID', { month: 'short' });
-              const y = dt.getFullYear();
+              const dateStrFormatted = formatDate(entry.tanggal);
               
               return (
                 <div key={entry.id} className="relative flex items-center gap-3 md:gap-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-3 md:p-4 overflow-hidden group">
@@ -486,7 +484,7 @@ const BebanLainnyaTab: React.FC = () => {
                     🧾
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[10px] md:text-[11px] text-neutral-400 mb-0.5">{d} {m} {y}</div>
+                    <div className="text-[10px] md:text-[11px] text-neutral-400 mb-0.5">{dateStrFormatted}</div>
                     <div className="text-xs md:text-[13px] font-bold text-neutral-900 dark:text-white mb-1.5 truncate" title={entry.keterangan}>{entry.keterangan}</div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] md:text-[10px] font-bold" style={{ background: cat.tint, color: cat.color }}>

@@ -21,9 +21,11 @@ import {
   Sun,
   Moon,
   TrendingUp,
+  LineChart,
   ArrowLeft,
   SearchX
 } from 'lucide-react';
+import { motion, AnimatePresence, useDragControls, useMotionValue, useTransform, animate } from 'motion/react';
 
 interface MobileNavProps {
   currentTab: string;
@@ -47,6 +49,59 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [entryPoint, setEntryPoint] = useState<'nav' | 'sheet'>('nav');
   const [searchQuery, setSearchQuery] = useState('');
+  const [dragPreviewTab, setDragPreviewTab] = useState<string | null>(null);
+  const dragControls = useDragControls();
+  const pullY = useMotionValue<number | string>("100%");
+  
+  // Stretch physics for dock
+  const dockStretch = useMotionValue(0);
+  const dockScaleX = useTransform(dockStretch, (x) => {
+    return 1 + (Math.abs(x as number) / 60) * 0.8;
+  });
+  const dockOriginX = useTransform(dockStretch, (x) => {
+    return (x as number) >= 0 ? 0 : 1;
+  });
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  const touchStartY = React.useRef(0);
+  const isPullingDown = React.useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+    isPullingDown.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!bodyRef.current) return;
+    if (bodyRef.current.scrollTop <= 0) {
+      const dy = e.touches[0].clientY - touchStartY.current;
+      if (dy > 0) {
+        isPullingDown.current = true;
+        pullY.set(dy * 0.6); // Elastic resistance
+      } else {
+        isPullingDown.current = false;
+      }
+    } else {
+      isPullingDown.current = false;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (isPullingDown.current) {
+      const currentY = pullY.get();
+      if (typeof currentY === 'number' && currentY > 80) {
+        setIsMoreOpen(false);
+      } else {
+        animate(pullY, 0, { type: 'spring', damping: 25, stiffness: 200 });
+      }
+      isPullingDown.current = false;
+    }
+  };
+
+  const handleDragEnd = (event: any, info: any) => {
+    if (info.offset.y > 100 || info.velocity.y > 500) {
+      setIsMoreOpen(false);
+    }
+  };
 
   const hasPerm = (key: string) => {
     if (key === 'settings') return true;
@@ -89,6 +144,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   const getTabTitle = () => {
     switch (currentTab) {
       case 'dashboard': return branding.namaUsaha || 'KangenBukuIndo';
+      case 'daily-report': return 'Laporan Harian';
       case 'catalog': return 'Katalog Buku';
       case 'sales': return 'Sales Orders';
       case 'purchases': return 'Purchase Orders';
@@ -119,6 +175,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       case 'beban-lainnya': return 'Beban Lainnya';
       case 'partners': return 'Business Partners / Reseller';
       case 'report-sales-detail': return 'Laporan Rincian Penjualan';
+      case 'report-user-activity': return 'Kegiatan User';
       case 'user-management': return 'Manajemen Pengguna';
       case 'settings': return 'Pengaturan Usaha';
       default: return 'KangenBukuIndo ERP';
@@ -138,6 +195,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
   const operasional = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'daily-report', label: 'Laporan Harian', icon: LineChart },
     { id: 'sales', label: 'Sales Orders', icon: ShoppingCart },
     { id: 'purchases', label: 'Purchase Orders', icon: Package },
     { id: 'freight-in', label: 'Freight In', icon: Truck },
@@ -180,7 +238,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
   const heroCatalog = hasPerm('catalog') && matches('Katalog Buku');
   const heroFreight = hasPerm('freight-in') && matches('Freight In');
-  const showLaporan = hasPerm('report-sales-detail') && matches('Laporan Rincian Penjualan');
+  const showLaporan = (hasPerm('report-sales-detail') && matches('Laporan Rincian Penjualan')) || (hasPerm('report-user-activity') && matches('Kegiatan User'));
   const showUsers = hasPerm('user-management') && matches('Manajemen User');
   const showSettings = matches('Pengaturan Usaha');
 
@@ -189,12 +247,61 @@ export const MobileNav: React.FC<MobileNavProps> = ({
     transaksi.length === 0 && laporanKeuangan.length === 0 && doubleEntry.length === 0 &&
     !showLaporan && !showUsers && !showSettings;
 
+  const dockTouchStartX = React.useRef(0);
+
+  const handleDockTouchStart = (e: React.TouchEvent) => {
+    dockTouchStartX.current = e.touches[0].clientX;
+    dockStretch.set(0);
+    setDragPreviewTab(null);
+  };
+
+  const handleDockTouchMove = (e: React.TouchEvent) => {
+    const currentX = e.touches[0].clientX;
+    const dx = currentX - dockTouchStartX.current;
+    
+    // Animate stretch
+    dockStretch.set(dx);
+
+    if (Math.abs(dx) > 60) {
+      const activeId = dragPreviewTab !== null ? dragPreviewTab : (isMoreOpen ? 'lainnya' : currentTab);
+      const allDockIds = [...dockItems.map(d => d.id), 'lainnya'];
+      const currentIndex = allDockIds.indexOf(activeId);
+      
+      const shift = Math.sign(dx);
+      const newIndex = currentIndex + shift;
+      
+      if (newIndex >= 0 && newIndex < allDockIds.length) {
+        const targetId = allDockIds[newIndex];
+        setDragPreviewTab(targetId);
+        
+        dockTouchStartX.current = currentX;
+        dockStretch.set(0);
+      } else {
+        dockStretch.set(shift * 60);
+      }
+    }
+  };
+
+  const handleDockTouchEnd = (e: React.TouchEvent) => {
+    animate(dockStretch, 0, { type: "spring", bounce: 0.5 });
+    
+    if (dragPreviewTab !== null) {
+      if (dragPreviewTab === 'lainnya') {
+        setIsMoreOpen(true);
+      } else {
+        setIsMoreOpen(false);
+        handleNavigate(dragPreviewTab, undefined, 'nav');
+      }
+      setDragPreviewTab(null);
+    }
+  };
+
   return (
     <>
       {/* ── TOP BAR · the "bound edge" ────────────────────────────────────── */}
       <header className="md:hidden kbi-mtop">
         <div className="kbi-mtop__left">
-          {currentTab !== 'dashboard' ? (
+          {currentTab !== 'dashboard' && currentTab !== 'sales' ? (
             <button
               type="button"
               onClick={handleBackClick}
@@ -204,17 +311,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
             >
               <ArrowLeft className="w-[18px] h-[18px] stroke-[2.4]" />
             </button>
-          ) : (
-            <div className="kbi-mtop__mark" aria-hidden="true">
-              {branding.iconUrl ? (
-                <img src={branding.iconUrl} alt="" />
-              ) : branding.logoUrl ? (
-                <img src={branding.logoUrl} alt="" />
-              ) : (
-                'KB'
-              )}
-            </div>
-          )}
+          ) : null}
 
           <div className="kbi-mtop__titles">
             <h1 className="kbi-mtop__title">{getTabTitle()}</h1>
@@ -225,34 +322,46 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         </div>
 
         <div className="kbi-mtop__actions">
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="kbi-mtop__icon"
-            aria-label={theme === 'dark' ? 'Mode Terang' : 'Mode Gelap'}
-            title="Ganti Tema"
-          >
-            {theme === 'dark'
-              ? <Sun className="w-[17px] h-[17px] text-amber-400" />
-              : <Moon className="w-[17px] h-[17px]" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavigate('settings', undefined, 'nav')}
-            className={`kbi-mtop__icon ${currentTab === 'settings' ? 'is-active' : ''}`}
-            aria-label="Pengaturan Usaha"
-            title="Pengaturan Usaha"
-          >
-            <Settings className="w-[17px] h-[17px]" />
-          </button>
+          {currentTab === 'dashboard' && (
+            <>
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="kbi-mtop__icon"
+                aria-label={theme === 'dark' ? 'Mode Terang' : 'Mode Gelap'}
+                title="Ganti Tema"
+              >
+                {theme === 'dark'
+                  ? <Sun className="w-[17px] h-[17px] text-amber-400" />
+                  : <Moon className="w-[17px] h-[17px]" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNavigate('settings', undefined, 'nav')}
+                className={`kbi-mtop__icon ${currentTab === 'settings' ? 'is-active' : ''}`}
+                aria-label="Pengaturan Usaha"
+                title="Pengaturan Usaha"
+              >
+                <Settings className="w-[17px] h-[17px]" />
+              </button>
+            </>
+          )}
+          <div id="top-header-actions-portal"></div>
         </div>
       </header>
 
       {/* ── BOTTOM DOCK · floating shelf with a bookmark ribbon ───────────── */}
-      <nav className="md:hidden kbi-mdock" aria-label="Navigasi utama">
+      <nav 
+        className="md:hidden kbi-mdock" 
+        aria-label="Navigasi utama"
+        onTouchStart={handleDockTouchStart}
+        onTouchMove={handleDockTouchMove}
+        onTouchEnd={handleDockTouchEnd}
+      >
         {dockItems.map((item) => {
           const Icon = item.icon;
-          const isActive = currentTab === item.id && !isMoreOpen;
+          const effectiveTab = dragPreviewTab !== null ? dragPreviewTab : (isMoreOpen ? 'lainnya' : currentTab);
+          const isActive = effectiveTab === item.id;
           return (
             <button
               key={item.id}
@@ -261,6 +370,14 @@ export const MobileNav: React.FC<MobileNavProps> = ({
               className={`kbi-mdock__btn ${isActive ? 'is-active' : ''}`}
               aria-current={isActive ? 'page' : undefined}
             >
+              {isActive && (
+                <motion.div
+                  layoutId="activeDockBubble"
+                  className="kbi-mdock__bubble"
+                  transition={{ type: "spring", bounce: 0.4, duration: 0.6 }}
+                  style={{ scaleX: dockScaleX, originX: dockOriginX }}
+                />
+              )}
               <span className="kbi-mdock__icon">
                 <Icon className="w-[19px] h-[19px]" />
               </span>
@@ -269,42 +386,90 @@ export const MobileNav: React.FC<MobileNavProps> = ({
           );
         })}
 
-        <button
-          type="button"
-          onClick={() => setIsMoreOpen(true)}
-          className={`kbi-mdock__btn ${isMoreOpen ? 'is-active' : ''}`}
-          aria-expanded={isMoreOpen}
-        >
-          <span className="kbi-mdock__icon">
-            <Grid className="w-[19px] h-[19px]" />
-          </span>
-          <span className="kbi-mdock__label">Lainnya</span>
-        </button>
+        {(() => {
+          const effectiveTab = dragPreviewTab !== null ? dragPreviewTab : (isMoreOpen ? 'lainnya' : currentTab);
+          const isLainnyaActive = effectiveTab === 'lainnya';
+          
+          return (
+            <button
+              type="button"
+              onClick={() => setIsMoreOpen(true)}
+              className={`kbi-mdock__btn ${isLainnyaActive ? 'is-active' : ''}`}
+              aria-expanded={isLainnyaActive}
+            >
+              {isLainnyaActive && (
+                <motion.div
+                  layoutId="activeDockBubble"
+                  className="kbi-mdock__bubble"
+                  transition={{ type: "spring", bounce: 0.4, duration: 0.6 }}
+                  style={{ scaleX: dockScaleX, originX: dockOriginX }}
+                />
+              )}
+              <span className="kbi-mdock__icon">
+                <Grid className="w-[19px] h-[19px]" />
+              </span>
+              <span className="kbi-mdock__label">Lainnya</span>
+            </button>
+          );
+        })()}
       </nav>
 
       {/* ── "LAINNYA" SHEET · the module library ──────────────────────────── */}
-      {isMoreOpen && (
-        <div className="md:hidden kbi-msheet-scrim" role="dialog" aria-modal="true" aria-label="Semua modul">
-          <div className="fixed inset-0" onClick={() => setIsMoreOpen(false)} />
+      <AnimatePresence>
+        {isMoreOpen && (
+          <motion.div 
+            className="md:hidden kbi-msheet-scrim" 
+            role="dialog" 
+            aria-modal="true" 
+            aria-label="Semua modul"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="fixed inset-0" onClick={() => setIsMoreOpen(false)} />
 
-          <div className="kbi-msheet">
-            <div className="kbi-msheet__grip"><span /></div>
-
-            <div className="kbi-msheet__head">
-              <div className="kbi-msheet__headrow">
-                <div>
-                  <h2 className="kbi-msheet__title">Semua Modul</h2>
-                  <p className="kbi-msheet__sub">KangenBukuIndo ERP</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsMoreOpen(false)}
-                  className="kbi-msheet__close"
-                  aria-label="Tutup menu"
-                >
-                  <X className="w-[19px] h-[19px]" />
-                </button>
+            <motion.div 
+              className="kbi-msheet"
+              style={{ y: pullY }}
+              drag="y"
+              dragControls={dragControls}
+              dragListener={false}
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.8 }}
+              onDragEnd={handleDragEnd}
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            >
+              <div 
+                className="kbi-msheet__grip"
+                onPointerDown={(e) => dragControls.start(e)}
+                style={{ touchAction: "none", cursor: "grab" }}
+              >
+                <span />
               </div>
+
+              <div 
+                className="kbi-msheet__head"
+                onPointerDown={(e) => dragControls.start(e)}
+                style={{ touchAction: "none" }}
+              >
+                <div className="kbi-msheet__headrow">
+                  <div>
+                    <h2 className="kbi-msheet__title">Semua Modul</h2>
+                    <p className="kbi-msheet__sub">KangenBukuIndo ERP</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsMoreOpen(false)}
+                    className="kbi-msheet__close"
+                    aria-label="Tutup menu"
+                  >
+                    <X className="w-[19px] h-[19px]" />
+                  </button>
+                </div>
 
               <div className="kbi-msheet__search">
                 <Search className="w-[17px] h-[17px]" />
@@ -328,7 +493,13 @@ export const MobileNav: React.FC<MobileNavProps> = ({
               </div>
             </div>
 
-            <div className="kbi-msheet__body">
+            <div 
+              className="kbi-msheet__body"
+              ref={bodyRef}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
               {nothingFound && (
                 <div className="kbi-mempty">
                   <div className="kbi-mempty__glyph"><SearchX className="w-6 h-6" /></div>
@@ -507,14 +678,26 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 <div style={{ ['--m-legend' as any]: 'var(--m-gold)' }}>
                   <div className="kbi-msheet__legend">Laporan</div>
                   <div className="kbi-msheet__grid">
-                    <button
-                      type="button"
-                      onClick={() => handleNavigate('report-sales-detail')}
-                      className={`kbi-mtile kbi-mtile--wide t-forest ${currentTab === 'report-sales-detail' ? 'is-active' : ''}`}
-                    >
-                      <span className="kbi-mtile__glyph"><BarChart3 className="w-4 h-4" /></span>
-                      <span className="kbi-mtile__label">Laporan Rincian Penjualan</span>
-                    </button>
+                    {hasPerm('report-sales-detail') && matches('Laporan Rincian Penjualan') && (
+                      <button
+                        type="button"
+                        onClick={() => handleNavigate('report-sales-detail')}
+                        className={`kbi-mtile kbi-mtile--wide t-forest ${currentTab === 'report-sales-detail' ? 'is-active' : ''}`}
+                      >
+                        <span className="kbi-mtile__glyph"><BarChart3 className="w-4 h-4" /></span>
+                        <span className="kbi-mtile__label">Laporan Rincian Penjualan</span>
+                      </button>
+                    )}
+                    {hasPerm('report-user-activity') && matches('Kegiatan User') && (
+                      <button
+                        type="button"
+                        onClick={() => handleNavigate('report-user-activity')}
+                        className={`kbi-mtile kbi-mtile--wide t-forest ${currentTab === 'report-user-activity' ? 'is-active' : ''}`}
+                      >
+                        <span className="kbi-mtile__glyph"><BarChart3 className="w-4 h-4" /></span>
+                        <span className="kbi-mtile__label">Kegiatan User</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -548,9 +731,10 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
+          </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 };

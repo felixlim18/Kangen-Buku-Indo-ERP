@@ -1,4 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
+import { formatDate } from '../lib/date-utils';
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { 
@@ -418,7 +419,7 @@ export const ClosingTab: React.FC = () => {
       <div className="bg-white dark:bg-neutral-900 border border-neutral-200/85 dark:border-neutral-850 rounded-3xl shadow-xs overflow-hidden">
         <div className="p-5 border-b border-neutral-150 dark:border-neutral-800 flex items-center justify-between">
           <h3 className="text-sm font-extrabold text-neutral-900 dark:text-white uppercase tracking-wider">DAFTAR PERIODE BUKU BULANAN</h3>
-          <span className="text-[10px] text-neutral-400 font-numeric">Earliest Journal: {earliestDate.toLocaleDateString('id-ID', { year: 'numeric', month: 'long' })}</span>
+          <span className="text-[10px] text-neutral-400 font-numeric">Earliest Journal: {formatDate(earliestDate)}</span>
         </div>
 
         {loading ? (

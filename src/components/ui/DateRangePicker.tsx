@@ -364,13 +364,13 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
             if (isStart || isEnd) {
               cellClass += "bg-brand-600 text-white font-bold z-10 shadow-xs";
               if (isStart && pendingEnd) {
-                wrapperClass += "rounded-l-full bg-brand-50 dark:bg-brand-950/40";
+                wrapperClass += "rounded-l-full bg-brand-50 dark:bg-brand-500/30";
               } else if (isEnd && pendingStart) {
-                wrapperClass += "rounded-r-full bg-brand-50 dark:bg-brand-950/40";
+                wrapperClass += "rounded-r-full bg-brand-50 dark:bg-brand-500/30";
               }
             } else if (inRange) {
-              cellClass += "text-brand-700 dark:text-brand-300 font-semibold";
-              wrapperClass += "bg-brand-50 dark:bg-brand-950/40";
+              cellClass += "text-brand-700 dark:text-white font-semibold";
+              wrapperClass += "bg-brand-50 dark:bg-brand-500/30";
             } else if (isToday) {
               cellClass += "text-brand-600 font-bold border border-brand-500/30";
             } else if (!isCurrentMonth) {

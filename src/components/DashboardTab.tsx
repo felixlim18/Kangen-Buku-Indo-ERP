@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { formatDate } from '../lib/date-utils';
 import { 
   collection, 
   doc, 
@@ -1145,6 +1146,26 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
           --r-sm: 8px;
         }
 
+        .dark {
+          --ink: #ffffff;
+          --ink-2: #e5e7eb;
+          --ink-3: #9ca3af;
+          --ink-4: #6b7280;
+          --ink-5: #4b5563;
+          --bg: #0a0a0a;
+          --surface: #171717; /* neutral-900 */
+          --line: #262626; /* neutral-800 */
+          --line-2: #1f2937;
+          
+          --sh-1: 0 1px 2px rgba(0,0,0,.3);
+          --sh-2: 0 2px 8px -2px rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.2);
+          --sh-3: 0 12px 32px -8px rgba(0,0,0,.5);
+        }
+
+        .dark .hero {
+          background: #161b22;
+        }
+
         .n {
           font-family: 'Inter', sans-serif !important;
           font-variant-numeric: tabular-nums;
@@ -1152,7 +1173,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
         /* ── HERO ── */
         .hero {
-          background: var(--ink);
+          background: #0d1117;
           color: #fff;
           border-radius: var(--r-xl);
           padding: 22px 24px 18px;
@@ -1212,16 +1233,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
             <BookOpen className="w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-[#0d1117] tracking-tight m-0">Dashboard</h1>
+            <h1 className="text-xl font-bold text-[#0d1117] dark:text-white tracking-tight m-0">Dashboard</h1>
             <div className="text-xs text-neutral-400 mt-0.5 font-numeric">
-              {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              {formatDate(new Date())}
             </div>
           </div>
         </div>
 
         {/* Control Bar: Active Period & Panel Selector */}
         <div className="flex items-center justify-between md:justify-end gap-2.5 w-full md:w-auto flex-wrap sm:flex-nowrap">
-          <div className="flex items-center gap-2 bg-white border border-neutral-200 px-3 py-1.5 rounded-full text-xs font-semibold text-neutral-600 shadow-xs shrink-0">
+          <div className="flex items-center gap-2 bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 px-3 py-1.5 rounded-full text-xs font-semibold text-neutral-600 shadow-xs shrink-0">
             <span className="text-neutral-400">Periode ·</span>
             <input 
               type="month" 
@@ -1231,13 +1252,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
             />
           </div>
 
-          <div className="flex gap-1 bg-white border border-neutral-200 rounded-xl p-1 shadow-xs overflow-x-auto max-w-full no-scrollbar">
+          <div className="flex gap-1 bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 rounded-xl p-1 shadow-xs overflow-x-auto max-w-full no-scrollbar">
             {canAccessOmset && (
               <button 
                 type="button"
                 onClick={() => setActivePanel('omset')}
                 className={`inline-flex items-center gap-1.5 border-none font-semibold text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-colors whitespace-nowrap ${
-                  activePanel === 'omset' ? 'bg-[#0d1117] text-white' : 'bg-transparent text-neutral-600 hover:text-neutral-900'
+                  activePanel === 'omset' ? 'bg-[#0d1117] text-white' : 'bg-transparent text-neutral-600 hover:text-neutral-900 dark:text-white'
                 }`}
               >
                 <TrendingUp className="w-3.5 h-3.5 shrink-0" />
@@ -1250,7 +1271,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                 type="button"
                 onClick={() => setActivePanel('peringatan')}
                 className={`inline-flex items-center gap-1.5 border-none font-semibold text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-colors relative whitespace-nowrap ${
-                  activePanel === 'peringatan' ? 'bg-[#0d1117] text-white' : 'bg-transparent text-neutral-600 hover:text-neutral-900'
+                  activePanel === 'peringatan' ? 'bg-[#0d1117] text-white' : 'bg-transparent text-neutral-600 hover:text-neutral-900 dark:text-white'
                 }`}
               >
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
@@ -1268,7 +1289,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                 type="button"
                 onClick={() => setActivePanel('catatan')}
                 className={`inline-flex items-center gap-1.5 border-none font-semibold text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-colors whitespace-nowrap ${
-                  activePanel === 'catatan' ? 'bg-[#0d1117] text-white' : 'bg-transparent text-neutral-600 hover:text-neutral-900'
+                  activePanel === 'catatan' ? 'bg-[#0d1117] text-white' : 'bg-transparent text-neutral-600 hover:text-neutral-900 dark:text-white'
                 }`}
               >
                 <FileText className="w-3.5 h-3.5 shrink-0" />
@@ -1281,7 +1302,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                 type="button"
                 onClick={() => setActivePanel('harga')}
                 className={`inline-flex items-center gap-1.5 border-none font-semibold text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-colors whitespace-nowrap ${
-                  activePanel === 'harga' ? 'bg-[#0d1117] text-white' : 'bg-transparent text-neutral-600 hover:text-neutral-900'
+                  activePanel === 'harga' ? 'bg-[#0d1117] text-white' : 'bg-transparent text-neutral-600 hover:text-neutral-900 dark:text-white'
                 }`}
               >
                 <DollarSign className="w-3.5 h-3.5 shrink-0" />
@@ -1293,10 +1314,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
       </div>
 
       {allowedPanels.length === 0 && (
-        <div className="bg-white border border-neutral-200 rounded-2xl p-8 text-center space-y-3 my-6">
+        <div className="bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-8 text-center space-y-3 my-6">
           <ShieldAlert className="w-12 h-12 text-rose-500 mx-auto" />
           <h3 className="text-base font-bold text-neutral-800">Akses Dashboard Terbatas</h3>
-          <p className="text-xs text-neutral-500 max-w-md mx-auto">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-md mx-auto">
             Anda belum diberikan izin untuk mengakses tab Omset, Peringatan, Catatan, atau Harga Jual. Silakan hubungi Owner untuk mengatur hak akses Anda.
           </p>
         </div>
@@ -1429,26 +1450,26 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
               <div className="flex items-center w-full">
                 {/* Sales Order */}
                 <div className="flex-1 flex flex-col items-center text-center gap-1">
-                  <div className="w-8.5 h-8.5 rounded-xl flex items-center justify-center bg-[#eef3fa] text-[#2b5a9e]">
+                  <div className="w-8.5 h-8.5 rounded-xl flex items-center justify-center bg-[#eef3fa] text-[#2b5a9e] dark:text-blue-400">
                     <ShoppingBag className="w-4 h-4" />
                   </div>
-                  <div className="font-numeric text-xl font-extrabold tracking-tight leading-none text-neutral-900 mt-0.5">
-                    {monthlySO.length} <span className="text-[11px] font-semibold text-neutral-500">Order</span>
+                  <div className="font-numeric text-xl font-extrabold tracking-tight leading-none text-neutral-900 dark:text-white mt-0.5">
+                    {monthlySO.length} <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">Order</span>
                   </div>
                   <div className="flex flex-col items-center leading-tight gap-0.5 mb-0.5">
-                    <div className="font-numeric text-xs font-bold text-[#2b5a9e]" title="Total Revenue">
+                    <div className="font-numeric text-xs font-bold text-[#2b5a9e] dark:text-blue-400" title="Total Revenue">
                       Rev: NT$ {formatNumber(monthlySOTotalNTD)}
                     </div>
-                    <div className="font-numeric text-[10.5px] font-semibold text-[#a8323b]" title="Cost of Goods Sold">
+                    <div className="font-numeric text-[10.5px] font-semibold text-[#a8323b] dark:text-red-400" title="Cost of Goods Sold">
                       HPP: NT$ {formatNumber(monthlySOCOGSNTD)}
                     </div>
                   </div>
-                  <div className="text-[10.5px] text-neutral-500 font-medium leading-tight mt-0.5">
+                  <div className="text-[10.5px] text-neutral-500 dark:text-neutral-400 font-medium leading-tight mt-0.5">
                     Sales Order
                   </div>
                   <button 
                     onClick={() => setTab?.('sales')} 
-                    className="text-[11px] font-semibold text-[#2b5a9e] hover:underline cursor-pointer bg-transparent border-none p-0 mt-0.5"
+                    className="text-[11px] font-semibold text-[#2b5a9e] dark:text-blue-400 hover:underline cursor-pointer bg-transparent border-none p-0 mt-0.5"
                   >
                     Lihat →
                   </button>
@@ -1458,21 +1479,21 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
                 {/* Purchase Order */}
                 <div className="flex-1 flex flex-col items-center text-center gap-1">
-                  <div className="w-8.5 h-8.5 rounded-xl flex items-center justify-center bg-[#fef3e2] text-[#d97706]">
+                  <div className="w-8.5 h-8.5 rounded-xl flex items-center justify-center bg-[#fef3e2] text-[#d97706] dark:text-amber-400">
                     <Box className="w-4 h-4" />
                   </div>
-                  <div className="font-numeric text-xl font-extrabold tracking-tight leading-none text-neutral-900 mt-0.5">
-                    {monthlyPOCount} <span className="text-[11px] font-semibold text-neutral-500">Order</span>
+                  <div className="font-numeric text-xl font-extrabold tracking-tight leading-none text-neutral-900 dark:text-white mt-0.5">
+                    {monthlyPOCount} <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">Order</span>
                   </div>
-                  <div className="font-numeric text-xs font-bold text-[#d97706]">
+                  <div className="font-numeric text-xs font-bold text-[#d97706] dark:text-amber-400">
                     NT$ {formatNumber(monthlyPOTotalNTD)}
                   </div>
-                  <div className="text-[10.5px] text-neutral-500 font-medium leading-tight">
+                  <div className="text-[10.5px] text-neutral-500 dark:text-neutral-400 font-medium leading-tight">
                     Purchase Order
                   </div>
                   <button 
                     onClick={() => setTab?.('purchases')} 
-                    className="text-[11px] font-semibold text-[#d97706] hover:underline cursor-pointer bg-transparent border-none p-0 mt-0.5"
+                    className="text-[11px] font-semibold text-[#d97706] dark:text-amber-400 hover:underline cursor-pointer bg-transparent border-none p-0 mt-0.5"
                   >
                     Lihat →
                   </button>
@@ -1483,19 +1504,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
             {/* 3. KARTU ROAS BULAN INI */}
             <div className="kpi">
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-[11.5px] font-semibold text-neutral-500">ROAS (Bulan Ini)</span>
+                <span className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">ROAS (Bulan Ini)</span>
                 <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#f0ecfa] text-[#5b3fa8]">
                   <Target className="w-3.5 h-3.5" />
                 </span>
               </div>
-              <div className="font-numeric text-2xl font-bold tracking-tight text-[#0f7a52] mb-1">
+              <div className="font-numeric text-2xl font-bold tracking-tight text-[#0f7a52] dark:text-emerald-400 mb-1">
                 {roasRatio > 0 ? `${roasRatio.toFixed(2)}x` : '0x'} <span className="text-sm font-semibold text-neutral-400">Return</span>
               </div>
               <div className="text-[11.5px] text-neutral-400 mt-auto leading-normal">
                 NT$ {formatNumber(monthlyAdRevenueNTD)} dari NT$ {formatNumber(monthlyAdSpendNTD)} belanja iklan
               </div>
               <div className="text-[11.5px] mt-1">
-                <button onClick={() => setTab?.('iklan')} className="text-[#a8323b] font-semibold hover:underline bg-transparent border-none p-0 cursor-pointer">
+                <button onClick={() => setTab?.('iklan')} className="text-[#a8323b] dark:text-red-400 font-semibold hover:underline bg-transparent border-none p-0 cursor-pointer">
                   Lihat Riwayat Iklan →
                 </button>
               </div>
@@ -1504,30 +1525,30 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
             {/* 4. KARTU SALDO KAS BANK */}
             <div className="kpi">
               <div className="flex items-center justify-between gap-2 mb-3">
-                <span className="text-[11.5px] font-semibold text-neutral-500">Saldo Kas Bank</span>
-                <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#e7f5ef] text-[#0f7a52]">
+                <span className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">Saldo Kas Bank</span>
+                <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#e7f5ef] text-[#0f7a52] dark:text-emerald-400">
                   <CreditCard className="w-3.5 h-3.5" />
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-2 mb-2.5">
-                <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-2.5">
+                <div className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-2.5">
                   <div className="text-[10.5px] text-neutral-400 font-medium mb-1">NTD Ledger</div>
-                  <div className="font-numeric text-sm font-bold tracking-tight text-neutral-900">
+                  <div className="font-numeric text-sm font-bold tracking-tight text-neutral-900 dark:text-white">
                     {formatNTDAmount(ntdLedgerBalance)}
                   </div>
                 </div>
-                <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-2.5">
+                <div className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-2.5">
                   <div className="text-[10.5px] text-neutral-400 font-medium mb-1">IDR Ledger</div>
-                  <div className="font-numeric text-sm font-bold tracking-tight text-[#0f7a52]">
+                  <div className="font-numeric text-sm font-bold tracking-tight text-[#0f7a52] dark:text-emerald-400">
                     {formatNTDAmount(idrLedgerBalance)}
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center justify-between gap-2 bg-[#e7f5ef] border border-[#cfe8db] rounded-lg p-2.5">
-                <span className="text-xs font-semibold text-[#0f7a52]">Saldo Kas Gabungan</span>
-                <span className="font-numeric text-[15px] font-extrabold text-[#0f7a52] tracking-tight">
+                <span className="text-xs font-semibold text-[#0f7a52] dark:text-emerald-400">Saldo Kas Gabungan</span>
+                <span className="font-numeric text-[15px] font-extrabold text-[#0f7a52] dark:text-emerald-400 tracking-tight">
                   {formatNTDAmount(totalCashCombinedNTD)}
                 </span>
               </div>
@@ -1545,12 +1566,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="kpi">
               <div className="flex items-center justify-between gap-2 mb-3">
-                <span className="text-[11.5px] font-semibold text-neutral-500">Modal (Ekuitas Pemilik)</span>
+                <span className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">Modal (Ekuitas Pemilik)</span>
                 <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#f0ecfa] text-[#5b3fa8]">
                   <Scale className="w-3.5 h-3.5" />
                 </span>
               </div>
-              <div className="font-numeric text-2xl font-bold tracking-tight text-neutral-900 mb-1">
+              <div className="font-numeric text-2xl font-bold tracking-tight text-neutral-900 dark:text-white mb-1">
                 {formatNTDAmount(modalEquity)}
               </div>
               <div className="text-[11.5px] text-neutral-400">live per hari ini</div>
@@ -1558,12 +1579,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
             <div className="kpi">
               <div className="flex items-center justify-between gap-2 mb-3">
-                <span className="text-[11.5px] font-semibold text-neutral-500">Revenue (Bulan Ini)</span>
-                <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#eef3fa] text-[#2b5a9e]">
+                <span className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">Revenue (Bulan Ini)</span>
+                <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#eef3fa] text-[#2b5a9e] dark:text-blue-400">
                   <TrendingUp className="w-3.5 h-3.5" />
                 </span>
               </div>
-              <div className="font-numeric text-2xl font-bold tracking-tight text-[#2b5a9e] mb-1">
+              <div className="font-numeric text-2xl font-bold tracking-tight text-[#2b5a9e] dark:text-blue-400 mb-1">
                 {formatNTDAmount(revenueSelesaiNTD)}
               </div>
               <div className="text-[11.5px] text-neutral-400">diakui dari order Selesai</div>
@@ -1571,12 +1592,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
             <div className="kpi">
               <div className="flex items-center justify-between gap-2 mb-3">
-                <span className="text-[11.5px] font-semibold text-neutral-500">Laba Bersih Bulan Ini</span>
-                <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#e7f5ef] text-[#0f7a52]">
+                <span className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">Laba Bersih Bulan Ini</span>
+                <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#e7f5ef] text-[#0f7a52] dark:text-emerald-400">
                   <TrendingUp className="w-3.5 h-3.5" />
                 </span>
               </div>
-              <div className="font-numeric text-2xl font-bold tracking-tight text-[#0f7a52] mb-1">
+              <div className="font-numeric text-2xl font-bold tracking-tight text-[#0f7a52] dark:text-emerald-400 mb-1">
                 {formatNTDAmount(labaBersihNTD)}
               </div>
               <div className="text-[11.5px] text-neutral-400">akumulasi laba berjalan</div>
@@ -1584,19 +1605,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
             <div className="kpi">
               <div className="flex items-center justify-between gap-2 mb-3">
-                <span className="text-[11.5px] font-semibold text-neutral-500">Status Rekonsiliasi</span>
+                <span className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">Status Rekonsiliasi</span>
                 <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-neutral-100 text-neutral-600">
                   <Scale className="w-3.5 h-3.5" />
                 </span>
               </div>
               <div className="mb-2">
                 {isBalanced ? (
-                  <span className="inline-flex items-center gap-1.5 bg-[#e7f5ef] text-[#0f7a52] text-xs font-bold px-3 py-1.5 rounded-full">
+                  <span className="inline-flex items-center gap-1.5 bg-[#e7f5ef] text-[#0f7a52] dark:text-emerald-400 text-xs font-bold px-3 py-1.5 rounded-full">
                     <Check className="w-3.5 h-3.5" />
                     Balanced
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 bg-[#fbecec] text-[#a8323b] text-xs font-bold px-3 py-1.5 rounded-full">
+                  <span className="inline-flex items-center gap-1.5 bg-[#fbecec] text-[#a8323b] dark:text-red-400 text-xs font-bold px-3 py-1.5 rounded-full">
                     <AlertTriangle className="w-3.5 h-3.5" />
                     Unbalanced
                   </span>
@@ -1616,13 +1637,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {/* List 1: Buku Perlu Dibeli */}
-            <div className="bg-white border border-neutral-200 rounded-2xl shadow-xs overflow-hidden flex flex-col">
-              <div className="p-4 border-b border-neutral-200 flex items-center gap-2.5">
-                <span className="w-6.5 h-6.5 rounded-lg flex items-center justify-center bg-[#fbecec] text-[#a8323b]">
+            <div className="bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xs overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2.5">
+                <span className="w-6.5 h-6.5 rounded-lg flex items-center justify-center bg-[#fbecec] text-[#a8323b] dark:text-red-400">
                   <AlertTriangle className="w-3.5 h-3.5" />
                 </span>
-                <h3 className="text-13px font-bold text-neutral-900 flex-1 m-0">Buku Perlu Dibeli</h3>
-                <span className="font-numeric text-xs font-semibold bg-neutral-100 border border-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full">
+                <h3 className="text-13px font-bold text-neutral-900 dark:text-white flex-1 m-0">Buku Perlu Dibeli</h3>
+                <span className="font-numeric text-xs font-semibold bg-neutral-100 border border-neutral-200 dark:border-neutral-800 text-neutral-600 px-2 py-0.5 rounded-full">
                   {booksToBuy.length} judul
                 </span>
               </div>
@@ -1636,7 +1657,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                     const safety = b.minStok || b.minOrder || b.safetyStock || 0;
                     const stock = b.stok !== undefined ? b.stok : (b.physicalStock !== undefined ? b.physicalStock : (b.stock || 0));
                     return (
-                      <div key={b.id || idx} className="flex items-center gap-3 p-3 border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
+                      <div key={b.id || idx} className="flex items-center gap-3 p-3 border-b border-neutral-100 dark:border-neutral-800/60 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 dark:bg-neutral-900 transition-colors">
                         <div className="w-8 h-[41px] rounded bg-gradient-to-br from-[#d9cbb8] to-[#b9a68d] shrink-0 flex items-center justify-center text-white overflow-hidden">
                           {b.cover ? (
                             <img src={b.cover} alt={title} className="w-full h-full object-cover" />
@@ -1645,11 +1666,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-xs text-neutral-900 truncate mb-0.5">{title}</div>
+                          <div className="font-semibold text-xs text-neutral-900 dark:text-white truncate mb-0.5">{title}</div>
                           <div className="font-numeric text-[11px] text-neutral-400">Safety stock: {safety} pcs</div>
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className={`font-numeric text-[11.5px] font-bold ${stock <= 0 ? 'text-[#a8323b]' : 'text-neutral-700'}`}>
+                          <span className={`font-numeric text-[11.5px] font-bold ${stock <= 0 ? 'text-[#a8323b] dark:text-red-400' : 'text-neutral-700'}`}>
                             Stok: {stock} pcs
                           </span>
                           <button 
@@ -1665,21 +1686,21 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                 )}
               </div>
 
-              <div className="p-3 border-t border-neutral-200 bg-neutral-50">
-                <button onClick={() => setTab?.('catalog')} className="text-xs font-semibold text-[#2b5a9e] hover:underline inline-flex items-center gap-1.5 bg-transparent border-none p-0 cursor-pointer">
+              <div className="p-3 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+                <button onClick={() => setTab?.('catalog')} className="text-xs font-semibold text-[#2b5a9e] dark:text-blue-400 hover:underline inline-flex items-center gap-1.5 bg-transparent border-none p-0 cursor-pointer">
                   Lihat semua katalog <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
 
             {/* List 2: Harus Dikirim Hari Ini */}
-            <div className="bg-white border border-neutral-200 rounded-2xl shadow-xs overflow-hidden flex flex-col">
-              <div className="p-4 border-b border-neutral-200 flex items-center gap-2.5">
-                <span className="w-6.5 h-6.5 rounded-lg flex items-center justify-center bg-[#eef3fa] text-[#2b5a9e]">
+            <div className="bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xs overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2.5">
+                <span className="w-6.5 h-6.5 rounded-lg flex items-center justify-center bg-[#eef3fa] text-[#2b5a9e] dark:text-blue-400">
                   <Truck className="w-3.5 h-3.5" />
                 </span>
-                <h3 className="text-13px font-bold text-neutral-900 flex-1 m-0">Harus Dikirim Hari Ini</h3>
-                <span className="font-numeric text-xs font-semibold bg-[#eef3fa] text-[#2b5a9e] border border-[#2b5a9e]/20 px-2 py-0.5 rounded-full">
+                <h3 className="text-13px font-bold text-neutral-900 dark:text-white flex-1 m-0">Harus Dikirim Hari Ini</h3>
+                <span className="font-numeric text-xs font-semibold bg-[#eef3fa] text-[#2b5a9e] dark:text-blue-400 border border-[#2b5a9e]/20 px-2 py-0.5 rounded-full">
                   {packedSalesOrders.length} order dikemas
                 </span>
               </div>
@@ -1695,17 +1716,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                     const isPacked = so.status === 'packed';
 
                     return (
-                      <div key={so.id || idx} className="flex items-center justify-between gap-3 p-3 border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
+                      <div key={so.id || idx} className="flex items-center justify-between gap-3 p-3 border-b border-neutral-100 dark:border-neutral-800/60 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 dark:bg-neutral-900 transition-colors">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-numeric font-bold text-xs text-[#2b5a9e]">#{so.orderCode || so.id}</span>
+                            <span className="font-numeric font-bold text-xs text-[#2b5a9e] dark:text-blue-400">#{so.orderCode || so.id}</span>
                             <span className={`text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                              isPacked ? 'bg-[#e7f5ef] text-[#0f7a52]' : 'bg-[#fef3e2] text-[#b45309]'
+                              isPacked ? 'bg-[#e7f5ef] text-[#0f7a52] dark:text-emerald-400' : 'bg-[#fef3e2] text-[#b45309] dark:text-amber-500'
                             }`}>
                               {isPacked ? 'Dikemas' : (so.status || 'Draft')}
                             </span>
                           </div>
-                          <div className="font-bold text-xs text-neutral-900 truncate">{buyer}</div>
+                          <div className="font-bold text-xs text-neutral-900 dark:text-white truncate">{buyer}</div>
                           <div className="text-[11px] text-neutral-400">{qty} buku · via {courier}</div>
                         </div>
 
@@ -1721,8 +1742,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                 )}
               </div>
 
-              <div className="p-3 border-t border-neutral-200 bg-neutral-50">
-                <button onClick={() => setTab?.('sales')} className="text-xs font-semibold text-[#2b5a9e] hover:underline inline-flex items-center gap-1.5 bg-transparent border-none p-0 cursor-pointer">
+              <div className="p-3 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+                <button onClick={() => setTab?.('sales')} className="text-xs font-semibold text-[#2b5a9e] dark:text-blue-400 hover:underline inline-flex items-center gap-1.5 bg-transparent border-none p-0 cursor-pointer">
                   Buka data penjualan <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -1747,15 +1768,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <button
               onClick={() => setSevFilter(sevFilter === 'kritis' ? 'semua' : 'kritis')}
-              className={`bg-white border rounded-xl p-4 cursor-pointer text-left transition-all relative overflow-hidden shadow-xs border-neutral-200 hover:border-neutral-400 ${
+              className={`bg-white border rounded-xl p-4 cursor-pointer text-left transition-all relative overflow-hidden shadow-xs border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 ${
                 sevFilter === 'kritis' ? 'border-[#dc2626] bg-[#fde3e1] border-l-4' : ''
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
                 <span className="w-2 h-2 rounded-full bg-[#dc2626]" />
-                <span className={`text-xs font-semibold ${sevFilter === 'kritis' ? 'text-[#dc2626]' : 'text-neutral-500'}`}>Kritis</span>
+                <span className={`text-xs font-semibold ${sevFilter === 'kritis' ? 'text-[#dc2626] dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}>Kritis</span>
               </div>
-              <div className={`font-numeric text-2xl font-extrabold tracking-tight ${sevFilter === 'kritis' ? 'text-[#dc2626]' : 'text-neutral-900'}`}>
+              <div className={`font-numeric text-2xl font-extrabold tracking-tight ${sevFilter === 'kritis' ? 'text-[#dc2626] dark:text-red-400' : 'text-neutral-900 dark:text-white'}`}>
                 {alertCounts.kritis}
               </div>
               <div className="text-[11px] text-neutral-400 mt-1">
@@ -1765,15 +1786,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
             <button
               onClick={() => setSevFilter(sevFilter === 'perhatian' ? 'semua' : 'perhatian')}
-              className={`bg-white border rounded-xl p-4 cursor-pointer text-left transition-all relative overflow-hidden shadow-xs border-neutral-200 hover:border-neutral-400 ${
+              className={`bg-white border rounded-xl p-4 cursor-pointer text-left transition-all relative overflow-hidden shadow-xs border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 ${
                 sevFilter === 'perhatian' ? 'border-[#d97706] bg-[#fef3e2] border-l-4' : ''
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
                 <span className="w-2 h-2 rounded-full bg-[#d97706]" />
-                <span className={`text-xs font-semibold ${sevFilter === 'perhatian' ? 'text-[#d97706]' : 'text-neutral-500'}`}>Perlu Perhatian</span>
+                <span className={`text-xs font-semibold ${sevFilter === 'perhatian' ? 'text-[#d97706] dark:text-amber-400' : 'text-neutral-500 dark:text-neutral-400'}`}>Perlu Perhatian</span>
               </div>
-              <div className={`font-numeric text-2xl font-extrabold tracking-tight ${sevFilter === 'perhatian' ? 'text-[#d97706]' : 'text-neutral-900'}`}>
+              <div className={`font-numeric text-2xl font-extrabold tracking-tight ${sevFilter === 'perhatian' ? 'text-[#d97706] dark:text-amber-400' : 'text-neutral-900 dark:text-white'}`}>
                 {alertCounts.perhatian}
               </div>
               <div className="text-[11px] text-neutral-400 mt-1">
@@ -1783,15 +1804,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
             <button
               onClick={() => setSevFilter(sevFilter === 'info' ? 'semua' : 'info')}
-              className={`bg-white border rounded-xl p-4 cursor-pointer text-left transition-all relative overflow-hidden shadow-xs border-neutral-200 hover:border-neutral-400 ${
+              className={`bg-white border rounded-xl p-4 cursor-pointer text-left transition-all relative overflow-hidden shadow-xs border-neutral-200 dark:border-neutral-800 hover:border-neutral-400 ${
                 sevFilter === 'info' ? 'border-[#1d6fa5] bg-[#e8f2f9] border-l-4' : ''
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
                 <span className="w-2 h-2 rounded-full bg-[#1d6fa5]" />
-                <span className={`text-xs font-semibold ${sevFilter === 'info' ? 'text-[#1d6fa5]' : 'text-neutral-500'}`}>Info</span>
+                <span className={`text-xs font-semibold ${sevFilter === 'info' ? 'text-[#1d6fa5] dark:text-sky-400' : 'text-neutral-500 dark:text-neutral-400'}`}>Info</span>
               </div>
-              <div className={`font-numeric text-2xl font-extrabold tracking-tight ${sevFilter === 'info' ? 'text-[#1d6fa5]' : 'text-neutral-900'}`}>
+              <div className={`font-numeric text-2xl font-extrabold tracking-tight ${sevFilter === 'info' ? 'text-[#1d6fa5] dark:text-sky-400' : 'text-neutral-900 dark:text-white'}`}>
                 {alertCounts.info}
               </div>
               <div className="text-[11px] text-neutral-400 mt-1">
@@ -1801,15 +1822,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
           </div>
 
           {/* Alert Feed List */}
-          <div className="bg-white border border-neutral-200 rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-neutral-200 flex items-center gap-2.5">
+          <div className="bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2.5">
               <span className="w-6.5 h-6.5 rounded-lg flex items-center justify-center bg-neutral-100 text-neutral-600">
                 <ShieldAlert className="w-3.5 h-3.5" />
               </span>
-              <h3 className="text-13px font-bold text-neutral-900 flex-1 m-0">
+              <h3 className="text-13px font-bold text-neutral-900 dark:text-white flex-1 m-0">
                 {sevFilter === 'semua' ? 'Semua Peringatan' : `Peringatan — ${sevFilter.charAt(0).toUpperCase() + sevFilter.slice(1)}`}
               </h3>
-              <span className="font-numeric text-xs font-semibold bg-neutral-100 border border-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full">
+              <span className="font-numeric text-xs font-semibold bg-neutral-100 border border-neutral-200 dark:border-neutral-800 text-neutral-600 px-2 py-0.5 rounded-full">
                 {filteredAlerts.length}
               </span>
             </div>
@@ -1825,7 +1846,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                   return (
                     <div 
                       key={idx} 
-                      className="flex items-start gap-3 p-3.5 border-b border-neutral-100 relative hover:bg-neutral-50 transition-colors"
+                      className="flex items-start gap-3 p-3.5 border-b border-neutral-100 dark:border-neutral-800/60 relative hover:bg-neutral-50 dark:hover:bg-neutral-800/50 dark:bg-neutral-900 transition-colors"
                       style={{ borderLeft: `3px solid ${borderCol}` }}
                     >
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: bgCol, color: borderCol }}>
@@ -1835,8 +1856,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-xs text-neutral-900 mb-1">{a.t}</div>
-                        <div className="text-[11.5px] text-neutral-500 leading-normal" dangerouslySetInnerHTML={{ __html: a.d }} />
+                        <div className="font-semibold text-xs text-neutral-900 dark:text-white mb-1">{a.t}</div>
+                        <div className="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-normal" dangerouslySetInnerHTML={{ __html: a.d }} />
                       </div>
 
                       <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -1845,7 +1866,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                         </span>
                         <button 
                           onClick={() => setTab?.(a.tabTarget)}
-                          className="bg-white border border-neutral-200 hover:bg-neutral-50 text-neutral-700 font-semibold text-[11.5px] px-3 py-1 rounded-md cursor-pointer transition-colors"
+                          className="bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 dark:bg-neutral-900 text-neutral-700 font-semibold text-[11.5px] px-3 py-1 rounded-md cursor-pointer transition-colors"
                         >
                           {a.act} →
                         </button>
@@ -1873,13 +1894,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {/* Card 1: Catatan Tim */}
-            <div className="bg-white border border-neutral-200 rounded-2xl shadow-xs overflow-hidden flex flex-col">
-              <div className="p-4 border-b border-neutral-200 flex items-center gap-2.5">
-                <span className="w-6.5 h-6.5 rounded-lg flex items-center justify-center bg-[#fef3e2] text-[#b45309]">
+            <div className="bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xs overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2.5">
+                <span className="w-6.5 h-6.5 rounded-lg flex items-center justify-center bg-[#fef3e2] text-[#b45309] dark:text-amber-500">
                   <FileText className="w-3.5 h-3.5" />
                 </span>
-                <h3 className="text-13px font-bold text-neutral-900 flex-1 m-0">Catatan Tim</h3>
-                <span className="font-numeric text-xs font-semibold bg-neutral-100 border border-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full">
+                <h3 className="text-13px font-bold text-neutral-900 dark:text-white flex-1 m-0">Catatan Tim</h3>
+                <span className="font-numeric text-xs font-semibold bg-neutral-100 border border-neutral-200 dark:border-neutral-800 text-neutral-600 px-2 py-0.5 rounded-full">
                   {notes.length}
                 </span>
                 {notes.length > 0 && (
@@ -1894,17 +1915,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
               </div>
 
               {/* Baris Tambah Catatan (NO DROPDOWN - AUTHOR IS AUTOMATIC FROM LOGGED IN SESSION) */}
-              <div className="flex gap-2 p-3.5 border-b border-neutral-200 bg-neutral-50/50">
+              <div className="flex gap-2 p-3.5 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50">
                 <input 
                   type="text" 
                   value={noteInput}
                   onChange={(e) => setNoteInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
                   placeholder="Tulis catatan baru…" 
-                  className="flex-1 border border-neutral-200 rounded-lg px-3 py-2 text-xs outline-none bg-white focus:border-[#2b5a9e]"
+                  className="flex-1 border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-xs outline-none bg-white focus:border-[#2b5a9e]"
                 />
                 
-                <span className="inline-flex items-center gap-1.5 bg-neutral-100 border border-neutral-200 rounded-lg px-3 py-2 text-xs font-semibold text-neutral-700 shrink-0 whitespace-nowrap" title="Otomatis terdeteksi dari akun yang login">
+                <span className="inline-flex items-center gap-1.5 bg-neutral-100 border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-xs font-semibold text-neutral-700 shrink-0 whitespace-nowrap" title="Otomatis terdeteksi dari akun yang login">
                   <User className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
                   <span>{currentAuthorName}</span>
                 </span>
@@ -1932,13 +1953,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                   return (
                     <div 
                       key={n.id || idx} 
-                      className={`flex gap-3 p-3.5 border-b border-neutral-100 relative transition-colors ${
-                        n.pin ? 'bg-[#fef3e2]' : 'hover:bg-neutral-50'
+                      className={`flex gap-3 p-3.5 border-b border-neutral-100 dark:border-neutral-800/60 relative transition-colors ${
+                        n.pin ? 'bg-[#fef3e2]' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50 dark:bg-neutral-900'
                       }`}
                       style={{ borderLeft: `3px solid ${barColor}` }}
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs text-neutral-900 leading-relaxed">{n.txt}</div>
+                        <div className="text-xs text-neutral-900 dark:text-white leading-relaxed">{n.txt}</div>
                         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                           <span className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ backgroundColor: bgTag, color: barColor }}>
                             {n.authorName || (isFelix ? 'Felix' : 'Admin')}
@@ -1959,7 +1980,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                           onClick={() => handleTogglePinNote(n)} 
                           title="Sematkan / Pin"
                           className={`w-6.5 h-6.5 rounded-md border-none bg-transparent flex items-center justify-center cursor-pointer transition-colors ${
-                            n.pin ? 'text-[#b45309]' : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200/60'
+                            n.pin ? 'text-[#b45309] dark:text-amber-500' : 'text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200/60'
                           }`}
                         >
                           <Pin className="w-3.5 h-3.5" />
@@ -1967,7 +1988,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                         <button 
                           onClick={() => handleDeleteNote(n)} 
                           title="Hapus"
-                          className="w-6.5 h-6.5 rounded-md border-none bg-transparent text-neutral-400 hover:text-[#a8323b] hover:bg-[#fbecec] flex items-center justify-center cursor-pointer transition-colors"
+                          className="w-6.5 h-6.5 rounded-md border-none bg-transparent text-neutral-400 hover:text-[#a8323b] dark:text-red-400 hover:bg-[#fbecec] flex items-center justify-center cursor-pointer transition-colors"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1978,17 +1999,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
               )}
 
                 {/* Collapsible Section: Selesai Dibaca */}
-                <div className="border-t border-neutral-200">
+                <div className="border-t border-neutral-200 dark:border-neutral-800">
                   <div 
                     onClick={() => setNotesCompletedOpen(!notesCompletedOpen)}
-                    className="flex items-center gap-2 p-3 px-4 cursor-pointer text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800 text-xs font-medium transition-colors"
+                    className="flex items-center gap-2 p-3 px-4 cursor-pointer text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 dark:bg-neutral-900 hover:text-neutral-800 text-xs font-medium transition-colors"
                   >
                     <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${notesCompletedOpen ? 'rotate-90' : ''}`} />
                     <span>Selesai Dibaca <b className="font-numeric">({completedNotes.length})</b></span>
                   </div>
 
                   {notesCompletedOpen && (
-                    <div className="opacity-70 bg-neutral-50/50">
+                    <div className="opacity-70 bg-neutral-50 dark:bg-neutral-900/50">
                       {completedNotes.length === 0 ? (
                         <div className="p-3 px-4 text-xs text-neutral-400">Belum ada catatan yang ditandai selesai.</div>
                       ) : (
@@ -2000,7 +2021,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                           return (
                             <div 
                               key={n.id || idx} 
-                              className="flex gap-3 p-3.5 border-b border-neutral-100 relative hover:bg-neutral-100/50 transition-colors"
+                              className="flex gap-3 p-3.5 border-b border-neutral-100 dark:border-neutral-800/60 relative hover:bg-neutral-100/50 transition-colors"
                               style={{ borderLeft: `3px solid ${barColor}` }}
                             >
                               <div className="flex-1 min-w-0">
@@ -2017,14 +2038,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                                 <button 
                                   onClick={() => handleToggleReadNote(n)} 
                                   title="Tandai belum dibaca"
-                                  className="w-6.5 h-6.5 rounded-md border-none bg-transparent text-[#0f7a52] flex items-center justify-center cursor-pointer transition-colors"
+                                  className="w-6.5 h-6.5 rounded-md border-none bg-transparent text-[#0f7a52] dark:text-emerald-400 flex items-center justify-center cursor-pointer transition-colors"
                                 >
                                   <Check className="w-3.5 h-3.5" />
                                 </button>
                                 <button 
                                   onClick={() => handleDeleteNote(n)} 
                                   title="Hapus"
-                                  className="w-6.5 h-6.5 rounded-md border-none bg-transparent text-neutral-400 hover:text-[#a8323b] hover:bg-[#fbecec] flex items-center justify-center cursor-pointer transition-colors"
+                                  className="w-6.5 h-6.5 rounded-md border-none bg-transparent text-neutral-400 hover:text-[#a8323b] dark:text-red-400 hover:bg-[#fbecec] flex items-center justify-center cursor-pointer transition-colors"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -2040,8 +2061,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
             </div>
 
             {/* Card 2: Task Admin */}
-            <div className="bg-white border border-neutral-200 rounded-2xl shadow-xs overflow-hidden flex flex-col">
-              <div className="p-4 border-b border-neutral-200 flex items-center gap-3">
+            <div className="bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xs overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-3">
                 {/* Ring Progress Percentage */}
                 <div className="w-[44px] h-[44px] relative shrink-0">
                   <svg className="w-[44px] h-[44px] -rotate-90" viewBox="0 0 44 44">
@@ -2057,13 +2078,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                       }}
                     />
                   </svg>
-                  <span className="absolute inset-0 flex items-center justify-center font-numeric text-[11px] font-extrabold text-neutral-900">
+                  <span className="absolute inset-0 flex items-center justify-center font-numeric text-[11px] font-extrabold text-neutral-900 dark:text-white">
                     {taskPct}%
                   </span>
                 </div>
 
                 <div className="flex-1">
-                  <h3 className="text-13px font-bold text-neutral-900 m-0 mb-0.5">Perlu Perbaikan</h3>
+                  <h3 className="text-13px font-bold text-neutral-900 dark:text-white m-0 mb-0.5">Perlu Perbaikan</h3>
                   <p className="font-numeric text-[11.5px] text-neutral-400 m-0">
                     {completedTasks.length} dari {tasks.length} selesai
                   </p>
@@ -2089,19 +2110,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
               {/* Form Tambah Task */}
               {addTaskRowOpen && (
-                <div className="flex gap-2 p-3.5 border-b border-neutral-200 bg-neutral-50/50">
+                <div className="flex gap-2 p-3.5 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50">
                   <input 
                     type="text" 
                     value={taskInput}
                     onChange={(e) => setTaskInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSaveTask()}
                     placeholder="Tulis task baru…" 
-                    className="flex-1 border border-neutral-200 rounded-lg px-3 py-2 text-xs outline-none bg-white focus:border-[#2b5a9e]"
+                    className="flex-1 border border-neutral-200 dark:border-neutral-800 rounded-lg px-3 py-2 text-xs outline-none bg-white focus:border-[#2b5a9e]"
                   />
                   <select 
                     value={taskDueInput}
                     onChange={(e) => setTaskDueInput(e.target.value as any)}
-                    className="border border-neutral-200 rounded-lg px-2.5 py-2 text-xs text-neutral-700 bg-white outline-none cursor-pointer shrink-0"
+                    className="border border-neutral-200 dark:border-neutral-800 rounded-lg px-2.5 py-2 text-xs text-neutral-700 bg-white dark:bg-neutral-900 cursor-pointer shrink-0"
                   >
                     <option value="today">Hari Ini</option>
                     <option value="week">Minggu Ini</option>
@@ -2131,16 +2152,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                     : { label: 'Nanti', c: '#6b7280', bg: '#f4f5f7' };
 
                   return (
-                    <div key={t.id || idx} className="flex items-start gap-3 p-3.5 border-b border-neutral-100 hover:bg-neutral-50 transition-colors">
+                    <div key={t.id || idx} className="flex items-start gap-3 p-3.5 border-b border-neutral-100 dark:border-neutral-800/60 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 dark:bg-neutral-900 transition-colors">
                       <button
                         onClick={() => handleToggleTaskDone(t)}
-                        className="w-[18px] h-[18px] rounded-md border-[1.8px] border-neutral-300 flex items-center justify-center mt-0.5 cursor-pointer bg-white transition-colors shrink-0 hover:border-[#0f7a52]"
+                        className="w-[18px] h-[18px] rounded-md border-[1.8px] border-neutral-300 flex items-center justify-center mt-0.5 cursor-pointer bg-white dark:bg-neutral-900 shrink-0 hover:border-[#0f7a52]"
                       >
                         <Check className="w-3 h-3 text-white opacity-0" />
                       </button>
 
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium text-neutral-900 leading-normal">{t.t}</div>
+                        <div className="text-xs font-medium text-neutral-900 dark:text-white leading-normal">{t.t}</div>
                         <div className="mt-1">
                           <span className="font-numeric text-[10.5px] font-semibold px-2 py-0.5 rounded-full" style={{ color: dueMeta.c, backgroundColor: dueMeta.bg }}>
                             {dueMeta.label}
@@ -2150,7 +2171,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
                       <button 
                         onClick={() => handleDeleteTask(t)}
-                        className="w-6.5 h-6.5 rounded-md border-none bg-transparent text-neutral-400 hover:text-[#a8323b] hover:bg-[#fbecec] flex items-center justify-center cursor-pointer transition-colors shrink-0"
+                        className="w-6.5 h-6.5 rounded-md border-none bg-transparent text-neutral-400 hover:text-[#a8323b] dark:text-red-400 hover:bg-[#fbecec] flex items-center justify-center cursor-pointer transition-colors shrink-0"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -2160,17 +2181,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
               )}
 
                 {/* Collapsible Section: Completed Tasks */}
-                <div className="border-t border-neutral-200">
+                <div className="border-t border-neutral-200 dark:border-neutral-800">
                   <div 
                     onClick={() => setTasksCompletedOpen(!tasksCompletedOpen)}
-                    className="flex items-center gap-2 p-3 px-4 cursor-pointer text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800 text-xs font-medium transition-colors"
+                    className="flex items-center gap-2 p-3 px-4 cursor-pointer text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 dark:bg-neutral-900 hover:text-neutral-800 text-xs font-medium transition-colors"
                   >
                     <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${tasksCompletedOpen ? 'rotate-90' : ''}`} />
                     <span>Completed <b className="font-numeric">({completedTasks.length})</b></span>
                   </div>
 
                   {tasksCompletedOpen && (
-                    <div className="opacity-70 bg-neutral-50/50">
+                    <div className="opacity-70 bg-neutral-50 dark:bg-neutral-900/50">
                       {completedTasks.length === 0 ? (
                         <div className="p-3 px-4 text-xs text-neutral-400">Belum ada task yang selesai.</div>
                       ) : (
@@ -2182,7 +2203,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                             : { label: 'Nanti', c: '#6b7280', bg: '#f4f5f7' };
 
                           return (
-                            <div key={t.id || idx} className="flex items-start gap-3 p-3.5 border-b border-neutral-100 hover:bg-neutral-100/50 transition-colors">
+                            <div key={t.id || idx} className="flex items-start gap-3 p-3.5 border-b border-neutral-100 dark:border-neutral-800/60 hover:bg-neutral-100/50 transition-colors">
                               <button
                                 onClick={() => handleToggleTaskDone(t)}
                                 className="w-[18px] h-[18px] rounded-md bg-[#0f7a52] border-[1.8px] border-[#0f7a52] flex items-center justify-center mt-0.5 cursor-pointer shrink-0"
@@ -2201,7 +2222,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
                               <button 
                                 onClick={() => handleDeleteTask(t)}
-                                className="w-6.5 h-6.5 rounded-md border-none bg-transparent text-neutral-400 hover:text-[#a8323b] hover:bg-[#fbecec] flex items-center justify-center cursor-pointer transition-colors shrink-0"
+                                className="w-6.5 h-6.5 rounded-md border-none bg-transparent text-neutral-400 hover:text-[#a8323b] dark:text-red-400 hover:bg-[#fbecec] flex items-center justify-center cursor-pointer transition-colors shrink-0"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -2231,14 +2252,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
           </div>
 
           {/* KALKULATOR HARGA JUAL */}
-          <div className="bg-white border border-neutral-200 rounded-2xl p-5 shadow-sm">
+          <div className="bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
               {/* Input Harga Beli */}
               <div>
                 <div className="text-[11px] font-bold tracking-wider uppercase text-neutral-400 mb-2">
                   Harga Beli (Rupiah)
                 </div>
-                <div className="flex items-center gap-2.5 border-1.5 border-neutral-200 rounded-xl p-3 focus-within:border-[#2b5a9e] transition-colors">
+                <div className="flex items-center gap-2.5 border-1.5 border-neutral-200 dark:border-neutral-800 rounded-xl p-3 focus-within:border-[#2b5a9e] transition-colors">
                   <span className="font-numeric font-bold text-base text-neutral-400 shrink-0">Rp</span>
                   <input 
                     type="text" 
@@ -2246,7 +2267,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                     onChange={(e) => setCalcIn(formatInputWithCommas(e.target.value))}
                     placeholder="0" 
                     inputMode="numeric"
-                    className="border-none outline-none bg-transparent w-full font-numeric text-xl font-bold text-neutral-900 tracking-tight placeholder-neutral-300"
+                    className="border-none outline-none bg-transparent w-full font-numeric text-xl font-bold text-neutral-900 dark:text-white tracking-tight placeholder-neutral-300"
                   />
                 </div>
               </div>
@@ -2261,15 +2282,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
               {/* Output Harga Umum */}
               <div className="bg-[#e7f5ef] border-1.5 border-[#bfe5d3] rounded-xl p-3.5 flex items-center justify-between gap-3">
-                <span className="text-[11px] font-bold tracking-wider uppercase text-[#0f7a52] opacity-75 shrink-0">Harga Umum</span>
-                <span className={`font-numeric text-2xl font-extrabold tracking-tight text-[#0f7a52] ${!calcMatchResult.matchedTier ? 'opacity-35' : ''}`}>
+                <span className="text-[11px] font-bold tracking-wider uppercase text-[#0f7a52] dark:text-emerald-400 opacity-75 shrink-0">Harga Umum</span>
+                <span className={`font-numeric text-2xl font-extrabold tracking-tight text-[#0f7a52] dark:text-emerald-400 ${!calcMatchResult.matchedTier ? 'opacity-35' : ''}`}>
                   {calcMatchResult.matchedTier ? formatNTD(calcMatchResult.matchedTier.umum * 100) : 'NT$ —'}
                 </span>
               </div>
             </div>
 
             {/* Note Dynamic Bar */}
-            <div className="mt-3.5 pt-3 border-t border-dashed border-neutral-200 text-xs text-neutral-500 flex items-center gap-2">
+            <div className="mt-3.5 pt-3 border-t border-dashed border-neutral-200 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
               <BookOpen className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
               <span>
                 {calcMatchResult.messageType === 'blank' && (
@@ -2277,15 +2298,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                 )}
                 {calcMatchResult.messageType === 'below' && (
                   <>
-                    <span className="text-[#a8323b] font-semibold">Di bawah tingkat terendah</span> — batas bawah paling kecil saat ini <b className="font-numeric">{formatIDR(calcMatchResult.lowestFrom)}</b>.
+                    <span className="text-[#a8323b] dark:text-red-400 font-semibold">Di bawah tingkat terendah</span> — batas bawah paling kecil saat ini <b className="font-numeric">{formatIDR(calcMatchResult.lowestFrom)}</b>.
                   </>
                 )}
                 {calcMatchResult.messageType === 'above' && (
                   <>
-                    <span className="text-[#a8323b] font-semibold">Di luar tingkat tertinggi</span> — tingkat terakhir berhenti di <b className="font-numeric">{formatIDR(calcMatchResult.highestTo)}</b>.{' '}
+                    <span className="text-[#a8323b] dark:text-red-400 font-semibold">Di luar tingkat tertinggi</span> — tingkat terakhir berhenti di <b className="font-numeric">{formatIDR(calcMatchResult.highestTo)}</b>.{' '}
                     <span 
                       onClick={() => setAddTierFormOpen(true)}
-                      className="text-[#2b5a9e] font-semibold underline cursor-pointer"
+                      className="text-[#2b5a9e] dark:text-blue-400 font-semibold underline cursor-pointer"
                     >
                       Tambah tingkat baru →
                     </span>
@@ -2308,19 +2329,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
             <span className="flex-1 h-px bg-neutral-200"></span>
           </div>
 
-          <div className="bg-white border border-neutral-200 rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-neutral-200 flex items-center gap-2.5">
-              <span className="w-6.5 h-6.5 rounded-lg flex items-center justify-center bg-[#eef3fa] text-[#2b5a9e]">
+          <div className="bg-white dark:bg-[#161b22] border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2.5">
+              <span className="w-6.5 h-6.5 rounded-lg flex items-center justify-center bg-[#eef3fa] text-[#2b5a9e] dark:text-blue-400">
                 <DollarSign className="w-3.5 h-3.5" />
               </span>
-              <h3 className="text-13px font-bold text-neutral-900 flex-1 m-0">Tingkat Harga Jual</h3>
-              <span className="font-numeric text-xs font-semibold bg-neutral-100 border border-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full">
+              <h3 className="text-13px font-bold text-neutral-900 dark:text-white flex-1 m-0">Tingkat Harga Jual</h3>
+              <span className="font-numeric text-xs font-semibold bg-neutral-100 border border-neutral-200 dark:border-neutral-800 text-neutral-600 px-2 py-0.5 rounded-full">
                 {tiers.length} tingkat
               </span>
               
               <button 
                 onClick={() => setAddTierFormOpen(!addTierFormOpen)}
-                className={`w-6.5 h-6.5 rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:text-neutral-900 cursor-pointer flex items-center justify-center transition-transform duration-200 ${
+                className={`w-6.5 h-6.5 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#161b22] dark:text-neutral-400 hover:text-neutral-900 dark:text-white cursor-pointer flex items-center justify-center transition-transform duration-200 ${
                   addTierFormOpen ? 'rotate-180 bg-neutral-100' : ''
                 }`}
                 title={addTierFormOpen ? 'Sembunyikan form tambah tingkat' : 'Tampilkan form tambah tingkat'}
@@ -2331,7 +2352,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
             {/* FORM TAMBAH TINGKAT (DEFAULT CLOSED) */}
             {addTierFormOpen && (
-              <div className="p-4 border-b border-neutral-200 bg-neutral-50 flex flex-wrap items-end gap-3">
+              <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 flex flex-wrap items-end gap-3">
                 <div className="flex-1 min-w-[220px]">
                   <label className="block text-[10px] font-bold tracking-wider uppercase text-neutral-400 mb-1.5">
                     Range Harga (IDR)
@@ -2343,7 +2364,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                       onChange={(e) => setTierFrom(formatInputWithCommas(e.target.value))}
                       placeholder="530,000" 
                       inputMode="numeric"
-                      className="w-full border border-neutral-200 rounded-lg p-2 font-numeric text-xs bg-white outline-none focus:border-[#2b5a9e]"
+                      className="w-full border border-neutral-200 dark:border-neutral-800 rounded-lg p-2 font-numeric text-xs bg-white dark:bg-neutral-900 focus:border-[#2b5a9e]"
                     />
                     <span className="text-neutral-400 font-bold shrink-0">–</span>
                     <input 
@@ -2352,7 +2373,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                       onChange={(e) => setTierToVal(formatInputWithCommas(e.target.value))}
                       placeholder="549,999" 
                       inputMode="numeric"
-                      className="w-full border border-neutral-200 rounded-lg p-2 font-numeric text-xs bg-white outline-none focus:border-[#2b5a9e]"
+                      className="w-full border border-neutral-200 dark:border-neutral-800 rounded-lg p-2 font-numeric text-xs bg-white dark:bg-neutral-900 focus:border-[#2b5a9e]"
                     />
                   </div>
                 </div>
@@ -2367,7 +2388,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                     onChange={(e) => setTierMkt(formatInputWithCommas(e.target.value))}
                     placeholder="1,699" 
                     inputMode="numeric"
-                    className="w-full border border-neutral-200 rounded-lg p-2 font-numeric text-xs bg-white outline-none focus:border-[#2b5a9e]"
+                    className="w-full border border-neutral-200 dark:border-neutral-800 rounded-lg p-2 font-numeric text-xs bg-white dark:bg-neutral-900 focus:border-[#2b5a9e]"
                   />
                 </div>
 
@@ -2381,7 +2402,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                     onChange={(e) => setTierUmum(formatInputWithCommas(e.target.value))}
                     placeholder="1,670" 
                     inputMode="numeric"
-                    className="w-full border border-neutral-200 rounded-lg p-2 font-numeric text-xs bg-white outline-none focus:border-[#2b5a9e]"
+                    className="w-full border border-neutral-200 dark:border-neutral-800 rounded-lg p-2 font-numeric text-xs bg-white dark:bg-neutral-900 focus:border-[#2b5a9e]"
                   />
                 </div>
 
@@ -2393,7 +2414,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                 </button>
 
                 {tierError && (
-                  <div className="w-full text-xs text-[#a8323b] font-semibold mt-1">
+                  <div className="w-full text-xs text-[#a8323b] dark:text-red-400 font-semibold mt-1">
                     {tierError}
                   </div>
                 )}
@@ -2404,7 +2425,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
             <div className="max-h-[560px] overflow-y-auto lbody">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="bg-white border-b border-neutral-200 sticky top-0 z-10 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                  <tr className="bg-white dark:bg-[#161b22] border-neutral-200 dark:border-neutral-800 sticky top-0 z-10 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
                     <th className="text-left py-2.5 px-4">Range Harga Beli (Rp)</th>
                     <th className="text-right py-2.5 px-4">Harga Marketplace</th>
                     <th className="text-right py-2.5 px-4">Harga Umum</th>
@@ -2419,7 +2440,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                       <tr 
                         key={idx} 
                         data-tier-from={t.from}
-                        className={`border-b border-neutral-100 transition-colors text-xs hover:bg-neutral-50 ${
+                        className={`border-b border-neutral-100 dark:border-neutral-800/60 transition-colors text-xs hover:bg-neutral-50 dark:hover:bg-neutral-800/50 dark:bg-neutral-900 ${
                           isHit ? 'hit' : ''
                         }`}
                       >
@@ -2429,12 +2450,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
                           </span>
                         </td>
                         <td className="py-2.5 px-4 text-right">
-                          <span className="font-numeric font-bold text-[#2b5a9e]">
+                          <span className="font-numeric font-bold text-[#2b5a9e] dark:text-blue-400">
                             {formatNTD(t.mkt * 100)}
                           </span>
                         </td>
                         <td className="py-2.5 px-4 text-right">
-                          <span className="font-numeric font-bold text-[#0f7a52]">
+                          <span className="font-numeric font-bold text-[#0f7a52] dark:text-emerald-400">
                             {formatNTD(t.umum * 100)}
                           </span>
                         </td>

@@ -1,4 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
+import { formatDate } from '../lib/date-utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
@@ -995,7 +996,7 @@ export const IklanTab: React.FC = () => {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-numeric text-xs font-bold text-neutral-800 dark:text-neutral-200">{entry.docNo}</span>
                       <span className="h-1 w-1 rounded-full bg-neutral-300 dark:bg-neutral-700" />
-                      <span className="font-numeric text-[10px] text-neutral-400">{entry.date}</span>
+                      <span className="font-numeric text-[10px] text-neutral-400">{formatDate(entry.date)}</span>
                     </div>
                     <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300 mt-1">{entry.platform}</p>
                     <span className="text-[10px] text-neutral-400">Dibayar via Cash: {entry.currency === 'IDR' ? 'Rupiah' : 'NTD'}</span>

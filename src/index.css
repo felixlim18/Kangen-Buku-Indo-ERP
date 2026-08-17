@@ -174,12 +174,13 @@ input[type="number"] {
   border-radius: 1rem;
   border: 1px solid #E7E1D2;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  width: 100%;
-  max-width: 76rem;
+  width: 96%;
+  max-width: 64rem;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  margin: auto;
 }
 .dark .kbi-so-card {
   background-color: #171717;

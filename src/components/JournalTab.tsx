@@ -1,4 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
+import { formatDate } from '../lib/date-utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
@@ -1880,10 +1881,7 @@ export const JournalTab: React.FC<JournalTabProps> = ({ setTab }) => {
                   </tr>
                 ) : (
                   paginatedJournals.map((entry) => {
-                    const dateObj = entry.date?.seconds ? new Date(entry.date.seconds * 1000) : new Date(entry.date);
-                    const formattedDate = isNaN(dateObj.getTime()) 
-                      ? '-' 
-                      : `${dateObj.getFullYear()}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${String(dateObj.getDate()).padStart(2, '0')}`;
+                    const formattedDate = formatDate(entry.date);
                     
                     const isExpanded = !!expandedRows[entry.id];
                     
@@ -2326,14 +2324,7 @@ export const JournalTab: React.FC<JournalTabProps> = ({ setTab }) => {
                       Tanggal Transaksi
                     </div>
                     <div className="font-numeric text-xs text-neutral-800 dark:text-neutral-200 mt-1.5 font-bold">
-                      {(() => {
-                        const dObj = selectedJournalForDetail.date?.seconds 
-                          ? new Date(selectedJournalForDetail.date.seconds * 1000) 
-                          : (selectedJournalForDetail.date instanceof Date ? selectedJournalForDetail.date : new Date(selectedJournalForDetail.date));
-                        return isNaN(dObj.getTime())
-                          ? '-'
-                          : `${dObj.getFullYear()}/${String(dObj.getMonth() + 1).padStart(2, '0')}/${String(dObj.getDate()).padStart(2, '0')}`;
-                      })()}
+                      {formatDate(selectedJournalForDetail.date)}
                     </div>
                   </div>
                 </div>

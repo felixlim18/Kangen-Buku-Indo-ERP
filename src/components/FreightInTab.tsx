@@ -44,25 +44,10 @@ import {
 } from 'lucide-react';
 import { generateReceivingJournals } from '../lib/journalAuto';
 import { getNextJournalId } from '../lib/journalUtils';
+import { formatDate } from '../lib/date-utils';
 
 const formatFreightDateDisplay = (createdAt: any): string => {
-  if (!createdAt) return '-';
-  let d: Date | null = null;
-  if (typeof createdAt.toDate === 'function') {
-    d = createdAt.toDate();
-  } else if (typeof createdAt.seconds === 'number') {
-    d = new Date(createdAt.seconds * 1000);
-  } else if (createdAt instanceof Date) {
-    d = createdAt;
-  } else if (typeof createdAt === 'string' || typeof createdAt === 'number') {
-    const parsed = new Date(createdAt);
-    if (!isNaN(parsed.getTime())) d = parsed;
-  }
-  if (!d) return '-';
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = d.getFullYear();
-  return `${day}/${month}/${year}`;
+  return formatDate(createdAt);
 };
 
 const parseToDateString = (createdAt: any): string => {
@@ -256,22 +241,7 @@ export default function FreightInTab() {
             const scanner = new Html5Qrcode("freight-qr-reader", {
               formatsToSupport: [
                 Html5QrcodeSupportedFormats.QR_CODE,
-                Html5QrcodeSupportedFormats.AZTEC,
-                Html5QrcodeSupportedFormats.CODABAR,
-                Html5QrcodeSupportedFormats.CODE_39,
-                Html5QrcodeSupportedFormats.CODE_93,
-                Html5QrcodeSupportedFormats.CODE_128,
-                Html5QrcodeSupportedFormats.DATA_MATRIX,
-                Html5QrcodeSupportedFormats.MAXICODE,
-                Html5QrcodeSupportedFormats.ITF,
-                Html5QrcodeSupportedFormats.EAN_13,
-                Html5QrcodeSupportedFormats.EAN_8,
-                Html5QrcodeSupportedFormats.PDF_417,
-                Html5QrcodeSupportedFormats.RSS_14,
-                Html5QrcodeSupportedFormats.RSS_EXPANDED,
-                Html5QrcodeSupportedFormats.UPC_A,
-                Html5QrcodeSupportedFormats.UPC_E,
-                Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION
+                Html5QrcodeSupportedFormats.CODE_128
               ],
               verbose: false,
               experimentalFeatures: {
@@ -282,7 +252,7 @@ export default function FreightInTab() {
 
             const config = {
               fps: 20,
-              qrbox: undefined,
+              qrbox: 250,
               aspectRatio: 1.333333,
               videoConstraints: {
                 facingMode: freightCameraFacingMode,
@@ -1245,6 +1215,12 @@ export default function FreightInTab() {
         });
       });
 
+      setFreightList(prev => prev.map(f => 
+        f.freightCode === rec.freightCode 
+          ? { ...f, isCapitalized: true, capitalizationJournalId: journalId }
+          : f
+      ));
+
       setSuccessToast(`Berhasil menjurnal kapitalisasi Freight-In ${rec.freightCode}!`);
     } catch (err: any) {
       setAlertState({
@@ -1287,6 +1263,12 @@ export default function FreightInTab() {
         transaction.delete(journalRef);
       });
 
+      setFreightList(prev => prev.map(f => 
+        f.freightCode === rec.freightCode 
+          ? { ...f, isCapitalized: false, capitalizationJournalId: '' }
+          : f
+      ));
+
       setSuccessToast(`Berhasil merevers jurnal kapitalisasi ${rec.freightCode}!`);
     } catch (err: any) {
       setAlertState({
@@ -1320,6 +1302,24 @@ export default function FreightInTab() {
     (f.freightCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (f.docNo || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  filteredFreightList.sort((a, b) => {
+    const getTime = (ca: any) => {
+      if (!ca) return 0;
+      if (typeof ca.toDate === 'function') return ca.toDate().getTime();
+      if (typeof ca.seconds === 'number') return ca.seconds * 1000;
+      if (ca instanceof Date) return ca.getTime();
+      if (typeof ca === 'string' || typeof ca === 'number') {
+        const d = new Date(ca);
+        return isNaN(d.getTime()) ? 0 : d.getTime();
+      }
+      return 0;
+    };
+    const timeA = getTime(a.createdAt);
+    const timeB = getTime(b.createdAt);
+    if (timeA !== timeB) return timeB - timeA;
+    return b.freightCode.localeCompare(a.freightCode);
+  });
 
   const freightPerPage = 50;
   const totalFreightPages = Math.ceil(filteredFreightList.length / freightPerPage) || 1;

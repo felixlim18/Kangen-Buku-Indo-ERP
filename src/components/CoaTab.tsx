@@ -30,6 +30,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { formatNumber, formatNTDAmount, getAccountBalanceForPeriod, hasAccountPostings, isParentAccount, findParentOf } from '../lib/decimal-utils';
+import { formatDate } from '../lib/date-utils';
 import { DateRangePicker } from './ui/DateRangePicker';
 
 // Default CoA Accounts as fallback & initialization seed per instructions
@@ -49,9 +50,6 @@ const DEFAULT_COA_ACCOUNTS: Omit<CoaAccount, 'id' | 'createdAt'>[] = [
   { code: '2110', name: 'Pendapatan Diterima di Muka', type: 'Liabilities', subType: 'Kewajiban Lancar', isActive: true },
   { code: '3100', name: 'Modal Awal', type: 'Equity', subType: 'Ekuitas Pemilik', isActive: true, systemKey: 'modal_awal' },
   { code: '4100', name: 'Revenue', type: 'Revenue', subType: 'Pendapatan Usaha', isActive: true, systemKey: 'revenue' },
-  { code: '4101', name: 'Revenue:Tokopedia', type: 'Revenue', subType: 'Pendapatan Usaha', isActive: true },
-  { code: '4102', name: 'Revenue:Shopee', type: 'Revenue', subType: 'Pendapatan Usaha', isActive: true },
-  { code: '4103', name: 'Revenue:Platform', type: 'Revenue', subType: 'Pendapatan Usaha', isActive: true, systemKey: 'revenue_platform' },
   { code: '5100', name: 'COGS', type: 'Expenses', subType: 'Harga Pokok Penjualan', isActive: true, systemKey: 'cogs' },
   { code: '5120', name: 'Beban Gaji', type: 'Expenses', subType: 'Beban Operasional', isActive: true },
   { code: '5130', name: 'Beban Komisi Reseller', type: 'Expenses', subType: 'Beban Kemitraan', isActive: true },
@@ -1975,8 +1973,7 @@ export const CoaTab: React.FC = () => {
                         const normalRule = ledgerAccount.type === 'Assets' || ledgerAccount.type === 'Expenses' ? 'DR' : 'CR';
                         
                         return getLedgerLines(ledgerAccount.name).map((line, idx) => {
-                          const dateObj = line.date?.seconds ? new Date(line.date.seconds * 1000) : new Date(line.date);
-                          const dateString = isNaN(dateObj.getTime()) ? '-' : dateObj.toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' });
+                          const dateString = formatDate(line.date);
 
                           // compute running ledger balance
                           if (normalRule === 'DR') {

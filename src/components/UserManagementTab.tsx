@@ -15,6 +15,7 @@ const MODULES = [
       { key: 'dashboard.harga', label: 'Tab "Harga Jual"' }
     ]
   },
+  { key: 'daily-report', label: 'Laporan Harian', sub: [] },
   { key: 'catalog', label: 'Katalog Buku', sub: [
       { key: 'catalog.export', label: 'Tombol "Ekspor (CSV)"' },
       { key: 'catalog.import', label: 'Tombol "Impor (CSV)"' }
@@ -67,7 +68,8 @@ const MODULES = [
       { key: 'closing', label: 'Tutup Periode', sensitive: true }
     ]
   },
-  { key: 'report-sales-detail', label: 'Laporan Rincian Penjualan', sub: [] }
+  { key: 'report-sales-detail', label: 'Laporan Rincian Penjualan', sub: [] },
+  { key: 'report-user-activity', label: 'Laporan Kegiatan User', sub: [] }
 ];
 
 function emptyPermissions() {

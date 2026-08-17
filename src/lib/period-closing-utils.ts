@@ -2,6 +2,8 @@ import { collection, getDocs, doc, getDoc, setDoc, writeBatch, query, where, ord
 import { db } from './firebase';
 import { FALLBACK_IDR_PER_NTD } from './exchangeRateConstants';
 
+import { formatDate } from './date-utils';
+
 export interface PeriodClosing {
   id: string; // YYYY-MM
   period: string; // e.g. "Juni 2026"
@@ -64,7 +66,7 @@ export function adjustJournalPayloadIfPeriodClosed(payload: any, closedPeriods: 
   
   if (closedPeriods.includes(periodId)) {
     const originalDate = parseToDate(payload.date);
-    const dateStr = originalDate.toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' });
+    const dateStr = formatDate(originalDate);
     
     // Modify description and post today (current open period)
     const adjustedDescription = `${payload.description || ''} (tertunda dari periode tertutup ${dateStr})`;

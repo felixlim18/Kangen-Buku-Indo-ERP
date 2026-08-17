@@ -2318,7 +2318,7 @@ export const PerlengkapanTab: React.FC = () => {
                     ) : (
                       <div className="border border-neutral-200/80 dark:border-neutral-800 rounded-xl overflow-hidden bg-neutral-50/10 dark:bg-neutral-950/5">
                         <table className="w-full text-left text-xs">
-                          <thead className="bg-neutral-100/60 dark:bg-neutral-850/40 border-b border-neutral-200 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 font-semibold uppercase">
+                          <thead className="bg-neutral-100/60 dark:bg-neutral-900/40 border-b border-neutral-200 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 font-semibold uppercase">
                             <tr>
                               <th className="p-3">Nama</th>
                               <th className="p-3 text-center">AVG</th>

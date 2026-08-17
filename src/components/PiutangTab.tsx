@@ -165,9 +165,24 @@ export const PiutangTab: React.FC = () => {
   const platforms = Array.from(new Set(allPiutangItems.map(o => o.platformChannel || 'Other')));
   const platformList = platforms.length > 0 ? platforms : ['7-Eleven', 'FamilyMart', 'IopenMall', 'Shopee'];
 
-  const filteredOrders = activePlatform === 'semua'
+  const filteredOrdersUnsorted = activePlatform === 'semua'
     ? allPiutangItems
     : allPiutangItems.filter(o => (o.platformChannel || 'Other') === activePlatform);
+
+  const filteredOrders = [...filteredOrdersUnsorted].sort((a, b) => {
+    const sisaA = getOutstanding(a);
+    const sisaB = getOutstanding(b);
+    const lunasA = sisaA <= 0;
+    const lunasB = sisaB <= 0;
+
+    if (lunasA !== lunasB) {
+      return lunasA ? 1 : -1;
+    }
+
+    const timeA = a.createdAt?.seconds || 0;
+    const timeB = b.createdAt?.seconds || 0;
+    return timeB - timeA;
+  });
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;

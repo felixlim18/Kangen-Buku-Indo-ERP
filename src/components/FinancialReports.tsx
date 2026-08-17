@@ -12,6 +12,7 @@ import {
   findAccountByRole
 } from '../lib/decimal-utils';
 import { loadJsPDF, loadHtml2Canvas } from '../lib/lazy-libs';
+import { formatDate, formatDateTime } from '../lib/date-utils';
 
 function parseToDate(val: any): Date {
   if (!val) return new Date();
@@ -204,11 +205,7 @@ export async function exportReportToPDF(
     const filename = `${reportName}_${monthName}_${year}.pdf`;
 
     const now = new Date();
-    const printDateString = now.toLocaleDateString('id-ID', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    }) + ' ' + now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const printDateString = formatDateTime(now);
 
     const html2canvas = await loadHtml2Canvas();
     const canvas = await html2canvas(element, {
@@ -511,15 +508,15 @@ export const NeracaReport: React.FC<ReportProps> = ({ coaAccounts, journals }) =
 
     if (isCurrentMonth) {
       endOfPeriod = today;
-      label = today.toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' });
+      label = formatDate(today);
     } else {
       endOfPeriod = lastDay;
-      label = lastDay.toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' });
+      label = formatDate(lastDay);
     }
 
     // Previous month end
     const lastMonthDay = new Date(parseInt(year), parseInt(month) - 1, 0);
-    const lastMonthLabel = lastMonthDay.toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' });
+    const lastMonthLabel = formatDate(lastMonthDay);
 
     return {
       endDate: endOfPeriod,
@@ -1311,7 +1308,7 @@ export const CashFlowReport: React.FC<ReportProps> = ({ coaAccounts, journals })
                   <span className="text-[10px] font-semibold bg-navy-bg dark:bg-blue-950 text-navy dark:text-blue-300 px-2 py-0.5 rounded-md border border-line dark:border-neutral-700 uppercase tracking-wider">
                     {line.activity}
                   </span>
-                  <span className="text-[10px] text-ink-mute dark:text-neutral-500 font-medium">Tgl: {line.date.toLocaleDateString()}</span>
+                  <span className="text-[10px] text-ink-mute dark:text-neutral-500 font-medium">Tgl: {formatDate(line.date)}</span>
                 </div>
               </div>
               <span className={`font-numeric font-bold text-sm ${line.amount >= 0 ? 'text-forest dark:text-emerald-400' : 'text-rust dark:text-rose-400'}`}>

@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../lib/auth-context';
 import { AUTO_ACCOUNTS, ensureAutoAccountExists, getLiveAutoAccounts, AutoAccount } from '../lib/journalAuto';
 import { formatNTD, formatIDR, formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
+import { formatDate } from '../lib/date-utils';
 import { fetchCurrentExchangeRate } from '../lib/period-closing-utils';
 import { 
   DollarSign, 
@@ -192,24 +193,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
 
 
   const formatToYYYYMMDD = (dateVal: any) => {
-    if (!dateVal) return '-';
-    let d: Date;
-    if (dateVal.seconds) {
-      d = new Date(dateVal.seconds * 1000);
-    } else if (dateVal instanceof Date) {
-      d = dateVal;
-    } else {
-      const cleanStr = String(dateVal).replace(/[-/]/g, '');
-      if (cleanStr.length === 8 && /^\d{8}$/.test(cleanStr)) {
-        return cleanStr;
-      }
-      d = new Date(dateVal);
-    }
-    if (isNaN(d.getTime())) return '-';
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}${mm}${dd}`;
+    return formatDate(dateVal);
   };
 
   // Filter currency accounts based on selected currency

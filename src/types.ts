@@ -109,6 +109,7 @@ export interface SalesOrder {
   orderNumber?: string;
   estimatedShippingDate?: string;
   buyerType?: 'langsung' | 'reseller' | 'marketplace';
+  perluKonfirmasiSebelumKirim?: boolean;
   partnerId?: string;
   partnerName?: string;
   komisiMode?: 'persen' | 'nominal';
@@ -516,3 +517,14 @@ export interface RevaluasiKursLog {
   postedBy?: string;
 }
 
+export interface UserActivityLog {
+  id?: string;
+  timestamp: any;
+  userEmail: string;
+  userDisplayName: string;
+  userRole: string; // 'owner' | 'staff' | 'admin' | etc
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  entityType: 'SALES_ORDER' | 'PURCHASE_ORDER' | 'CATALOG';
+  entityId: string;
+  details?: string;
+}

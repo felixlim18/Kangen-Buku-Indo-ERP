@@ -23,6 +23,7 @@ import {
   Truck,
   Building,
   BarChart3,
+  LineChart,
   Receipt,
   TrendingUp,
   ShieldCheck
@@ -53,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { branding } = useSettings();
   const [isAccountingOpen, setIsAccountingOpen] = useState(currentTab === 'financial');
   const [isDoubleEntryOpen, setIsDoubleEntryOpen] = useState(currentTab === 'coa' || currentTab === 'journal' || currentTab === 'closing' || currentTab === 'ledger-summary' || currentTab === 'trial-balance' || currentTab === 'audit-log');
-  const [isReportOpen, setIsReportOpen] = useState(currentTab === 'report-sales-detail');
+  const [isReportOpen, setIsReportOpen] = useState(currentTab === 'report-sales-detail' || currentTab === 'report-user-activity');
   const [isExpensesOpen, setIsExpensesOpen] = useState(currentTab === 'perlengkapan' || currentTab === 'iklan' || currentTab === 'partners' || currentTab === 'beban-lainnya');
   const [isOnline, setIsOnline] = useState(() => typeof window !== 'undefined' ? window.navigator.onLine : true);
 
@@ -88,7 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [currentTab]);
 
   useEffect(() => {
-    if (currentTab === 'report-sales-detail') {
+    if (currentTab === 'report-sales-detail' || currentTab === 'report-user-activity') {
       setIsReportOpen(true);
     }
   }, [currentTab]);
@@ -111,6 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Grid },
+    { id: 'daily-report', label: 'Laporan Harian', icon: LineChart },
     { id: 'catalog', label: 'Katalog Buku', icon: BookOpen },
     { id: 'sales', label: 'Sales Orders', icon: ShoppingCart },
     { id: 'purchases', label: 'Purchase Orders', icon: Package },
@@ -146,7 +148,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className={`p-4 border-b border-neutral-200/70 dark:border-neutral-850 flex items-start ${sidebarHidden ? 'justify-center' : 'justify-between'} min-h-[85px] shrink-0 relative`}>
         <div 
           onClick={() => setTab('settings')}
-          className={`flex items-start gap-3 cursor-pointer group rounded-xl p-1 -m-1 transition ${
+          className={`flex items-start gap-3 cursor-pointer group rounded-xl p-1 -m-1 transition min-w-0 flex-1 ${
             currentTab === 'settings' 
               ? 'bg-neutral-100 dark:bg-neutral-900 ring-1 ring-neutral-200 dark:ring-neutral-800' 
               : 'hover:bg-neutral-100/70 dark:hover:bg-neutral-900/50'
@@ -599,30 +601,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         {/* Accordion Report section */}
-        {hasPerm('report-sales-detail') && (
+        {(hasPerm('report-sales-detail') || hasPerm('report-user-activity')) && (
         <div className="flex flex-col space-y-1">
           <button
             id="nav-reports"
             onClick={() => setIsReportOpen(!isReportOpen)}
             className={sidebarHidden
               ? `h-10 w-10 flex items-center justify-center rounded-lg transition duration-200 select-text relative mt-1 ${
-                  currentTab === 'report-sales-detail'
+                  (currentTab === 'report-sales-detail' || currentTab === 'report-user-activity')
                     ? 'bg-indigo-50/50 dark:bg-indigo-950/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200/55 dark:border-indigo-900/30 shadow-xs' 
                     : 'text-neutral-550 dark:text-neutral-400 hover:bg-neutral-100/50 dark:hover:bg-neutral-850/45 hover:text-neutral-900 dark:hover:text-white'
                 }`
               : `relative w-full flex items-center justify-between py-2.5 rounded-r-full text-sm transition duration-200 select-text mt-1 ${
-                  currentTab === 'report-sales-detail'
+                  (currentTab === 'report-sales-detail' || currentTab === 'report-user-activity')
                     ? 'pl-6 pr-3 font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/15' 
                     : 'px-3 font-medium text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100/50 dark:hover:bg-neutral-850/40 hover:text-neutral-950 dark:hover:text-white'
                 }`
             }
             title={sidebarHidden ? 'Report' : undefined}
           >
-            {!sidebarHidden && currentTab === 'report-sales-detail' && (
+            {!sidebarHidden && (currentTab === 'report-sales-detail' || currentTab === 'report-user-activity') && (
               <div className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-indigo-550 rounded-r" style={{ width: '4px' }} />
             )}
             <div className="flex items-center gap-3 min-w-0">
-              <BarChart3 className={`h-4.5 w-4.5 transition duration-150 ${currentTab === 'report-sales-detail' ? 'text-indigo-500 dark:text-indigo-400' : 'text-neutral-400 group-hover:text-neutral-905'}`} />
+              <BarChart3 className={`h-4.5 w-4.5 transition duration-150 ${(currentTab === 'report-sales-detail' || currentTab === 'report-user-activity') ? 'text-indigo-500 dark:text-indigo-400' : 'text-neutral-400 group-hover:text-neutral-905'}`} />
               {!sidebarHidden && <span className="truncate">Report</span>}
             </div>
             {!sidebarHidden && (
@@ -640,8 +642,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`flex flex-col space-y-1 overflow-hidden ${sidebarHidden ? 'items-center pt-1 pb-2' : 'pl-4 pb-2'}`}
               >
                 {[
-                  { id: 'report-sales-detail', label: 'Laporan Rincian Penjualan' }
-                ].map((sub) => {
+                  { id: 'report-sales-detail', label: 'Laporan Rincian Penjualan', show: hasPerm('report-sales-detail') },
+                  { id: 'report-user-activity', label: 'Kegiatan User', show: hasPerm('report-user-activity') }
+                ].filter(sub => sub.show).map((sub) => {
                   const isSubActive = currentTab === sub.id;
                   return (
                     <button

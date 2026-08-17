@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { SalesOrder, BusinessPartner, PaymentBatch, JournalEntry, CoaAccount, CoProducedBook, AgreedPriceEntry, Book } from '../types';
 import { formatNTD, formatIDR } from '../lib/decimal-utils';
+import { formatDate } from '../lib/date-utils';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -821,7 +822,7 @@ export const BusinessPartnerTab: React.FC = () => {
               ) : siapDibayar(activePartner.id).map((s, i) => (
                 <div key={s.id} className={`grid grid-cols-5 gap-2.5 items-center p-3 px-5 text-sm ${i > 0 ? 'border-t border-neutral-100 dark:border-neutral-800' : ''}`}>
                   <div className="text-[#6B4C9A] font-semibold font-mono">{s.orderCode || s.id}</div>
-                  <div className="font-mono text-neutral-600">{new Date(s.createdAt?.seconds * 1000).toISOString().slice(0,10)}</div>
+                  <div className="font-mono text-neutral-600">{formatDate(s.createdAt)}</div>
                   <div className="font-mono text-neutral-600">{s.items?.reduce((a,b)=>a+b.qty,0)||0} pcs</div>
                   <div className="font-mono text-neutral-600">{formatNTD(s.totalPrice)}</div>
                   <div className="font-mono font-bold text-right">
@@ -846,7 +847,7 @@ export const BusinessPartnerTab: React.FC = () => {
               ) : dalamProses(activePartner.id).map((s, i) => (
                 <div key={s.id} className={`grid grid-cols-5 gap-2.5 items-center p-3 px-5 text-sm ${i > 0 ? 'border-t border-neutral-100 dark:border-neutral-800' : ''}`}>
                   <div className="text-[#6B4C9A] font-semibold font-mono">{s.orderCode || s.id}</div>
-                  <div className="font-mono text-neutral-600">{new Date(s.createdAt?.seconds * 1000).toISOString().slice(0,10)}</div>
+                  <div className="font-mono text-neutral-600">{formatDate(s.createdAt)}</div>
                   <div className="font-mono text-neutral-600">{s.items?.reduce((a,b)=>a+b.qty,0)||0} pcs</div>
                   <div className="font-mono text-neutral-600">{formatNTD(s.totalPrice)}</div>
                   <div><span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${statusClass(s.status)}`}><span className="w-1.5 h-1.5 rounded-full bg-current"></span>{s.status}</span></div>
@@ -866,7 +867,7 @@ export const BusinessPartnerTab: React.FC = () => {
               ) : batchesFor(activePartner.id).sort((a,b) => b.tanggal.localeCompare(a.tanggal)).map((b, i) => (
                 <div key={b.id} className={`p-3.5 px-5 ${i > 0 ? 'border-t border-neutral-200 dark:border-neutral-800' : ''}`}>
                   <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                    <span className="text-xs text-neutral-400 font-mono">{b.id} · {b.tanggal} · {b.akun}</span>
+                    <span className="text-xs text-neutral-400 font-mono">{b.id} · {formatDate(b.tanggal)} · {b.akun}</span>
                     <span className="text-[15px] font-bold text-[#6B4C9A] font-mono">{formatNTD(b.totalKomisi)}</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-2.5">
@@ -971,7 +972,7 @@ export const BusinessPartnerTab: React.FC = () => {
                       />
                       <div className="flex-1 min-w-0">
                         <div className="text-[13px] text-[#6B4C9A] font-semibold font-mono">{s.orderCode || s.id}</div>
-                        <div className="text-[11.5px] text-neutral-400 font-mono">{new Date(s.createdAt?.seconds * 1000).toISOString().slice(0,10)} · {s.items?.reduce((a,b)=>a+b.qty,0)||0} pcs · {formatNTD(s.totalPrice)}</div>
+                        <div className="text-[11.5px] text-neutral-400 font-mono">{formatDate(s.createdAt)} · {s.items?.reduce((a,b)=>a+b.qty,0)||0} pcs · {formatNTD(s.totalPrice)}</div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <div className="inline-flex bg-neutral-100 dark:bg-neutral-800 p-0.5 rounded-lg">

@@ -23,6 +23,7 @@ import { Book, Category, Supplier } from '../types';
 import { formatNTD, formatNumber } from '../lib/decimal-utils';
 import { useAuth } from '../lib/auth-context';
 import { propagateBookNameChange } from '../lib/db-helpers';
+import { logUserActivity } from '../lib/activity-logger';
 import { CategoryAiModal } from "./CategoryAiModal";
 import { 
   Grid2X2, 
@@ -103,7 +104,7 @@ function formatInputNumber(value: string): string {
 }
 
 export const CatalogTab: React.FC = () => {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const isOwner = profile?.role === 'owner';
   const isStaffValue = profile?.role === 'owner' || profile?.role === 'staff';
 
@@ -1235,6 +1236,7 @@ export const CatalogTab: React.FC = () => {
         // Edit existing book
         const bookRef = doc(db, 'catalog', editingBook.id);
         await updateDoc(bookRef, bookPayload);
+        logUserActivity(user?.email || '', profile?.name || '', profile?.role || '', 'UPDATE', 'CATALOG', editingBook.id, `Buku ${capitalizedName} diperbarui`);
         if (editingBook.bookName !== capitalizedName) {
           await propagateBookNameChange(editingBook.id, capitalizedName);
         }
@@ -1276,6 +1278,8 @@ export const CatalogTab: React.FC = () => {
           stockStatus: 'sold_out',
           lastUpdated: Timestamp.now()
         });
+
+        logUserActivity(user?.email || '', profile?.name || '', profile?.role || '', 'CREATE', 'CATALOG', bookId, `Buku ${capitalizedName} dibuat`);
       }
 
       setIsBookModalOpen(false);
@@ -1357,6 +1361,7 @@ export const CatalogTab: React.FC = () => {
 
       await deleteDoc(doc(db, 'catalog', bookId));
       await deleteDoc(doc(db, 'inventory', bookId));
+      logUserActivity(user?.email || '', profile?.name || '', profile?.role || '', 'DELETE', 'CATALOG', bookId, `Buku ID ${bookId} dihapus`);
     } catch (err) {
       console.error("Error deleting book", err);
       window.alert('Gagal menghapus buku. Coba lagi.');

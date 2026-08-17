@@ -1,4 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
+import { formatDate } from '../lib/date-utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
@@ -1527,7 +1528,7 @@ export const OngkosKirimTab: React.FC<OngkosKirimTabProps> = ({ setTab }) => {
                           </span>
                           {isEnabled && cfg.enabledAt && (
                             <span className="text-[10px] text-neutral-400 block">
-                              Aktif sejak: {new Date(cfg.enabledAt).toLocaleDateString('id-ID')}
+                              Aktif sejak: {formatDate(cfg.enabledAt)}
                             </span>
                           )}
                         </div>

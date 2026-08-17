@@ -14,30 +14,11 @@ import {
 import { formatNTD, getAccountDebitCreditForPeriod, isParentAccount, findParentOf, isDescendantOf, sortAccountsHierarchical } from '../lib/decimal-utils';
 import { useAuth } from '../lib/auth-context';
 import { DateRangePicker } from './ui/DateRangePicker';
+import { formatDate } from '../lib/date-utils';
 
-// Formatting date to Indonesian format helper
+// Formatting date helper: YYYY/MM/DD
 const formatDisplayDateIndo = (dateVal: Date | string | null) => {
-  if (!dateVal) return '';
-  if (dateVal instanceof Date) {
-    const months = [
-      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-    ];
-    return `${dateVal.getDate()} ${months[dateVal.getMonth()]} ${dateVal.getFullYear()}`;
-  }
-  const parts = dateVal.split('-');
-  if (parts.length !== 3) return dateVal;
-  const months = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-  ];
-  const year = parts[0];
-  const monthIndex = parseInt(parts[1], 10) - 1;
-  const day = parseInt(parts[2], 10);
-  if (monthIndex >= 0 && monthIndex < 12) {
-    return `${day} ${months[monthIndex]} ${year}`;
-  }
-  return dateVal;
+  return formatDate(dateVal);
 };
 
 interface TrialBalanceTabProps {

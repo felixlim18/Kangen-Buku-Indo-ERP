@@ -40,6 +40,8 @@ const UserManagementTab = lazyNamed(() => import('./components/UserManagementTab
 const BusinessPartnerTab = lazyNamed(() => import('./components/BusinessPartnerTab'), 'BusinessPartnerTab');
 const BankKasTab = lazyNamed(() => import('./components/BankKasTab'), 'BankKasTab');
 const SettingsTab = lazyNamed(() => import('./components/SettingsTab'), 'SettingsTab');
+const DailyReportTab = lazy(() => import('./components/DailyReportTab'));
+const UserActivityTab = lazy(() => import('./components/UserActivityTab').then(m => ({ default: m.UserActivityTab })));
 
 const TabLoader: React.FC = () => (
   <div className="flex flex-col items-center justify-center py-24" role="status" aria-label="Memuat modul">
@@ -76,7 +78,7 @@ const MainAppContent: React.FC = () => {
       const availableTabs = [
         'dashboard', 'catalog', 'sales', 'purchases', 'freight-in', 'inventory',
         'income', 'piutang', 'perlengkapan', 'iklan', 'ongkir', 'beban-lainnya', 'partners', 'fixed-assets',
-        'financial', 'double-entry', 'report-sales-detail', 'user-management', 'settings'
+        'financial', 'double-entry', 'report-sales-detail', 'report-user-activity', 'user-management', 'settings'
       ];
       const firstAvailable = availableTabs.find(tab => hasPerm(tab));
       if (firstAvailable && firstAvailable !== activeTab) {
@@ -268,6 +270,8 @@ const MainAppContent: React.FC = () => {
             {activeTab === 'ongkir' && <OngkosKirimTab setTab={setActiveTab} />}
             {activeTab === 'partners' && <BusinessPartnerTab />}
             {activeTab === 'report-sales-detail' && <ReportSalesDetailTab />}
+            {activeTab === 'report-user-activity' && <UserActivityTab />}
+            {activeTab === 'daily-report' && <DailyReportTab />}
             {activeTab === 'user-management' && <UserManagementTab />}
             {activeTab === 'settings' && <SettingsTab />}
           </Suspense>

@@ -20,6 +20,7 @@ import { Book, PurchaseOrder } from '../types';
 import { DateRangePicker } from './ui/DateRangePicker';
 import { getNextJournalId } from '../lib/journalUtils';
 import { generateSystemPoNumber, sanitizePurchaseOrders } from '../lib/db-helpers';
+import { logUserActivity } from '../lib/activity-logger';
 import { formatNTD, formatIDR, formatNumber, formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
 import { useAuth } from '../lib/auth-context';
 import { useSidebar } from '../lib/sidebar-context';
@@ -37,6 +38,7 @@ import {
   writeReceiptEventAndJournal,
   findAccountBySystemKey
 } from '../lib/journalAuto';
+import { formatDate } from '../lib/date-utils';
 
 const ensureAccountExists = async (code: string, name: string, type: 'Assets' | 'Liabilities' | 'Equity' | 'Revenue' | 'Expenses', subType: string) => {
   const docRef = doc(db, 'coa', code);
@@ -321,7 +323,6 @@ export const PurchasesTab = () => {
   const [actualReceiptTotal, setActualReceiptTotal] = useState(0);
   const [isPoViewOnly, setIsPoViewOnly] = useState(false);
   const [editingPoId, setEditingPoId] = useState<string|null>(null);
-  const sidebarHidden = false;
   const [isPoFreightDropdownOpen, setIsPoFreightDropdownOpen] = useState(false);
   const [showNoRemainingToast, setShowNoRemainingToast] = useState(false);
   const [revertConfirmState, setRevertConfirmState] = useState<any>(null);
@@ -341,7 +342,7 @@ export const PurchasesTab = () => {
   };
   const [bulkScanSearchQuery, setBulkScanSearchQuery] = useState('');
 
-  const { collapsed: sidebarCollapsed } = useSidebar();
+  const { collapsed: sidebarCollapsed, sidebarHidden } = useSidebar();
   
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [platforms, setPlatforms] = useState<any[]>([]);
@@ -993,7 +994,7 @@ export const PurchasesTab = () => {
   };
   
   const parseCommasToNumber = (val: string) => parseFloat(cleanCommas(val)) || 0;
-  const formatToYYYYMMDD = (d: Date) => d.toISOString().split('T')[0];
+  const formatToYYYYMMDD = (d: any) => formatDate(d);
   
   const [isBulkReceiveScanOpen, setIsBulkReceiveScanOpen] = useState(false);
   const [scanStep, setScanStep] = useState(1);
@@ -1023,22 +1024,7 @@ export const PurchasesTab = () => {
             const scanner = new Html5Qrcode("bulk-qr-reader", {
               formatsToSupport: [
                 Html5QrcodeSupportedFormats.QR_CODE,
-                Html5QrcodeSupportedFormats.AZTEC,
-                Html5QrcodeSupportedFormats.CODABAR,
-                Html5QrcodeSupportedFormats.CODE_39,
-                Html5QrcodeSupportedFormats.CODE_93,
-                Html5QrcodeSupportedFormats.CODE_128,
-                Html5QrcodeSupportedFormats.DATA_MATRIX,
-                Html5QrcodeSupportedFormats.MAXICODE,
-                Html5QrcodeSupportedFormats.ITF,
-                Html5QrcodeSupportedFormats.EAN_13,
-                Html5QrcodeSupportedFormats.EAN_8,
-                Html5QrcodeSupportedFormats.PDF_417,
-                Html5QrcodeSupportedFormats.RSS_14,
-                Html5QrcodeSupportedFormats.RSS_EXPANDED,
-                Html5QrcodeSupportedFormats.UPC_A,
-                Html5QrcodeSupportedFormats.UPC_E,
-                Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION
+                Html5QrcodeSupportedFormats.CODE_128
               ],
               verbose: false,
               experimentalFeatures: {
@@ -1073,7 +1059,7 @@ export const PurchasesTab = () => {
               { facingMode: bulkCameraFacingMode },
               {
                 fps: 30,
-                qrbox: undefined,
+                qrbox: 250,
                 aspectRatio: 1.333333,
                 videoConstraints: {
                   facingMode: bulkCameraFacingMode,
@@ -3279,6 +3265,8 @@ export const PurchasesTab = () => {
 
       await batch.commit();
 
+      logUserActivity(user?.email || '', profile?.name || '', profile?.role || '', editingPoId ? 'UPDATE' : 'CREATE', 'PURCHASE_ORDER', poId, `PO ${sysPoCode} ${editingPoId ? 'diperbarui' : 'dibuat'}`);
+
       setIsNewPoOpen(false);
       const defaultPlat = platforms.find(p => p.name.includes("Shopee Indonesia") && p.currency === 'IDR') || platforms[0];
       if (defaultPlat) {
@@ -4274,6 +4262,8 @@ export const PurchasesTab = () => {
         batch.delete(doc(db, 'journalEntries', `JU-PO-${poId}-rec-capitalize-${d.id}`));
       });
       await batch.commit();
+
+      logUserActivity(user?.email || '', profile?.name || '', profile?.role || '', 'DELETE', 'PURCHASE_ORDER', poId, `PO ${po.purchaseCode} dihapus`);
 
       alert("Pembelian berhasil dihapus secara permanen.");
     } catch (err: any) {

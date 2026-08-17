@@ -1,4 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
+import { formatDate } from '../lib/date-utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
@@ -933,7 +934,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
               ✓ Revaluasi Kurs {latestRevaluasiLog.period} Sudah Diposting Otomatis
             </span>
             <span>
-              Saldo Rupiah {formatIDR(latestRevaluasiLog.idrBalance)} setara {formatNTD(latestRevaluasiLog.newNtdAdjustedBalance)} per kurs penutupan ({latestRevaluasiLog.closingRate}), buku sebelumnya mencatat {formatNTD(latestRevaluasiLog.prevNtdBookBalance)}. Selisih {latestRevaluasiLog.selisihNtdCents >= 0 ? '+' : ''}{formatNTD(latestRevaluasiLog.selisihNtdCents)} ({latestRevaluasiLog.selisihNtdCents >= 0 ? 'Untung' : 'Rugi'}) sudah dijurnal ke akun 4210 pada {latestRevaluasiLog.date}.
+              Saldo Rupiah {formatIDR(latestRevaluasiLog.idrBalance)} setara {formatNTD(latestRevaluasiLog.newNtdAdjustedBalance)} per kurs penutupan ({latestRevaluasiLog.closingRate}), buku sebelumnya mencatat {formatNTD(latestRevaluasiLog.prevNtdBookBalance)}. Selisih {latestRevaluasiLog.selisihNtdCents >= 0 ? '+' : ''}{formatNTD(latestRevaluasiLog.selisihNtdCents)} ({latestRevaluasiLog.selisihNtdCents >= 0 ? 'Untung' : 'Rugi'}) sudah dijurnal ke akun 4210 pada {formatDate(latestRevaluasiLog.date)}.
               {latestRevaluasiLog.hasAutoReversal && ' Auto-reversal telah dijadwalkan pada awal bulan berikutnya.'}
             </span>
           </div>
@@ -1289,7 +1290,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
             {filteredTransactions.map((tx) => (
               <div
                 key={tx.id}
-                className={`group bg-white dark:bg-neutral-850/60 border border-neutral-200/90 dark:border-neutral-800/80 rounded-2xl p-4 transition-all duration-200 hover:shadow-md flex items-center justify-between gap-4 relative overflow-hidden ${
+                className={`group bg-white dark:bg-[#161b22] border border-neutral-200/90 dark:border-neutral-800/80 rounded-2xl p-4 transition-all duration-200 hover:shadow-md flex items-center justify-between gap-4 relative overflow-hidden ${
                   tx.isDebit ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-rose-500'
                 }`}
               >
@@ -1307,7 +1308,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-[11px] font-semibold text-neutral-400 dark:text-neutral-500">
-                        {tx.dateStr}
+                        {formatDate(tx.dateStr)}
                       </span>
                       <span className="h-1 w-1 rounded-full bg-neutral-300 dark:bg-neutral-700"></span>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">

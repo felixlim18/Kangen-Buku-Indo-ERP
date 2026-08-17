@@ -1,3 +1,4 @@
+import { Drawer } from 'vaul';
 import { getNextJournalId } from '../lib/journalUtils';
 import Papa from 'papaparse';
 import type ExcelJSTypes from 'exceljs';
@@ -202,6 +203,43 @@ const formatPhoneNumber = (digits: string) => {
   } else {
     return `${clean.slice(0, 4)}-${clean.slice(4, 7)}-${clean.slice(7, 10)}`;
   }
+};
+
+
+const NewOrderModalWrapper = ({ isOpen, onClose, isMobileScreen, sidebarHidden, children }) => {
+  if (!isOpen) return null;
+  
+  if (isMobileScreen) {
+    return createPortal(
+      <Drawer.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+        <Drawer.Portal>
+          <Drawer.Overlay className="fixed inset-0 bg-black/60 z-[9999]" />
+          <Drawer.Content className="bg-[#f5f6f7] dark:bg-[#0d1117] flex flex-col rounded-t-[16px] h-[96%] mt-24 fixed bottom-0 left-0 right-0 z-[10000] outline-none">
+            <div className="p-4 bg-white dark:bg-neutral-900 rounded-t-[16px] flex-1 flex flex-col overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.08)] border border-neutral-200/50 dark:border-neutral-800">
+              <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-neutral-300 dark:bg-neutral-700 mb-4 cursor-grab active:cursor-grabbing" />
+              <div className="flex-1 overflow-y-auto w-full max-w-full pb-safe">
+                <div className="kbi-so-card kbi-so-card--vaul" onClick={e => e.stopPropagation()}>
+                  {children}
+                </div>
+              </div>
+            </div>
+          </Drawer.Content>
+        </Drawer.Portal>
+      </Drawer.Root>,
+      document.body
+    );
+  }
+
+  return createPortal(
+    <div className={`kbi-so-overlay${sidebarHidden ? ' kbi-so-overlay--rail' : ''}`} onClick={(e) => {
+      if (e.target === e.currentTarget) onClose();
+    }}>
+      <div className="kbi-so-card" onClick={e => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
 };
 
 export const SalesTab: React.FC = () => {
@@ -665,6 +703,19 @@ export const SalesTab: React.FC = () => {
 
   // One path to "new order", shared by the desktop toolbar button and the
   // mobile floating action button.
+  
+  const [isMobileScreen, setIsMobileScreen] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const target = document.getElementById('top-header-actions-portal');
+    if (target) setPortalTarget(target);
+
+    const handleResize = () => setIsMobileScreen(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const openNewOrder = () => {
     setEditingOrder(null);
     resetOrderForm();
@@ -4537,19 +4588,34 @@ export const SalesTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {/* Portal for Mobile Topbar Actions */}
+      {portalTarget && isMobileScreen && isStaffValue && createPortal(
+        <button
+          type="button"
+          className="flex items-center justify-center w-9 h-9 rounded-full bg-transparent active:bg-neutral-200/50 dark:active:bg-neutral-800 text-[#3d4451] dark:text-neutral-200 transition"
+          onClick={() => setIsSalesActionsOpen(true)}
+          aria-label="Aksi lainnya"
+        >
+          <MoreHorizontal className="w-[22px] h-[22px]" />
+        </button>,
+        portalTarget
+      )}
+
       {/* 1. MASTHEAD HEADER CARD */}
-      <div className="bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-[14px] p-5 sm:p-6 shadow-xs mb-2">
+      <div className="hidden md:block bg-transparent md:bg-white md:dark:bg-neutral-900 border-none md:border md:border-[#E7E1D2] md:dark:border-neutral-800 rounded-[14px] p-0 md:p-5 sm:p-6 shadow-none md:shadow-xs mb-2">
         <div className="kbi-somast flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-[38px] h-[38px] rounded-[10px] bg-[#0d1117] dark:bg-white text-white dark:text-[#0d1117] flex items-center justify-center shrink-0 shadow-2xs">
-              <ShoppingCart className="w-[19px] h-[19px]" />
-            </div>
-            <div>
-              <h1 className="text-[21px] font-bold font-['Lexend'] tracking-tight text-[#0d1117] dark:text-white leading-tight">
-                Sales Orders
-              </h1>
-              <div className="text-[12.5px] text-[#9ca3af] mt-0.5 font-['Lexend']">
-                <b className="font-['Inter'] font-semibold text-[#3d4451] dark:text-neutral-300">{dateFilteredOrders.length}</b> orderan · {globalDateLabel || 'Semua Tanggal'}
+          <div className="flex items-center justify-between md:justify-start w-full md:w-auto gap-3">
+            <div className="flex items-center gap-3">
+              <div className="hidden md:flex w-[38px] h-[38px] rounded-[10px] bg-[#0d1117] dark:bg-white text-white dark:text-[#0d1117] items-center justify-center shrink-0 shadow-2xs">
+                <ShoppingCart className="w-[19px] h-[19px]" />
+              </div>
+              <div>
+                <h1 className="text-[21px] font-bold font-['Lexend'] tracking-tight text-[#0d1117] dark:text-white leading-tight">
+                  Sales Orders
+                </h1>
+                <div className="text-[12.5px] text-[#9ca3af] mt-0.5 font-['Lexend']">
+                  <b className="font-['Inter'] font-semibold text-[#3d4451] dark:text-neutral-300">{dateFilteredOrders.length}</b> orderan <span className="hidden md:inline">· {globalDateLabel || 'Semua Tanggal'}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -4607,21 +4673,7 @@ export const SalesTab: React.FC = () => {
               </button>
             </div>
           )}
-
-          {/* Mobile: the six toolbar actions do not fit on a phone. The primary
-              one becomes a floating button; the rest move into a sheet behind
-              this control. */}
-          {isStaffValue && (
-            <button
-              type="button"
-              className="kbi-somore md:hidden"
-              onClick={() => setIsSalesActionsOpen(true)}
-              aria-label="Aksi lainnya"
-              aria-expanded={isSalesActionsOpen}
-            >
-              <MoreHorizontal className="w-5 h-5" />
-            </button>
-          )}
+          {/* Mobile: "..." button is moved to the title row above. */}
         </div>
       </div>
 
@@ -4651,7 +4703,7 @@ export const SalesTab: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="hidden md:flex items-center gap-2">
             <DateRangePicker 
               startDate={globalStartDate}
               endDate={globalEndDate}
@@ -4693,7 +4745,7 @@ export const SalesTab: React.FC = () => {
         </div>
 
         {/* CHIPS */}
-        <div className="kbi-sostat grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-2.5">
+        <div className="kbi-sostat flex overflow-x-auto snap-x hide-scrollbar gap-2.5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-4 lg:grid-cols-7 sm:overflow-visible sm:pb-0 mb-3">
           {/* Semua */}
           <button
             type="button"
@@ -4702,10 +4754,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 border rounded-[11px] p-3 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none ${
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
               activeFilterTab === 'Semua'
                 ? 'border-[#0d1117] dark:border-white bg-[#f5f6f7] dark:bg-neutral-800'
-                : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                : 'border-[#E7E1D2] dark:border-neutral-800'
             }`}
           >
             {activeFilterTab === 'Semua' && (
@@ -4713,11 +4765,11 @@ export const SalesTab: React.FC = () => {
             )}
             <div className="flex items-center gap-1.5 mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[#0d1117] dark:bg-white shrink-0" />
-              <span className={`text-[11.5px] font-semibold ${activeFilterTab === 'Semua' ? 'text-[#0d1117] dark:text-white' : 'text-[#6b7280]'}`}>
+              <span className={`text-[10px] font-semibold ${activeFilterTab === 'Semua' ? 'text-[#0d1117] dark:text-white' : 'text-[#6b7280]'}`}>
                 Semua
               </span>
             </div>
-            <div className={`font-['Inter'] font-bold text-[21px] leading-none ${activeFilterTab === 'Semua' ? 'text-[#0d1117] dark:text-white' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+            <div className={`font-['Inter'] font-bold text-[16px] leading-none ${activeFilterTab === 'Semua' ? 'text-[#0d1117] dark:text-white' : 'text-[#0d1117] dark:text-neutral-100'}`}>
               {dateFilteredOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
@@ -4733,10 +4785,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 border rounded-[11px] p-3 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none ${
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
               activeFilterTab === 'Pending'
                 ? 'border-[#b45309] bg-[#fef3e2] dark:bg-amber-955/30'
-                : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                : 'border-[#E7E1D2] dark:border-neutral-800'
             }`}
           >
             {activeFilterTab === 'Pending' && (
@@ -4744,11 +4796,11 @@ export const SalesTab: React.FC = () => {
             )}
             <div className="flex items-center gap-1.5 mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[#b45309] shrink-0" />
-              <span className={`text-[11.5px] font-semibold ${activeFilterTab === 'Pending' ? 'text-[#b45309]' : 'text-[#6b7280]'}`}>
+              <span className={`text-[10px] font-semibold ${activeFilterTab === 'Pending' ? 'text-[#b45309]' : 'text-[#6b7280]'}`}>
                 Pending
               </span>
             </div>
-            <div className={`font-['Inter'] font-bold text-[21px] leading-none ${activeFilterTab === 'Pending' ? 'text-[#b45309]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+            <div className={`font-['Inter'] font-bold text-[16px] leading-none ${activeFilterTab === 'Pending' ? 'text-[#b45309]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
               {pendingOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
@@ -4764,10 +4816,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 border rounded-[11px] p-3 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none ${
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
               activeFilterTab === 'Dikemas'
                 ? 'border-[#6366f1] bg-[#eef2ff] dark:bg-indigo-955/30'
-                : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                : 'border-[#E7E1D2] dark:border-neutral-800'
             }`}
           >
             {activeFilterTab === 'Dikemas' && (
@@ -4775,11 +4827,11 @@ export const SalesTab: React.FC = () => {
             )}
             <div className="flex items-center gap-1.5 mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[#6366f1] shrink-0" />
-              <span className={`text-[11.5px] font-semibold ${activeFilterTab === 'Dikemas' ? 'text-[#6366f1]' : 'text-[#6b7280]'}`}>
+              <span className={`text-[10px] font-semibold ${activeFilterTab === 'Dikemas' ? 'text-[#6366f1]' : 'text-[#6b7280]'}`}>
                 Dikemas
               </span>
             </div>
-            <div className={`font-['Inter'] font-bold text-[21px] leading-none ${activeFilterTab === 'Dikemas' ? 'text-[#6366f1]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+            <div className={`font-['Inter'] font-bold text-[16px] leading-none ${activeFilterTab === 'Dikemas' ? 'text-[#6366f1]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
               {packedOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
@@ -4795,10 +4847,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 border rounded-[11px] p-3 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none ${
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
               activeFilterTab === 'Dikirim'
                 ? 'border-[#1d6fa5] bg-[#e8f2f9] dark:bg-sky-955/30'
-                : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                : 'border-[#E7E1D2] dark:border-neutral-800'
             }`}
           >
             {activeFilterTab === 'Dikirim' && (
@@ -4806,11 +4858,11 @@ export const SalesTab: React.FC = () => {
             )}
             <div className="flex items-center gap-1.5 mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[#1d6fa5] shrink-0" />
-              <span className={`text-[11.5px] font-semibold ${activeFilterTab === 'Dikirim' ? 'text-[#1d6fa5]' : 'text-[#6b7280]'}`}>
+              <span className={`text-[10px] font-semibold ${activeFilterTab === 'Dikirim' ? 'text-[#1d6fa5]' : 'text-[#6b7280]'}`}>
                 Dikirim
               </span>
             </div>
-            <div className={`font-['Inter'] font-bold text-[21px] leading-none ${activeFilterTab === 'Dikirim' ? 'text-[#1d6fa5]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+            <div className={`font-['Inter'] font-bold text-[16px] leading-none ${activeFilterTab === 'Dikirim' ? 'text-[#1d6fa5]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
               {shippedOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
@@ -4826,10 +4878,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 border rounded-[11px] p-3 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none ${
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
               activeFilterTab === 'Berhasil' || activeFilterTab === 'Selesai'
                 ? 'border-[#0f7a52] bg-[#e7f5ef] dark:bg-emerald-955/30'
-                : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                : 'border-[#E7E1D2] dark:border-neutral-800'
             }`}
           >
             {(activeFilterTab === 'Berhasil' || activeFilterTab === 'Selesai') && (
@@ -4837,11 +4889,11 @@ export const SalesTab: React.FC = () => {
             )}
             <div className="flex items-center gap-1.5 mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[#0f7a52] shrink-0" />
-              <span className={`text-[11.5px] font-semibold ${activeFilterTab === 'Berhasil' || activeFilterTab === 'Selesai' ? 'text-[#0f7a52]' : 'text-[#6b7280]'}`}>
+              <span className={`text-[10px] font-semibold ${activeFilterTab === 'Berhasil' || activeFilterTab === 'Selesai' ? 'text-[#0f7a52]' : 'text-[#6b7280]'}`}>
                 Selesai
               </span>
             </div>
-            <div className={`font-['Inter'] font-bold text-[21px] leading-none ${activeFilterTab === 'Berhasil' || activeFilterTab === 'Selesai' ? 'text-[#0f7a52]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+            <div className={`font-['Inter'] font-bold text-[16px] leading-none ${activeFilterTab === 'Berhasil' || activeFilterTab === 'Selesai' ? 'text-[#0f7a52]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
               {completedOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
@@ -4857,10 +4909,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 border rounded-[11px] p-3 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none ${
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
               activeFilterTab === 'Return'
                 ? 'border-[#a8323b] bg-[#fbecec] dark:bg-rose-955/30'
-                : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                : 'border-[#E7E1D2] dark:border-neutral-800'
             }`}
           >
             {activeFilterTab === 'Return' && (
@@ -4868,11 +4920,11 @@ export const SalesTab: React.FC = () => {
             )}
             <div className="flex items-center gap-1.5 mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[#a8323b] shrink-0" />
-              <span className={`text-[11.5px] font-semibold ${activeFilterTab === 'Return' ? 'text-[#a8323b]' : 'text-[#6b7280]'}`}>
+              <span className={`text-[10px] font-semibold ${activeFilterTab === 'Return' ? 'text-[#a8323b]' : 'text-[#6b7280]'}`}>
                 Return
               </span>
             </div>
-            <div className={`font-['Inter'] font-bold text-[21px] leading-none ${activeFilterTab === 'Return' ? 'text-[#a8323b]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+            <div className={`font-['Inter'] font-bold text-[16px] leading-none ${activeFilterTab === 'Return' ? 'text-[#a8323b]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
               {returnedOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
@@ -4888,10 +4940,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 border rounded-[11px] p-3 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none ${
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
               activeFilterTab === 'Cancel'
-                ? 'border-[#5b6472] bg-[#f1f2f4] dark:bg-neutral-800'
-                : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                ? 'border-[#5b6472] bg-[#f1f2f4] dark:bg-neutral-800 shadow-sm'
+                : 'border-[#E7E1D2] dark:border-neutral-800'
             }`}
           >
             {activeFilterTab === 'Cancel' && (
@@ -4899,11 +4951,11 @@ export const SalesTab: React.FC = () => {
             )}
             <div className="flex items-center gap-1.5 mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-[#5b6472] shrink-0" />
-              <span className={`text-[11.5px] font-semibold ${activeFilterTab === 'Cancel' ? 'text-[#5b6472]' : 'text-[#6b7280]'}`}>
+              <span className={`text-[10px] font-semibold ${activeFilterTab === 'Cancel' ? 'text-[#5b6472]' : 'text-[#6b7280]'}`}>
                 Cancel
               </span>
             </div>
-            <div className={`font-['Inter'] font-bold text-[21px] leading-none ${activeFilterTab === 'Cancel' ? 'text-[#5b6472]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+            <div className={`font-['Inter'] font-bold text-[16px] leading-none ${activeFilterTab === 'Cancel' ? 'text-[#5b6472]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
               {cancelledOrders.length}
             </div>
             <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
@@ -4916,7 +4968,7 @@ export const SalesTab: React.FC = () => {
       {/* 3. TOOLBAR */}
       <div className="space-y-3">
         <div className="flex items-center gap-2.5">
-          <div className="relative flex-1 w-full flex items-center bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-[10px] px-3.5 py-2.5 focus-within:border-[#2b5a9e] focus-within:ring-2 focus-within:ring-[#2b5a9e]/10 transition">
+          <div className="relative flex-1 w-full flex items-center bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-[10px] px-3.5 h-11 md:h-auto md:py-2.5 focus-within:border-[#2b5a9e] focus-within:ring-2 focus-within:ring-[#2b5a9e]/10 transition">
             <Search className="w-[15px] h-[15px] text-[#9ca3af] shrink-0 mr-2.5" />
             <input
               type="text"
@@ -4947,6 +4999,21 @@ export const SalesTab: React.FC = () => {
         {/* Expandable Advanced Filter Drawer */}
         {isFilterDrawerOpen && (
           <div className="bg-neutral-50 dark:bg-neutral-950 p-5 rounded-xl border border-neutral-200 dark:border-neutral-800 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-end animate-fadeIn">
+            {/* MOBILE ONLY: Date Picker in Filter Drawer */}
+            <div className="md:hidden col-span-full space-y-1">
+              <label className="text-[10px] font-bold capitalize text-neutral-500 tracking-wider">Tanggal Order</label>
+              <DateRangePicker 
+                startDate={globalStartDate}
+                endDate={globalEndDate}
+                presetLabel={globalDateLabel}
+                onChange={(start, end, label) => {
+                  setGlobalStartDate(start);
+                  setGlobalEndDate(end);
+                  if (label) setGlobalDateLabel(label);
+                }}
+              />
+            </div>
+
             {/* 1. Platform Order */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold capitalize text-neutral-500 tracking-wider">Platform Order</label>
@@ -5044,6 +5111,15 @@ export const SalesTab: React.FC = () => {
           const isPinnedOrder = !!order.isPinned;
           const showOverdueHighlight = !isPinnedOrder && isOverdue;
           const showReadyStockHighlight = !isPinnedOrder && !showOverdueHighlight && isReadyStock;
+          
+          let cardBgClass = '!bg-white dark:!bg-neutral-900 !border-[#E7E1D2] dark:!border-neutral-800';
+          if (order.isPinned) {
+            cardBgClass = '!bg-amber-50 dark:!bg-amber-900/10 !border-amber-200 dark:!border-amber-900/30';
+          } else if (showOverdueHighlight) {
+            cardBgClass = isCritical ? '!bg-red-50 dark:!bg-red-900/10 !border-red-200 dark:!border-red-900/30' : '!bg-orange-50 dark:!bg-orange-900/10 !border-orange-200 dark:!border-orange-900/30';
+          } else if (showReadyStockHighlight) {
+            cardBgClass = '!bg-emerald-50 dark:!bg-emerald-900/10 !border-emerald-200 dark:!border-emerald-900/30';
+          }
 
           let pillColor = '#b45309';
           let pillBg = '#fef3e2';
@@ -5066,40 +5142,23 @@ export const SalesTab: React.FC = () => {
           return (
             <article
               key={`m-${order.id}-${orderIdx}`}
-              className="kbi-ocard"
+              className={`kbi-ocard ${cardBgClass}`}
               onClick={() => setViewingOrderDetail(order)}
             >
               {/* Status ribbon — the card's spine. */}
               <span className="kbi-ocard__ribbon" style={{ backgroundColor: pillColor }} aria-hidden="true" />
 
-              <div className="kbi-ocard__top">
-                <div className="kbi-ocard__ident">
-                  <div className="kbi-ocard__code">{order.orderCode}</div>
-                  <div className="kbi-ocard__date">{formattedDate}</div>
-                  {showReadyStockHighlight && (
-                    <span className="kbi-ocard__flag kbi-ocard__flag--ready">
-                      <Check className="h-3 w-3" aria-hidden="true" />Stok siap
-                    </span>
-                  )}
-                  {showOverdueHighlight && (
-                    <span
-                      className="kbi-ocard__flag kbi-ocard__flag--late"
-                      style={{ backgroundColor: isCritical ? '#fde3e1' : '#fef3e0', color: isCritical ? '#a8323b' : '#b45309' }}
-                    >
-                      {overdueDays} hari
-                    </span>
-                  )}
-                  {isPinnedOrder && (
-                    <span className="kbi-ocard__flag kbi-ocard__flag--pin">
-                      <Pin className="h-3 w-3 fill-current" aria-hidden="true" />Disematkan
-                    </span>
-                  )}
+              <div className="kbi-ocard__top pb-1">
+                <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0 mr-2">
+                  <span className="font-bold text-neutral-900 dark:text-white text-[13px] leading-none truncate max-w-[100px]">{order.orderCode}</span>
+                  <span className="text-neutral-300 dark:text-neutral-600 leading-none text-xs">•</span>
+                  <span className="font-semibold text-[11.5px] truncate flex-1" style={{ color: channelColor }}>{channelName}</span>
                 </div>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setExpandedOrderId(expandedOrderId === order.id ? null : order.id); }}
-                  className="kbi-ocard__status"
-                  style={{ backgroundColor: pillBg, color: pillColor }}
+                  className="kbi-ocard__status shrink-0"
+                  style={{ backgroundColor: pillBg, color: pillColor, minHeight: '24px', padding: '2px 6px' }}
                   aria-expanded={expandedOrderId === order.id}
                 >
                   <span className="kbi-ocard__statusdot" style={{ backgroundColor: pillColor }} />
@@ -5107,43 +5166,69 @@ export const SalesTab: React.FC = () => {
                 </button>
               </div>
 
-              <div className="kbi-ocard__rule" />
+              <div className="kbi-ocard__rule border-t border-neutral-200 dark:border-neutral-700/60 my-1" />
 
-              <div className="kbi-ocard__body">
-                <div className="kbi-ocard__buyerrow">
-                  <div className="kbi-ocard__buyer">
-                    <div className="kbi-ocard__name">{order.customerName}</div>
-                    {order.customerPlatformName && (
-                      <div className="kbi-ocard__alias">{order.customerPlatformName}</div>
+              <div className="kbi-ocard__body pt-1">
+                {/* Baris 2: Nomor Order + Copy */}
+                {order.orderNumber && (
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-[12px] font-mono text-neutral-600 dark:text-neutral-400">{order.orderNumber}</span>
+                    <button 
+                      type="button" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (navigator.clipboard) {
+                          navigator.clipboard.writeText(order.orderNumber);
+                          alert('Nomor Order berhasil disalin!');
+                        }
+                      }}
+                      className="text-neutral-400 hover:text-brand-500 transition-colors p-1"
+                      title="Copy Nomor Order"
+                    >
+                      <Copy className="w-[12px] h-[12px]" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Baris 3: Nama Pembeli */}
+                <div className="font-bold text-[#2b5a9e] dark:text-brand-400 text-[13px] mb-2 leading-none">
+                  {order.buyerType === 'marketplace' && order.customerPlatformName ? order.customerPlatformName : (order.customerName || channelName)}
+                </div>
+
+                {/* Baris 4: Date + Tags + COD */}
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2 text-[11px] leading-tight text-neutral-500 dark:text-neutral-400">
+                  <span className="font-medium">{formattedDate}</span>
+                  
+                  {showReadyStockHighlight && (
+                    <span className="inline-flex items-center gap-0.5 text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400 px-1 py-0.5 rounded-[4px] font-semibold"><Check className="h-3 w-3" />Stok siap</span>
+                  )}
+                  {showOverdueHighlight && (
+                    <span className="inline-flex items-center px-1 py-0.5 rounded-[4px] font-semibold" style={{ backgroundColor: isCritical ? '#fde3e1' : '#fef3e0', color: isCritical ? '#a8323b' : '#b45309' }}>{overdueDays} hari</span>
+                  )}
+                  {isPinnedOrder && (
+                    <span className="inline-flex items-center gap-0.5 text-amber-600 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-400 px-1 py-0.5 rounded-[4px] font-semibold"><Pin className="h-3 w-3 fill-current" />Disematkan</span>
+                  )}
+
+                  <span className="text-neutral-300 dark:text-neutral-600">•</span>
+                  <span className="font-semibold text-neutral-700 dark:text-neutral-300">
+                    {order.paymentMethod || 'COD'}
+                  </span>
+                </div>
+
+                {/* Baris 5: Qty + Diskon + Total */}
+                <div className="flex items-center justify-between mt-1 mb-0">
+                  <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                    <span>Qty: <b className="text-neutral-700 dark:text-neutral-300">{orderQty}</b></span>
+                    {!!order.discount && (
+                      <>
+                        <span className="text-neutral-300 dark:text-neutral-600">•</span>
+                        <span>Diskon: <b className="text-rose-500">−{formatNTD(order.discount)}</b></span>
+                      </>
                     )}
                   </div>
-                  <span
-                    className="kbi-ocard__channel"
-                    style={{
-                      color: channelColor,
-                      backgroundColor: channelColor.startsWith('#') ? `${channelColor}18` : '#3B82F618',
-                      borderColor: channelColor.startsWith('#') ? `${channelColor}33` : '#3B82F633',
-                    }}
-                  >
-                    {channelName}
-                  </span>
-                </div>
-
-                <div className="kbi-ocard__ship">
-                  <span className="kbi-ocard__shiptag">{order.paymentMethod || 'COD'}</span>
-                  <span className="kbi-ocard__shipname">
-                    {order.buyerType === 'marketplace' || order.orderType?.toLowerCase() === 'marketplace'
-                      ? '-' : (order.pickupLogistics || '-')}
-                  </span>
-                  {order.orderNumber && <span className="kbi-ocard__track">· {order.orderNumber}</span>}
-                </div>
-
-                <div className="kbi-ocard__pricerow">
-                  <span className="kbi-ocard__qty">Qty <b>{orderQty}</b></span>
                   {canViewAmount && (
-                    <div className="kbi-ocard__figures">
-                      <div className="kbi-ocard__total">{formatNTD(order.totalPrice)}</div>
-                      {!!order.discount && <div className="kbi-ocard__disc">−{formatNTD(order.discount)}</div>}
+                    <div className="font-black text-[#2b5a9e] dark:text-[#818cf8] text-[13px]">
+                      {formatNTD(order.totalPrice)}
                     </div>
                   )}
                 </div>
@@ -5408,6 +5493,15 @@ export const SalesTab: React.FC = () => {
                 const isPinnedOrder = !!order.isPinned;
                 const showOverdueHighlight = !isPinnedOrder && isOverdue;
                 const showReadyStockHighlight = !isPinnedOrder && !showOverdueHighlight && isReadyStock;
+              
+              let cardBgClass = 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800';
+              if (order.isPinned) {
+                cardBgClass = 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/30';
+              } else if (showOverdueHighlight) {
+                cardBgClass = isCritical ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30' : 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-900/30';
+              } else if (showReadyStockHighlight) {
+                cardBgClass = 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/30';
+              }
 
                 const isRowHovered = hoveredRowId === order.id;
 
@@ -5497,7 +5591,7 @@ export const SalesTab: React.FC = () => {
                           {formattedDate}
                         </div>
                         {shippedDateFormatted && (
-                          <div className="font-['Inter'] text-[11.5px] font-semibold text-[#1d6fa5] mt-0.5" title="Tanggal Dikirim">
+                          <div className="font-['Inter'] text-[10px] font-semibold text-[#1d6fa5] mt-0.5" title="Tanggal Dikirim">
                             {shippedDateFormatted}
                           </div>
                         )}
@@ -5609,7 +5703,7 @@ export const SalesTab: React.FC = () => {
                               e.stopPropagation();
                               setExpandedOrderId(expandedOrderId === order.id ? null : order.id);
                             }}
-                            className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-1 rounded-full transition cursor-pointer"
+                            className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full transition cursor-pointer"
                             style={{ backgroundColor: pillBg, color: pillColor }}
                           >
                             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: pillColor }} />
@@ -6666,15 +6760,16 @@ export const SalesTab: React.FC = () => {
           `!left-*` utilities into SalesOrderForm.css: Tailwind v4 emits real cascade
           layers, and a layered `!important` outranks the unlayered `!important` in
           mobile.css, so the mobile full-bleed reset could never win. */}
-      {isNewOrderOpen && createPortal(
-        <div className={`kbi-so-overlay${sidebarHidden ? ' kbi-so-overlay--rail' : ''}`} onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            setIsNewOrderOpen(false);
-            setEditingOrder(null);
-            resetOrderForm();
-          }
-        }}>
-          <div className="kbi-so-card" onClick={e => e.stopPropagation()}>
+            <NewOrderModalWrapper 
+        isOpen={isNewOrderOpen} 
+        onClose={() => {
+          setIsNewOrderOpen(false);
+          setEditingOrder(null);
+          resetOrderForm();
+        }}
+        isMobileScreen={isMobileScreen}
+        sidebarHidden={sidebarHidden}
+      >
             <div className="kbi-so-card-header">
               <div className="kbi-so-card-header-left">
                 <div className="kbi-so-icon-badge">
@@ -7294,10 +7389,7 @@ export const SalesTab: React.FC = () => {
                 )}
               </button>
             </div>
-          </div>
-        </div>,
-        document.body,
-      )}
+      </NewOrderModalWrapper>
 
       {/* Category Change Confirmation Overlay — rendered via portal so it always
           floats above the order-form portal (kbi-so-overlay z-index 40). */}

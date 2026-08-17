@@ -82,6 +82,7 @@ export const DataMasterManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // Add Item State
+  const [isAddFormOpen, setIsAddFormOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemColor, setNewItemColor] = useState('#3B82F6');
   const [newItemCurrency, setNewItemCurrency] = useState<'IDR' | 'NTD' | 'USD'>('IDR');
@@ -430,6 +431,7 @@ export const DataMasterManager: React.FC = () => {
       setNewItemOngkosKirim(false);
       setNewItemPlatforms([]);
       setNewItemAdminFee('0');
+      setIsAddFormOpen(false);
       showToast(`Item "${name}" berhasil ditambahkan!`);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `${collectionName}`);
@@ -508,13 +510,13 @@ export const DataMasterManager: React.FC = () => {
       )}
 
       {/* Main Sub-Tab Bar (Sales Order, Purchase Order, Iklan) */}
-      <div className="flex items-center gap-2 border-b border-neutral-200/80 dark:border-neutral-800 pb-3 flex-wrap">
+      <div className="flex items-center gap-1.5 p-1 bg-neutral-100/80 dark:bg-neutral-900/50 rounded-2xl border border-neutral-200/50 dark:border-neutral-800/50 flex-wrap shadow-inner mb-2 w-fit">
         <button
           onClick={() => setActiveMainTab('sales')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition cursor-pointer ${
+          className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
             activeMainTab === 'sales'
-              ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-sm'
-              : 'bg-neutral-100 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200/70 dark:hover:bg-neutral-700'
+              ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-sm ring-1 ring-neutral-200/50 dark:ring-neutral-700'
+              : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50'
           }`}
         >
           <ShoppingCart className="h-4 w-4" />
@@ -523,10 +525,10 @@ export const DataMasterManager: React.FC = () => {
 
         <button
           onClick={() => setActiveMainTab('purchase')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition cursor-pointer ${
+          className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
             activeMainTab === 'purchase'
-              ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-sm'
-              : 'bg-neutral-100 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200/70 dark:hover:bg-neutral-700'
+              ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-sm ring-1 ring-neutral-200/50 dark:ring-neutral-700'
+              : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50'
           }`}
         >
           <Package className="h-4 w-4" />
@@ -535,10 +537,10 @@ export const DataMasterManager: React.FC = () => {
 
         <button
           onClick={() => setActiveMainTab('iklan')}
-          className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition cursor-pointer ${
+          className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
             activeMainTab === 'iklan'
-              ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-sm'
-              : 'bg-neutral-100 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200/70 dark:hover:bg-neutral-700'
+              ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-sm ring-1 ring-neutral-200/50 dark:ring-neutral-700'
+              : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-200/50 dark:hover:bg-neutral-800/50'
           }`}
         >
           <Megaphone className="h-4 w-4" />
@@ -629,10 +631,10 @@ export const DataMasterManager: React.FC = () => {
       )}
 
       {/* Main Data Master Container */}
-      <div className="bg-white dark:bg-neutral-950 border border-neutral-200/80 dark:border-neutral-800 rounded-2xl shadow-xs overflow-hidden">
+      <div className="bg-neutral-50/30 dark:bg-neutral-950 border border-neutral-100 dark:border-neutral-800 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none overflow-hidden flex flex-col">
         
         {/* Container Header */}
-        <div className="p-4 px-6 border-b border-neutral-150 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/40 flex items-center justify-between">
+        <div className="p-5 px-6 border-b border-neutral-150/60 dark:border-neutral-800 bg-white/50 dark:bg-neutral-900/40 flex items-center justify-between sticky top-0 z-10 backdrop-blur-sm">
           <div>
             <h3 className="text-sm font-bold text-neutral-900 dark:text-white flex items-center gap-2">
               <span>{label}</span>
@@ -649,10 +651,10 @@ export const DataMasterManager: React.FC = () => {
         </div>
 
         {/* List of Registered Items */}
-        <div className="divide-y divide-neutral-100 dark:divide-neutral-850 max-h-[380px] overflow-y-auto">
+        <div className="p-4 px-6 overflow-y-auto min-h-[300px] max-h-[60vh] space-y-3">
           {activeList.length === 0 ? (
             <div className="p-8 text-center text-xs text-neutral-400 font-medium">
-              Belum ada data master terdaftar di kategori ini. Tambahkan item baru di bawah.
+              Belum ada data master terdaftar di kategori ini.
             </div>
           ) : (
             activeList.map((item, idx) => {
@@ -665,8 +667,8 @@ export const DataMasterManager: React.FC = () => {
                   onDragStart={(e) => handleDragStart(e, idx)}
                   onDragOver={(e) => handleDragOver(e, idx)}
                   onDrop={(e) => handleDrop(e, idx)}
-                  className={`p-3.5 px-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 hover:bg-neutral-50/60 dark:hover:bg-neutral-900/40 transition border-b border-neutral-100 dark:border-neutral-800/60 ${
-                    dragOverIndex === idx ? 'bg-brand-50/40 dark:bg-brand-950/20 border-b-2 border-brand-500' : ''
+                  className={`p-4 px-5 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col md:flex-row md:flex-wrap items-start md:items-center justify-between gap-3 transition-all hover:shadow-md hover:-translate-y-0.5 ${
+                    dragOverIndex === idx ? 'ring-2 ring-brand-500 scale-[1.02]' : ''
                   }`}
                 >
                   {isEditing ? (
@@ -727,27 +729,23 @@ export const DataMasterManager: React.FC = () => {
                       </div>
 
                       {/* Color Palette Picker during Edit */}
-                      <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-                        <span className="text-[11px] font-bold text-neutral-500">Warna Label:</span>
+                      <div className="flex items-center gap-2 flex-wrap shrink-0">
+                        <span className="text-[11px] font-bold text-neutral-500 mr-1">Warna:</span>
                         {COLOR_PRESETS.map((c) => (
                           <button
                             key={c.hex}
                             type="button"
                             onClick={() => setEditColor(c.hex)}
-                            style={{ backgroundColor: c.hex }}
-                            className={`h-5 w-5 rounded-full transition cursor-pointer shrink-0 ${
-                              editColor === c.hex ? 'ring-2 ring-offset-1 ring-neutral-900 dark:ring-white scale-110' : 'opacity-80 hover:opacity-100'
+                            style={{ 
+                              backgroundColor: c.hex,
+                              boxShadow: editColor === c.hex ? `0 0 12px ${c.hex}80` : 'none'
+                            }}
+                            className={`h-6 w-6 rounded-full transition-all cursor-pointer shrink-0 border-2 ${
+                              editColor === c.hex ? 'border-white dark:border-neutral-900 scale-110' : 'border-transparent opacity-80 hover:opacity-100 hover:scale-110'
                             }`}
                             title={c.name}
                           />
                         ))}
-                        <input
-                          type="color"
-                          value={editColor}
-                          onChange={(e) => setEditColor(e.target.value)}
-                          className="h-6 w-6 rounded-md border-0 p-0 cursor-pointer bg-transparent"
-                          title="Custom Hex Color"
-                        />
                       </div>
 
                       {/* Save / Cancel buttons */}
@@ -771,7 +769,7 @@ export const DataMasterManager: React.FC = () => {
                   ) : (
                     /* NORMAL VIEW ROW */
                     (<>
-                      <div className="flex items-center gap-2 min-w-[120px] flex-1">
+                      <div className="flex items-center gap-3 min-w-[200px] flex-1">
                         {/* Drag and Reorder Controls */}
                         <div className="flex items-center gap-0.5 shrink-0">
                           <GripVertical className="h-4 w-4 text-neutral-400 dark:text-neutral-600 shrink-0 cursor-grab hover:text-neutral-600 dark:hover:text-neutral-300" title="Geser untuk mengatur urutan" />
@@ -802,7 +800,7 @@ export const DataMasterManager: React.FC = () => {
                           title={`Color Label: ${item.color || '#3B82F6'}`}
                         />
 
-                        <span className="font-bold text-xs text-neutral-800 dark:text-neutral-100 break-words line-clamp-2">
+                        <span className="font-bold text-[13px] text-neutral-800 dark:text-neutral-100 whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px] md:max-w-none md:whitespace-normal md:break-words">
                           {item.name}
                         </span>
 
@@ -833,7 +831,7 @@ export const DataMasterManager: React.FC = () => {
 
                       {/* Linked Platform Orders for Sales Order -> Opsi Pengiriman */}
                       {activeMainTab === 'sales' && salesCategory === 'logistik' && (
-                        <div className="flex items-center gap-1.5 flex-wrap shrink-0 py-1">
+                        <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
                           <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
                             <Link2 className="h-3 w-3 text-brand-500" /> Platform:
                           </span>
@@ -873,7 +871,7 @@ export const DataMasterManager: React.FC = () => {
                         const isCodEnabled = item.isCod !== false;
                         const isTransferEnabled = item.isTransfer !== false;
                         return (
-                          <div className="flex flex-wrap items-center gap-3 shrink-0 ml-auto mr-2">
+                          <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto xl:ml-auto">
                             <div className="flex items-center gap-1.5 mr-2">
                               <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400">
                                 Biaya Admin:
@@ -890,14 +888,14 @@ export const DataMasterManager: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => handleToggleCod(item)}
-                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                                   isCodEnabled ? 'bg-emerald-600' : 'bg-neutral-300 dark:bg-neutral-700'
                                 }`}
                                 title={`COD untuk ${item.name}: ${isCodEnabled ? 'ON' : 'OFF'}`}
                               >
                                 <span
-                                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                                    isCodEnabled ? 'translate-x-4' : 'translate-x-0'
+                                  className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                    isCodEnabled ? 'translate-x-3' : 'translate-x-0'
                                   }`}
                                 />
                               </button>
@@ -918,14 +916,14 @@ export const DataMasterManager: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => handleToggleTransfer(item)}
-                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                                   isTransferEnabled ? 'bg-blue-600' : 'bg-neutral-300 dark:bg-neutral-700'
                                 }`}
                                 title={`Transfer untuk ${item.name}: ${isTransferEnabled ? 'ON' : 'OFF'}`}
                               >
                                 <span
-                                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                                    isTransferEnabled ? 'translate-x-4' : 'translate-x-0'
+                                  className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                    isTransferEnabled ? 'translate-x-3' : 'translate-x-0'
                                   }`}
                                 />
                               </button>
@@ -946,14 +944,14 @@ export const DataMasterManager: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => handleToggleOngkosKirim(item)}
-                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                                   isOngkirEnabled ? 'bg-emerald-600' : 'bg-neutral-300 dark:bg-neutral-700'
                                 }`}
                                 title={`Ongkos Kirim untuk ${item.name}: ${isOngkirEnabled ? 'ON' : 'OFF'}`}
                               >
                                 <span
-                                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                                    isOngkirEnabled ? 'translate-x-4' : 'translate-x-0'
+                                  className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                                    isOngkirEnabled ? 'translate-x-3' : 'translate-x-0'
                                   }`}
                                 />
                               </button>
@@ -998,225 +996,246 @@ export const DataMasterManager: React.FC = () => {
         </div>
 
         {/* ADD NEW ITEM FORM FOOTER */}
-        <div className="p-4 px-6 bg-neutral-50/80 dark:bg-neutral-900/50 border-t border-neutral-200/80 dark:border-neutral-800 space-y-3">
-          <p className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
-            <Plus className="h-3.5 w-3.5 text-brand-500" />
-            <span>Tambah Item Baru ke {label}</span>
-          </p>
-
-          <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3">
-            {/* Item Name Input */}
-            <input
-              type="text"
-              value={newItemName}
-              onChange={(e) => setNewItemName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAddItem(); }}
-              placeholder={`Contoh item baru ${label}...`}
-              className="flex-1 w-full px-3.5 py-2 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-bold text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-
-            {/* Currency selector for Purchase Order Platform Belanja */}
-            {isPO && (
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Mata Uang:</span>
-                <select
-                  value={newItemCurrency}
-                  onChange={(e) => setNewItemCurrency(e.target.value as any)}
-                  className="px-3 py-2 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-bold text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                >
-                  <option value="IDR">IDR (Shopee Indo, Tokopedia, dst)</option>
-                  <option value="NTD">NTD (博客來, IopenMall, dst)</option>
-                  <option value="USD">USD (Supplier Global)</option>
-                </select>
-              </div>
-            )}
-
-            {/* Kategori Order selector for Sales Order Sumber Orderan */}
-            {prefix === 'config_channel_' && (
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Kategori Order:</span>
-                <select
-                  value={newItemOrderCategory}
-                  onChange={(e) => setNewItemOrderCategory(e.target.value as any)}
-                  className="px-3 py-2 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-bold text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                >
-                  <option value="Marketplace">Marketplace</option>
-                  <option value="Direct Order">Direct Order</option>
-                  <option value="Reseller">Reseller</option>
-                </select>
-              </div>
-            )}
-
-            {/* Platform Order - Admin Fee */}
-            {prefix === 'config_platform_' && (
-              <div className="flex flex-wrap items-center gap-2 shrink-0 bg-white dark:bg-neutral-950 px-3 py-1.5 border border-neutral-200 dark:border-neutral-800 rounded-xl">
-                <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Biaya Admin (TWD):</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={newItemAdminFee}
-                  onChange={(e) => setNewItemAdminFee(e.target.value)}
-                  className="w-20 text-xs bg-transparent border-b border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-brand-500 pb-0.5"
-                  placeholder="0"
-                />
-              </div>
-            )}
-
-            {/* Toggles selector (COD, Transfer, Ongkos Kirim) for Platform Order */}
-            {prefix === 'config_platform_' && (
-              <div className="flex flex-wrap items-center gap-2 shrink-0 bg-white dark:bg-neutral-950 px-3 py-1.5 border border-neutral-200 dark:border-neutral-800 rounded-xl">
-                {/* COD */}
-                <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">COD:</span>
-                <button
-                  type="button"
-                  onClick={() => setNewItemIsCod(!newItemIsCod)}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    newItemIsCod ? 'bg-emerald-600' : 'bg-neutral-300 dark:bg-neutral-700'
-                  }`}
-                  title={`Toggle COD: ${newItemIsCod ? 'ON' : 'OFF'}`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                      newItemIsCod ? 'translate-x-4' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded mr-2 ${
-                  newItemIsCod
-                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border border-neutral-200 dark:border-neutral-700'
-                }`}>
-                  {newItemIsCod ? 'ON' : 'OFF'}
-                </span>
-
-                {/* Transfer */}
-                <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Transfer:</span>
-                <button
-                  type="button"
-                  onClick={() => setNewItemIsTransfer(!newItemIsTransfer)}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    newItemIsTransfer ? 'bg-blue-600' : 'bg-neutral-300 dark:bg-neutral-700'
-                  }`}
-                  title={`Toggle Transfer: ${newItemIsTransfer ? 'ON' : 'OFF'}`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                      newItemIsTransfer ? 'translate-x-4' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded mr-2 ${
-                  newItemIsTransfer
-                    ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border border-neutral-200 dark:border-neutral-700'
-                }`}>
-                  {newItemIsTransfer ? 'ON' : 'OFF'}
-                </span>
-
-                {/* Ongkos Kirim */}
-                <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Ongkir:</span>
-                <button
-                  type="button"
-                  onClick={() => setNewItemOngkosKirim(!newItemOngkosKirim)}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    newItemOngkosKirim ? 'bg-emerald-600' : 'bg-neutral-300 dark:bg-neutral-700'
-                  }`}
-                  title={`Toggle Ongkos Kirim: ${newItemOngkosKirim ? 'ON' : 'OFF'}`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                      newItemOngkosKirim ? 'translate-x-4' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
-                  newItemOngkosKirim
-                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border border-neutral-200 dark:border-neutral-700'
-                }`}>
-                  {newItemOngkosKirim ? 'ON' : 'OFF'}
-                </span>
-              </div>
-            )}
-
-            {/* Platform Order selector for Opsi Pengiriman */}
-            {prefix === 'config_logistik_' && (
-              <div className="flex flex-wrap items-center gap-2 shrink-0 bg-white dark:bg-neutral-950 px-3 py-1.5 border border-neutral-200 dark:border-neutral-800 rounded-xl">
-                <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400 flex items-center gap-1">
-                  <Link2 className="h-3.5 w-3.5 text-brand-500" /> Platform Order:
-                </span>
-                {platformOrder.length === 0 ? (
-                  <span className="text-xs text-neutral-400 font-medium">(Belum ada platform)</span>
-                ) : (
-                  platformOrder.map((po) => {
-                    const isSelected = newItemPlatforms.includes(po.name);
-                    return (
-                      <button
-                        key={po.id || po.name}
-                        type="button"
-                        onClick={() => {
-                          if (isSelected) {
-                            setNewItemPlatforms(newItemPlatforms.filter(p => p !== po.name));
-                          } else {
-                            setNewItemPlatforms([...newItemPlatforms, po.name]);
-                          }
-                        }}
-                        className={`px-2 py-0.5 text-xs font-bold rounded-lg transition cursor-pointer border ${
-                          isSelected
-                            ? 'bg-brand-600 text-white border-brand-600 shadow-2xs'
-                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700 hover:border-neutral-300'
-                        }`}
-                      >
-                        {isSelected ? '✓ ' : ''}{po.name}
-                      </button>
-                    );
-                  })
-                )}
-                {newItemPlatforms.length === 0 && (
-                  <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
-                    Semua Platform
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Color Palette Selector for New Item */}
-            <div className="flex items-center gap-1.5 flex-wrap shrink-0 py-1">
-              <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400 flex items-center gap-1">
-                <Palette className="h-3.5 w-3.5" /> Color Label:
-              </span>
-              {COLOR_PRESETS.map((c) => (
-                <button
-                  key={c.hex}
-                  type="button"
-                  onClick={() => setNewItemColor(c.hex)}
-                  style={{ backgroundColor: c.hex }}
-                  className={`h-5 w-5 rounded-full transition cursor-pointer shrink-0 ${
-                    newItemColor === c.hex ? 'ring-2 ring-offset-2 ring-neutral-900 dark:ring-white scale-110' : 'opacity-80 hover:opacity-100'
-                  }`}
-                  title={c.name}
-                />
-              ))}
-              <input
-                type="color"
-                value={newItemColor}
-                onChange={(e) => setNewItemColor(e.target.value)}
-                className="h-6 w-6 rounded-md border-0 p-0 cursor-pointer bg-transparent"
-                title="Pilih warna kustom"
-              />
-            </div>
-
-            {/* Submit Button */}
+        <div className="border-t border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900/50">
+          {!isAddFormOpen ? (
             <button
               type="button"
-              onClick={handleAddItem}
-              disabled={!newItemName.trim()}
-              className="w-full lg:w-auto px-5 py-2 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-bold text-xs rounded-xl hover:opacity-90 transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1.5 shadow-xs shrink-0"
+              onClick={() => setIsAddFormOpen(true)}
+              className="w-full p-4 px-6 flex items-center justify-center gap-2 text-sm font-bold text-brand-600 hover:bg-brand-50/50 dark:hover:bg-brand-950/20 transition-colors cursor-pointer"
             >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Tambah Item</span>
+              <Plus className="h-4 w-4" />
+              <span>Tambah Item Baru ke {label}</span>
             </button>
-          </div>
+          ) : (
+            <div className="p-5 px-6 space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-2">
+                  <Plus className="h-4 w-4 text-brand-500" />
+                  Tambah Item Baru
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsAddFormOpen(false)}
+                  className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition"
+                  title="Tutup Form"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
+                {/* Item Name Input */}
+                <input
+                  type="text"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddItem(); }}
+                  placeholder={`Contoh: ${label} baru...`}
+                  className="flex-1 w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-sm font-bold text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-inner"
+                />
+
+                {/* Currency selector for Purchase Order Platform Belanja */}
+                {isPO && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Mata Uang:</span>
+                    <select
+                      value={newItemCurrency}
+                      onChange={(e) => setNewItemCurrency(e.target.value as any)}
+                      className="px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-bold text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                      <option value="IDR">IDR (Shopee Indo, Tokopedia, dst)</option>
+                      <option value="NTD">NTD (博客來, IopenMall, dst)</option>
+                      <option value="USD">USD (Supplier Global)</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Kategori Order selector for Sales Order Sumber Orderan */}
+                {prefix === 'config_channel_' && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Kategori Order:</span>
+                    <select
+                      value={newItemOrderCategory}
+                      onChange={(e) => setNewItemOrderCategory(e.target.value as any)}
+                      className="px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-bold text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                      <option value="Marketplace">Marketplace</option>
+                      <option value="Direct Order">Direct Order</option>
+                      <option value="Reseller">Reseller</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Platform Order - Admin Fee */}
+                {prefix === 'config_platform_' && (
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 bg-neutral-50 dark:bg-neutral-950 px-3 py-2 border border-neutral-200 dark:border-neutral-800 rounded-xl">
+                    <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Biaya Admin (TWD):</span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={newItemAdminFee}
+                      onChange={(e) => setNewItemAdminFee(e.target.value)}
+                      className="w-20 text-xs bg-transparent border-b border-neutral-300 dark:border-neutral-700 focus:outline-none focus:border-brand-500 pb-0.5"
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+
+                {/* Toggles selector (COD, Transfer, Ongkos Kirim) for Platform Order */}
+                {prefix === 'config_platform_' && (
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 bg-neutral-50 dark:bg-neutral-950 px-3 py-2 border border-neutral-200 dark:border-neutral-800 rounded-xl">
+                    {/* COD */}
+                    <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">COD:</span>
+                    <button
+                      type="button"
+                      onClick={() => setNewItemIsCod(!newItemIsCod)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        newItemIsCod ? 'bg-emerald-600' : 'bg-neutral-300 dark:bg-neutral-700'
+                      }`}
+                      title={`Toggle COD: ${newItemIsCod ? 'ON' : 'OFF'}`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          newItemIsCod ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                    <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded mr-2 ${
+                      newItemIsCod
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border border-neutral-200 dark:border-neutral-700'
+                    }`}>
+                      {newItemIsCod ? 'ON' : 'OFF'}
+                    </span>
+
+                    {/* Transfer */}
+                    <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Transfer:</span>
+                    <button
+                      type="button"
+                      onClick={() => setNewItemIsTransfer(!newItemIsTransfer)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        newItemIsTransfer ? 'bg-blue-600' : 'bg-neutral-300 dark:bg-neutral-700'
+                      }`}
+                      title={`Toggle Transfer: ${newItemIsTransfer ? 'ON' : 'OFF'}`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          newItemIsTransfer ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                    <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded mr-2 ${
+                      newItemIsTransfer
+                        ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border border-neutral-200 dark:border-neutral-700'
+                    }`}>
+                      {newItemIsTransfer ? 'ON' : 'OFF'}
+                    </span>
+
+                    {/* Ongkos Kirim */}
+                    <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Ongkir:</span>
+                    <button
+                      type="button"
+                      onClick={() => setNewItemOngkosKirim(!newItemOngkosKirim)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        newItemOngkosKirim ? 'bg-emerald-600' : 'bg-neutral-300 dark:bg-neutral-700'
+                      }`}
+                      title={`Toggle Ongkos Kirim: ${newItemOngkosKirim ? 'ON' : 'OFF'}`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          newItemOngkosKirim ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                    <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                      newItemOngkosKirim
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border border-neutral-200 dark:border-neutral-700'
+                    }`}>
+                      {newItemOngkosKirim ? 'ON' : 'OFF'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Platform Order selector for Opsi Pengiriman */}
+                {prefix === 'config_logistik_' && (
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 bg-neutral-50 dark:bg-neutral-950 px-3 py-2 border border-neutral-200 dark:border-neutral-800 rounded-xl">
+                    <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400 flex items-center gap-1">
+                      <Link2 className="h-3.5 w-3.5 text-brand-500" /> Platform Order:
+                    </span>
+                    {platformOrder.length === 0 ? (
+                      <span className="text-xs text-neutral-400 font-medium">(Belum ada platform)</span>
+                    ) : (
+                      platformOrder.map((po) => {
+                        const isSelected = newItemPlatforms.includes(po.name);
+                        return (
+                          <button
+                            key={po.id || po.name}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setNewItemPlatforms(newItemPlatforms.filter(p => p !== po.name));
+                              } else {
+                                setNewItemPlatforms([...newItemPlatforms, po.name]);
+                              }
+                            }}
+                            className={`px-2 py-0.5 text-xs font-bold rounded-lg transition cursor-pointer border ${
+                              isSelected
+                                ? 'bg-brand-600 text-white border-brand-600 shadow-2xs'
+                                : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700 hover:border-neutral-300'
+                            }`}
+                          >
+                            {isSelected ? '✓ ' : ''}{po.name}
+                          </button>
+                        );
+                      })
+                    )}
+                    {newItemPlatforms.length === 0 && (
+                      <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                        Semua Platform
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-t border-neutral-100 dark:border-neutral-800 pt-4">
+                {/* Color Palette Selector for New Item */}
+                <div className="flex items-center gap-2 flex-wrap shrink-0">
+                  <span className="text-xs font-bold text-neutral-600 dark:text-neutral-400 mr-2 flex items-center gap-1">
+                    <Palette className="h-3.5 w-3.5" /> Warna:
+                  </span>
+                  {COLOR_PRESETS.map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={() => setNewItemColor(c.hex)}
+                      style={{ 
+                        backgroundColor: c.hex,
+                        boxShadow: newItemColor === c.hex ? `0 0 12px ${c.hex}80` : 'none'
+                      }}
+                      className={`h-6 w-6 rounded-full transition-all cursor-pointer shrink-0 border-2 ${
+                        newItemColor === c.hex ? 'border-white dark:border-neutral-900 scale-110' : 'border-transparent opacity-80 hover:opacity-100 hover:scale-110'
+                      }`}
+                      title={c.name}
+                    />
+                  ))}
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  disabled={!newItemName.trim()}
+                  className="w-full lg:w-auto px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm rounded-xl transition disabled:opacity-40 cursor-pointer flex items-center justify-center gap-2 shadow-sm shrink-0"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Simpan Item</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -2,14 +2,16 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { importPoHandler } from './src/server/importPo.ts';
-import { categoryAiHandler } from './src/server/categoryAi.ts';
+import { importPoHandler } from './src/server/importPo';
+import { categoryAiHandler } from './src/server/categoryAi';
 import { 
   lineWebhookHandler, 
   lineNotifyOrderEndpoint, 
   lineSendTestEndpoint, 
   lineGetRecentUsersEndpoint 
-} from './src/server/line.ts';
+} from './src/server/line';
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
 
 async function startServer() {
   const app = express();
@@ -31,11 +33,19 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
-    const viteConfig = (await import('./vite.config.ts')).default;
     const vite = await createViteServer({
-      ...viteConfig,
       configFile: false,
-      server: { ...viteConfig.server, middlewareMode: true },
+      plugins: [react(), tailwindcss()],
+      resolve: {
+        alias: [
+          { find: /^@\/(.*)/, replacement: path.resolve(process.cwd(), './src/$1') }
+        ],
+      },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR !== 'true',
+        watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

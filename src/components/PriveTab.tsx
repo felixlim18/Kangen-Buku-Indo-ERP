@@ -15,6 +15,7 @@ import {
 import { Prive, SetoranModal, CoaAccount, JournalEntry } from '../types';
 import { formatNTD, convertIdrToNtdCents, calculateNtdCentsFromIdr, formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
 import { isPeriodClosed, formatPeriodName, fetchCurrentExchangeRate } from '../lib/period-closing-utils';
+import { formatDate } from '../lib/date-utils';
 
 function parseToDate(val: any): Date {
   if (!val) return new Date();
@@ -556,7 +557,7 @@ export const PriveTab: React.FC = () => {
                       return (
                         <tr key={p.id} className="hover:bg-gold-light/10 dark:hover:bg-neutral-850/15 transition duration-100">
                           <td className="p-4 whitespace-nowrap font-medium text-ink dark:text-neutral-200">
-                            {new Date(parseToDate(p.date)).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            {formatDate(p.date)}
                             {isClosed && (
                               <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-md text-[8.5px] font-bold bg-rust-bg dark:bg-rose-950/30 text-rust dark:text-rose-400 border border-rust/15 uppercase tracking-wider">
                                 Terkunci
@@ -645,7 +646,7 @@ export const PriveTab: React.FC = () => {
                       return (
                         <tr key={s.id} className="hover:bg-gold-light/10 dark:hover:bg-neutral-850/15 transition duration-100">
                           <td className="p-4 whitespace-nowrap font-medium text-ink dark:text-neutral-200">
-                            {new Date(parseToDate(s.date)).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            {formatDate(s.date)}
                             {isClosed && (
                               <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-md text-[8.5px] font-bold bg-rust-bg dark:bg-rose-950/30 text-rust dark:text-rose-400 border border-rust/15 uppercase tracking-wider">
                                 Terkunci
@@ -897,7 +898,7 @@ export const PriveTab: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-ink-mute dark:text-neutral-500 font-sans font-medium">Tanggal:</span>
                   <span className="text-ink dark:text-neutral-300 font-semibold">
-                    {new Date(parseToDate(deleteConfirmRecord.record.date)).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}
+                    {formatDate(deleteConfirmRecord.record.date)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">

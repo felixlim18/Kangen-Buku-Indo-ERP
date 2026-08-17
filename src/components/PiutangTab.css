@@ -618,3 +618,17 @@
   width: 100% !important;
   max-width: none !important;
 }
+
+/* Dark Mode Overrides */
+.dark .piutang-page {
+  --surface: #161b22;
+  --ink: #ffffff;
+  --ink-soft: #a3a3a3;
+  --ink-mute: #737373;
+  --line: #262626;
+  --line-soft: #171717;
+  --blue-50: rgba(30, 41, 59, 0.4);
+}
+.dark .piutang-page tbody tr:hover {
+  background: rgba(30, 41, 59, 0.3);
+}
