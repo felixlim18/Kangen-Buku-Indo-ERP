@@ -166,6 +166,17 @@ const getCompletedDateMs = (order: SalesOrder): number => {
   return ts ?? getOrderDateMs(order);
 };
 
+const isShippingDateFuture = (dateStr?: string | null): boolean => {
+  if (!dateStr) return false;
+  const clean = dateStr.trim();
+  if (!clean) return false;
+  const shipDate = new Date(clean.includes('T') ? clean : clean + 'T00:00:00');
+  if (isNaN(shipDate.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return shipDate > today;
+};
+
 const getReturnedDateMs = (order: SalesOrder): number => {
   const ts = getTimestampMs(order.returnedAt);
   return ts ?? getOrderDateMs(order);
@@ -2865,17 +2876,17 @@ export const SalesTab: React.FC = () => {
 
     if (activeFilterTab === 'Semua' || activeFilterTab === 'Pending') {
       const pinnedItems: SalesOrder[] = [];
-      const overdueItems: SalesOrder[] = [];
       const readyStockItems: SalesOrder[] = [];
+      const overdueItems: SalesOrder[] = [];
       const normalItems: SalesOrder[] = [];
 
       searchedOrders.forEach((order) => {
         if (order.isPinned) {
           pinnedItems.push(order);
-        } else if (getOverdueDays(order) >= 15) {
-          overdueItems.push(order);
         } else if (checkIsReadyStock(order)) {
           readyStockItems.push(order);
+        } else if (getOverdueDays(order) >= 15) {
+          overdueItems.push(order);
         } else {
           normalItems.push(order);
         }
@@ -2886,11 +2897,16 @@ export const SalesTab: React.FC = () => {
         if (pinDiff !== 0) return pinDiff;
         return sortByCodeDesc(a, b);
       });
+      // Highlight hijau (ready stock) diurutkan dari tanggal terlama ke tanggal terbaru (Oldest -> Newest / Ascending)
+      readyStockItems.sort((a, b) => {
+        const dateDiff = getOrderDateMs(a) - getOrderDateMs(b);
+        if (dateDiff !== 0) return dateDiff;
+        return (a.orderCode || '').localeCompare(b.orderCode || '');
+      });
       overdueItems.sort(sortByCodeDesc);
-      readyStockItems.sort(sortByCodeDesc);
       normalItems.sort(sortByCodeDesc);
 
-      return [...pinnedItems, ...overdueItems, ...readyStockItems, ...normalItems];
+      return [...pinnedItems, ...readyStockItems, ...overdueItems, ...normalItems];
     } else if (activeFilterTab === 'Dikirim') {
       return [...searchedOrders].sort((a, b) => {
         const tsA = a.shippedAt || a.shipment?.arrangedAt || a.shipment?.shippingDate;
@@ -5114,16 +5130,16 @@ export const SalesTab: React.FC = () => {
           const isCritical = overdueDays >= 21;
           const isReadyStock = checkIsReadyStock(order);
           const isPinnedOrder = !!order.isPinned;
-          const showOverdueHighlight = !isPinnedOrder && isOverdue;
-          const showReadyStockHighlight = !isPinnedOrder && !showOverdueHighlight && isReadyStock;
+          const showReadyStockHighlight = !isPinnedOrder && isReadyStock;
+          const showOverdueHighlight = !isPinnedOrder && !showReadyStockHighlight && isOverdue;
           
           let cardBgClass = '!bg-white dark:!bg-neutral-900 !border-[#E7E1D2] dark:!border-neutral-800';
           if (order.isPinned) {
             cardBgClass = '!bg-amber-50 dark:!bg-amber-900/10 !border-amber-200 dark:!border-amber-900/30';
-          } else if (showOverdueHighlight) {
-            cardBgClass = isCritical ? '!bg-red-50 dark:!bg-red-900/10 !border-red-200 dark:!border-red-900/30' : '!bg-orange-50 dark:!bg-orange-900/10 !border-orange-200 dark:!border-orange-900/30';
           } else if (showReadyStockHighlight) {
             cardBgClass = '!bg-emerald-50 dark:!bg-emerald-900/10 !border-emerald-200 dark:!border-emerald-900/30';
+          } else if (showOverdueHighlight) {
+            cardBgClass = isCritical ? '!bg-red-50 dark:!bg-red-900/10 !border-red-200 dark:!border-red-900/30' : '!bg-orange-50 dark:!bg-orange-900/10 !border-orange-200 dark:!border-orange-900/30';
           }
 
           let pillColor = '#b45309';
@@ -5328,25 +5344,39 @@ export const SalesTab: React.FC = () => {
                   )}
                 </div>
 
-                {isDraftLike && isStaffValue ? (
-                  <button type="button" className="kbi-ocard__cta" style={{ backgroundColor: '#6366f1' }}
-                    onClick={() => {
-                      if (order.estimatedShippingDate) {
-                        const shipDate = new Date(order.estimatedShippingDate + 'T00:00:00');
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        if (shipDate > today) {
-                          safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate.replace(/-/g, '/')}`);
-                          return;
+                {isDraftLike && isStaffValue ? (() => {
+                  const isEstShippingInFuture = isShippingDateFuture(order.estimatedShippingDate);
+                  return (
+                    <button 
+                      type="button" 
+                      className={`kbi-ocard__cta ${isEstShippingInFuture ? 'opacity-55 !bg-indigo-400/80 dark:!bg-indigo-900/60' : ''}`}
+                      style={{ 
+                        backgroundColor: isEstShippingInFuture ? '#818cf8' : '#6366f1',
+                        opacity: isEstShippingInFuture ? 0.55 : 1,
+                        filter: isEstShippingInFuture ? 'saturate(0.75)' : undefined
+                      }}
+                      title={isEstShippingInFuture ? `Belum waktunya dikemas, request customer: ${order.estimatedShippingDate.replace(/-/g, '/')}` : undefined}
+                      onClick={() => {
+                        if (order.estimatedShippingDate) {
+                          const shipDate = new Date(order.estimatedShippingDate.includes('T') ? order.estimatedShippingDate : order.estimatedShippingDate + 'T00:00:00');
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          if (shipDate > today) {
+                            safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate.replace(/-/g, '/')}`);
+                            return;
+                          }
                         }
-                      }
-                      if (order.perluKonfirmasiSebelumKirim) {
-                        setConfirmingCustomerPreKemasOrder(order);
-                      } else {
-                        setConfirmingKemasOrder(order);
-                      }
-                    }}>Kemas</button>
-                ) : order.status === 'packed' && isStaffValue ? (
+                        if (order.perluKonfirmasiSebelumKirim) {
+                          setConfirmingCustomerPreKemasOrder(order);
+                        } else {
+                          setConfirmingKemasOrder(order);
+                        }
+                      }}
+                    >
+                      Kemas
+                    </button>
+                  );
+                })() : order.status === 'packed' && isStaffValue ? (
                   <button type="button" className="kbi-ocard__cta" style={{ backgroundColor: '#2b5a9e' }}
                     onClick={() => {
                       setSelectedOrderForProses(order);
@@ -5504,20 +5534,20 @@ export const SalesTab: React.FC = () => {
 
                 // Priority order for highlights:
                 // 1. Transaksi yang di Pinned
-                // 2. Orderan Terlambat
-                // 3. Orderan Stok Siap
+                // 2. Orderan Stok Siap (Highlight Hijau)
+                // 3. Orderan Terlambat (Highlight Orange/Merah)
                 // 4. Normal
                 const isPinnedOrder = !!order.isPinned;
-                const showOverdueHighlight = !isPinnedOrder && isOverdue;
-                const showReadyStockHighlight = !isPinnedOrder && !showOverdueHighlight && isReadyStock;
+                const showReadyStockHighlight = !isPinnedOrder && isReadyStock;
+                const showOverdueHighlight = !isPinnedOrder && !showReadyStockHighlight && isOverdue;
               
               let cardBgClass = 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800';
               if (order.isPinned) {
                 cardBgClass = 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/30';
-              } else if (showOverdueHighlight) {
-                cardBgClass = isCritical ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30' : 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-900/30';
               } else if (showReadyStockHighlight) {
                 cardBgClass = 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/30';
+              } else if (showOverdueHighlight) {
+                cardBgClass = isCritical ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30' : 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-900/30';
               }
 
                 const isRowHovered = hoveredRowId === order.id;
@@ -5882,31 +5912,39 @@ export const SalesTab: React.FC = () => {
                           </div>
 
                           {/* Main Status Action Button */}
-                          {(order.status === 'draft' || !order.status) && isStaffValue ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (order.estimatedShippingDate) {
-                                  const shipDate = new Date(order.estimatedShippingDate + 'T00:00:00');
-                                  const today = new Date();
-                                  today.setHours(0, 0, 0, 0);
-                                  if (shipDate > today) {
-                                    safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate.replace(/-/g, '/')}`);
-                                    return;
+                          {(order.status === 'draft' || !order.status) && isStaffValue ? (() => {
+                            const isEstShippingInFuture = isShippingDateFuture(order.estimatedShippingDate);
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (order.estimatedShippingDate) {
+                                    const shipDate = new Date(order.estimatedShippingDate.includes('T') ? order.estimatedShippingDate : order.estimatedShippingDate + 'T00:00:00');
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    if (shipDate > today) {
+                                      safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate.replace(/-/g, '/')}`);
+                                      return;
+                                    }
                                   }
-                                }
-                                if (order.perluKonfirmasiSebelumKirim) {
-                                  setConfirmingCustomerPreKemasOrder(order);
-                                } else {
-                                  setConfirmingKemasOrder(order);
-                                }
-                              }}
-                              className="px-3.5 py-1.5 rounded-[7px] bg-[#6366f1] hover:bg-[#4f46e5] text-white font-['Lexend'] font-semibold text-[12px] transition shadow-2xs cursor-pointer select-none ml-1"
-                            >
-                              Kemas
-                            </button>
-                          ) : order.status === 'packed' && isStaffValue ? (
+                                  if (order.perluKonfirmasiSebelumKirim) {
+                                    setConfirmingCustomerPreKemasOrder(order);
+                                  } else {
+                                    setConfirmingKemasOrder(order);
+                                  }
+                                }}
+                                title={isEstShippingInFuture ? `Belum waktunya dikemas, request customer: ${order.estimatedShippingDate.replace(/-/g, '/')}` : undefined}
+                                className={`px-3.5 py-1.5 rounded-[7px] font-['Lexend'] font-semibold text-[12px] transition shadow-2xs cursor-pointer select-none ml-1 ${
+                                  isEstShippingInFuture
+                                    ? 'bg-[#6366f1]/35 hover:bg-[#6366f1]/50 text-white/60 dark:bg-[#6366f1]/25 dark:text-white/50 border border-[#6366f1]/25'
+                                    : 'bg-[#6366f1] hover:bg-[#4f46e5] text-white'
+                                }`}
+                              >
+                                Kemas
+                              </button>
+                            );
+                          })() : order.status === 'packed' && isStaffValue ? (
                             <button
                               type="button"
                               onClick={(e) => {
