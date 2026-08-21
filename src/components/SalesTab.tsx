@@ -4111,12 +4111,23 @@ export const SalesTab: React.FC = () => {
                     <div className="icell">
                       <div className="k">Kode Toko / Alamat</div>
                       <div className={`v ${pickupDetailsFormatted === '–' ? 'muted' : ''} inline-flex items-center gap-1.5`}>
-                        <span>{pickupDetailsFormatted}</span>
+                        {o.addressPhotoUrl ? (
+                          <div 
+                            className="inline-flex items-center gap-1.5 text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 cursor-pointer hover:underline"
+                            onClick={(e) => { e.stopPropagation(); setPreviewImage({ url: o.addressPhotoUrl!, title: 'Foto Alamat / Kode Toko' }); }}
+                            title="Lihat Foto Alamat"
+                          >
+                            <span>{pickupDetailsFormatted}</span>
+                            <Eye className="w-4 h-4 shrink-0" />
+                          </div>
+                        ) : (
+                          <span>{pickupDetailsFormatted}</span>
+                        )}
                         {pickupDetailsFormatted !== '–' && pickupDetailsFormatted !== '-' && (
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(pickupDetailsFormatted); }}
-                            className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer"
+                            className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer shrink-0"
                             title="Salin Kode Toko / Alamat"
                           >
                             <Copy className="w-3.5 h-3.5" />
