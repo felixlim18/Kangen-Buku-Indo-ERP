@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Eye, Undo2, Send, Copy, ExternalLink } from 'lucide-react';
 import { SalesOrder } from '../types';
 import { confirmSalesOrderTransaction } from '../lib/db-helpers';
@@ -76,6 +77,8 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   const [summary, setSummary] = useState<{ success: number; warn: number; fail: number } | null>(null);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [hoverPreview, setHoverPreview] = useState<{ url: string, x: number, y: number, width: number, align?: 'center' | 'right' } | null>(null);
+  const [expandedItems, setExpandedItems] = useState<{ [key: string]: boolean }>({});
   const timeoutRefs = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
   useModalEsc(isOpen, onClose, isProcessing);
@@ -87,6 +90,23 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
       // Filter orders with status 'packed' (Dikemas)
       const allOrders = salesOrders && salesOrders.length > 0 ? salesOrders : menungguOrders;
       const dikemasOrders = (allOrders || []).filter(o => o.status === 'packed');
+      
+      const platformOrderMap: { [key: string]: number } = {
+        'shopee': 1,
+        'iopenmall': 2,
+        'post office': 3,
+        'familymart': 4,
+        '7-eleven': 5,
+      };
+
+      dikemasOrders.sort((a, b) => {
+        const pA = (a.platformOrder || '').toLowerCase();
+        const pB = (b.platformOrder || '').toLowerCase();
+        const scoreA = platformOrderMap[pA] || 999;
+        const scoreB = platformOrderMap[pB] || 999;
+        if (scoreA !== scoreB) return scoreA - scoreB;
+        return pA.localeCompare(pB);
+      });
       
       setRows(dikemasOrders.map(order => ({
         orderId: order.id,
@@ -299,7 +319,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
       } transition-all duration-300 ease-in-out bg-neutral-950/60 backdrop-blur-xs z-40 flex items-center justify-center p-4 sm:p-8 overflow-y-auto`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl w-[92%] max-w-[920px] h-[85vh] shadow-2xl overflow-hidden flex flex-col my-auto" style={{ filter: 'drop-shadow(0 30px 80px rgba(6,14,30,0.55))' }}>
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl w-[96%] max-w-[1400px] h-[92vh] shadow-2xl overflow-hidden flex flex-col my-auto" style={{ filter: 'drop-shadow(0 30px 80px rgba(6,14,30,0.55))' }}>
         
         {/* Header */}
         <div className="relative bg-gradient-to-br from-[#173a6b] via-[#2b5a9e] to-[#3d6eb0] text-white px-6 pt-5 pb-0">
@@ -334,12 +354,14 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
 
           <div className="border border-[#dde4f0] rounded-lg overflow-hidden bg-white flex flex-col flex-1 min-h-0">
             <div className="overflow-x-auto relative flex flex-col flex-1 min-h-0">
-              <div className="grid grid-cols-[40px_1.2fr_1.5fr_2fr_80px] gap-0 min-w-[760px] bg-[#f1f6fc] border-b border-[#dde4f0] flex-none">
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center">#</span>
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center">Nomor Order</span>
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center">No Resi</span>
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start p-2.5 flex items-center pl-4">Note Dari Customer</span>
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center p-2.5 flex items-center border-l border-[#dde4f0]">Aksi</span>
+              <div className="grid grid-cols-[1.2fr_1.5fr_1fr_2.5fr_60px_1.5fr_70px] gap-0 min-w-[1100px] bg-[#f1f6fc] border-b border-[#dde4f0] flex-none">
+                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4">Nomor Order</span>
+                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Nomor Resi</span>
+                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Platform Order</span>
+                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Nama Barang</span>
+                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center border-l border-[#dde4f0]">Qty</span>
+                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Note Customer</span>
+                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center border-l border-[#dde4f0]">Aksi</span>
               </div>
               <div 
                 className="flex-1 overflow-y-auto" 
@@ -351,28 +373,28 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                     Tidak ada orderan berstatus Dikemas saat ini.
                   </div>
                 ) : (
-                  rows.map((row, i) => (
+                  rows.map((row, i) => {
+                    return (
                     <React.Fragment key={row.orderId || i}>
-                      <div className={`grid grid-cols-[40px_1.2fr_1.5fr_2fr_80px] gap-0 min-w-[760px] border-b border-[#dde4f0] transition-colors items-center
+                      <div className={`grid grid-cols-[1.2fr_1.5fr_1fr_2.5fr_60px_1.5fr_70px] gap-0 min-w-[1100px] border-b border-[#dde4f0] transition-colors items-stretch
                         ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : i % 2 !== 0 ? 'bg-[#f3f7fc]' : 'bg-white'}
                       `}>
-                      <div className="flex items-center justify-center text-[11px] text-[#98a1b0] font-['IBM_Plex_Mono'] border-r border-[#dde4f0] py-2.5">
-                        {String(i + 1).padStart(2, '0')}
-                      </div>
                       
-                      {/* Nomor Order (Disabled / Read-only) */}
-                      <div className="flex items-center justify-center px-2.5 py-2 border-r border-[#dde4f0] relative">
-                        <span className="font-['IBM_Plex_Mono'] text-[12.5px] font-semibold text-[#173a6b]">
-                          {row.orderNo}
-                        </span>
+                      {/* Nomor Order */}
+                      <div className="flex items-center px-4 py-2 border-r border-[#dde4f0] relative h-full">
+                        <div className="flex flex-col justify-center">
+                          <span className="font-['IBM_Plex_Mono'] text-[13.5px] font-semibold text-[#173a6b]">
+                            {row.orderNo}
+                          </span>
+                        </div>
                         <div 
-                          className="ml-2 text-neutral-400 hover:text-brand-500 cursor-pointer"
+                          className="ml-auto text-neutral-400 hover:text-brand-500 cursor-pointer"
                           onClick={() => setActiveTooltip(activeTooltip === row.orderId ? null : row.orderId)}
                         >
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-4.5 h-4.5" />
                         </div>
                         {activeTooltip === row.orderId && (
-                           <div className="absolute top-10 left-0 sm:left-4 w-[320px] bg-white shadow-[0_12px_48px_rgba(0,0,0,0.12)] border border-[#e5e7eb] rounded-xl p-4 z-50 text-left cursor-default flex flex-col" onClick={e => e.stopPropagation()}>
+                           <div className="absolute top-[60%] mt-2 left-4 w-[320px] bg-white shadow-[0_12px_48px_rgba(0,0,0,0.12)] border border-[#e5e7eb] rounded-xl p-4 z-50 text-left cursor-default flex flex-col" onClick={e => e.stopPropagation()}>
                              <div className="flex justify-between items-center mb-3">
                                <span className="font-semibold text-[13px] text-neutral-800 tracking-tight">Detail Pesanan</span>
                                <X className="w-3.5 h-3.5 cursor-pointer text-neutral-400 hover:text-neutral-600 shrink-0" onClick={() => setActiveTooltip(null)} />
@@ -424,19 +446,23 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                                  <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Kode / Alamat</span>
                                  <div className="flex gap-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                     {row.order.addressPhotoUrl && (
-                                      <div className="relative group/img flex">
+                                      <div className="relative flex">
                                         <div 
                                           className="text-neutral-400 hover:text-brand-600 transition-colors flex items-center gap-1 bg-white border border-neutral-200 px-1.5 py-0.5 rounded shadow-sm cursor-pointer"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setPreviewImage(row.order.addressPhotoUrl);
+                                            setHoverPreview(null);
                                           }}
+                                          onMouseEnter={(e) => {
+                                            if (!row.order.addressPhotoUrl) return;
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            setHoverPreview({ url: row.order.addressPhotoUrl, x: rect.right, y: rect.top, width: 220, align: 'right' });
+                                          }}
+                                          onMouseLeave={() => setHoverPreview(null)}
                                         >
                                           <Eye className="w-3 h-3" />
                                           <span className="text-[8px] font-bold uppercase tracking-wider">View</span>
-                                        </div>
-                                        <div className="absolute bottom-full right-0 mb-2 hidden group-hover/img:block z-[100] bg-white p-1.5 rounded-lg shadow-[0_10px_40px_rgba(0,0,0,0.2)] border border-neutral-200 w-[220px]">
-                                          <img src={row.order.addressPhotoUrl} alt="Foto Alamat" className="w-full h-auto max-h-[280px] object-contain rounded-md" />
                                         </div>
                                       </div>
                                     )}
@@ -449,30 +475,16 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                                </div>
                                <span className="text-[11px] text-neutral-700 font-medium line-clamp-2 leading-relaxed" title={row.order.pickupDetails}>{row.order.pickupDetails || '-'}</span>
                              </div>
-
-                             {/* Images */}
-                             <div className="flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
-                               {row.order.items?.map((item, idx) => {
-                                 const coverUrl = item.bookCover || books?.find(b => b.id === item.bookId)?.cover;
-                                 return coverUrl ? (
-                                   <div key={idx} className="relative rounded-md shrink-0 overflow-hidden border border-neutral-200 shadow-sm">
-                                      <img src={coverUrl} alt="cover" referrerPolicy="no-referrer" className="w-9 h-12 object-cover" />
-                                      {item.qty > 1 && <div className="absolute top-0 right-0 bg-black/70 text-white text-[7px] font-bold px-1 py-0.5 rounded-bl">{item.qty}</div>}
-                                   </div>
-                                 ) : (
-                                   <div key={idx} className="w-9 h-12 bg-neutral-100 rounded-md border border-neutral-200 flex items-center justify-center shrink-0 text-[6px] text-neutral-400 text-center px-0.5">No Img</div>
-                                 );
-                               })}
-                             </div>
                            </div>
                         )}
+
                       </div>
 
                       {/* No Resi (Editable input) */}
                       <div className="border-r border-[#dde4f0] h-full flex items-center">
                         <input 
                           type="text" 
-                          className="w-full h-full border-none bg-transparent px-2.5 py-2 font-['IBM_Plex_Mono'] text-[12.5px] tracking-[0.2px] text-[#101826] text-center focus:outline-2 focus:-outline-offset-2 focus:outline-[#2b5a9e] focus:bg-white placeholder:font-['Inter'] placeholder:text-[#98a1b0] disabled:text-[#525c6d]"
+                          className="w-full h-full border-none bg-transparent px-4 py-2 font-['IBM_Plex_Mono'] text-[13.5px] tracking-[0.2px] text-[#101826] text-left focus:outline-2 focus:-outline-offset-2 focus:outline-[#2b5a9e] focus:bg-white placeholder:font-['Inter'] placeholder:text-[#98a1b0] disabled:text-[#525c6d]"
                           value={row.resi}
                           placeholder="Ketik / Paste No Resi"
                           disabled={row.status === 'success'}
@@ -481,8 +493,59 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                         />
                       </div>
 
+                      {/* Platform Order */}
+                      <div className="flex flex-col justify-center px-4 py-2 border-r border-[#dde4f0] h-full">
+                        <span className="font-['Inter'] text-[12.5px] font-medium text-neutral-800">
+                          {row.order.platformOrder || '-'}
+                        </span>
+                        {row.order.platformChannel && (
+                          <span className="font-['Inter'] text-[10px] text-neutral-500 mt-0.5">
+                            {row.order.platformChannel}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Nama Barang & QTY */}
+                      <div className="col-span-2 flex flex-col h-full border-r border-[#dde4f0]">
+                        {row.order.items?.map((item, idx) => {
+                          const coverUrl = item.bookCover || books?.find(b => b.id === item.bookId)?.cover;
+                          return (
+                            <div key={idx} className={`grid grid-cols-[1fr_60px] flex-1 ${idx !== 0 ? 'border-t border-[#dde4f0]' : ''}`}>
+                               {/* Nama Barang */}
+                               <div className="flex items-center gap-3 px-3 py-2">
+                                 <div 
+                                    className="relative rounded shrink-0 overflow-visible border border-neutral-200 cursor-pointer bg-neutral-100"
+                                    onClick={(e) => {
+                                       e.stopPropagation();
+                                       if (coverUrl) setPreviewImage(coverUrl);
+                                       setHoverPreview(null);
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (!coverUrl) return;
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setHoverPreview({ url: coverUrl, x: rect.left + rect.width / 2, y: rect.top, width: 112, align: 'center' });
+                                    }}
+                                    onMouseLeave={() => setHoverPreview(null)}
+                                 >
+                                    {coverUrl ? (
+                                      <img src={coverUrl} alt="cover" referrerPolicy="no-referrer" className="w-[32px] h-[44px] object-cover rounded-sm" />
+                                    ) : (
+                                      <div className="w-[32px] h-[44px] flex items-center justify-center text-[6px] text-neutral-400">No Img</div>
+                                    )}
+                                 </div>
+                                 <span className="text-[12.5px] font-medium text-neutral-800 line-clamp-2 leading-[1.3]">{item.bookName || '-'}</span>
+                               </div>
+                               {/* Qty */}
+                               <div className="flex items-center justify-center font-bold text-[13.5px] text-neutral-900 border-l border-[#dde4f0]">
+                                 {item.qty} <span className="text-[10px] ml-0.5 font-normal text-neutral-500">pcs</span>
+                               </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
                       {/* Note Dari Customer */}
-                      <div className="px-4 py-2 font-['Inter'] text-[11.5px] leading-[1.35] text-[#374151]">
+                      <div className="flex flex-col justify-center px-4 py-2 font-['Inter'] text-[12.5px] leading-[1.35] text-[#374151] border-r border-[#dde4f0] h-full">
                         <div className={`font-medium ${row.customerNote === '-' ? 'text-[#9ca3af] italic' : 'text-[#1f2937]'}`}>
                           {row.customerNote}
                         </div>
@@ -495,13 +558,13 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                       </div>
 
                       {/* Aksi */}
-                      <div className="px-2 py-2 flex items-center justify-center gap-2 border-l border-[#dde4f0] h-full">
+                      <div className="px-2 py-2 flex items-center justify-center gap-2 h-full">
                         <button
                           onClick={() => handleRowRevert(i)}
                           className="p-1.5 text-rose-500 hover:bg-rose-50 rounded transition"
                           title="Kembalikan ke status Confirmed"
                         >
-                          <Undo2 className="w-4 h-4" />
+                          <Undo2 className="w-4.5 h-4.5" />
                         </button>
                         <button
                           onClick={() => handleRowProcess(i)}
@@ -509,12 +572,13 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           className="p-1.5 text-brand-600 hover:bg-brand-50 rounded transition disabled:opacity-30 disabled:cursor-not-allowed"
                           title="Proses Kirim (Baris ini)"
                         >
-                          <Send className="w-4 h-4" />
+                          <Send className="w-4.5 h-4.5" />
                         </button>
                       </div>
                     </div>
                   </React.Fragment>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -544,8 +608,23 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
           isOpen={!!previewImage}
           onClose={() => setPreviewImage(null)}
           imageUrl={previewImage}
-          title="Foto Alamat"
+          title="Pratinjau"
         />
+      )}
+
+      {hoverPreview && !previewImage && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed z-[9999] bg-white p-1.5 rounded-lg shadow-[0_4px_24px_rgba(0,0,0,0.2)] border border-neutral-200 pointer-events-none"
+          style={{ 
+            left: hoverPreview.x, 
+            top: hoverPreview.y - 8, 
+            transform: hoverPreview.align === 'center' ? 'translate(-50%, -100%)' : 'translate(-100%, -100%)',
+            width: `${hoverPreview.width}px`
+          }}
+        >
+          <img src={hoverPreview.url} alt="Preview" className="w-full h-auto max-h-[280px] object-contain rounded-md shadow-sm" />
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -5392,7 +5392,7 @@ export const SalesTab: React.FC = () => {
                     onClick={() => {
                       setSelectedOrderForProses(order);
                       setProsesOrderNo('');
-                      setProsesResi('');
+                      setProsesResi(order.shipment?.shippingNumber || '');
                       const d = new Date();
                       setProsesDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
                       setIsProsesConfirmOpen(true);
@@ -5962,7 +5962,7 @@ export const SalesTab: React.FC = () => {
                                 e.stopPropagation();
                                 setSelectedOrderForProses(order);
                                 setProsesOrderNo('');
-                                setProsesResi('');
+                                setProsesResi(order.shipment?.shippingNumber || '');
                                 const d = new Date();
                                 setProsesDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
                                 setIsProsesConfirmOpen(true);
@@ -6443,7 +6443,7 @@ export const SalesTab: React.FC = () => {
                         required
                         placeholder="Masukkan atau scan barcode resi pengiriman..."
                         value={prosesResi}
-                        onChange={(e) => setProsesResi(e.target.value.toUpperCase())}
+                        onChange={(e) => setProsesResi(e.target.value.toUpperCase().replace(/\s/g, ''))}
                         className={`w-full pl-3 pr-10 py-2 border rounded-lg text-sm text-neutral-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-brand-500 transition-all ${
                           shakeFields['prosesResi']
                             ? 'border-red-500 ring-1 ring-red-500 bg-red-50/50 dark:bg-red-950/20'
@@ -6505,6 +6505,46 @@ export const SalesTab: React.FC = () => {
                     className="px-4 py-2 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 text-xs font-semibold rounded-lg text-neutral-600 dark:text-neutral-300 transition cursor-pointer"
                   >
                     Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isProsesSubmitting}
+                    onClick={async () => {
+                      if (isProsesSubmitting) return;
+                      const cleanResi = prosesResi.trim();
+                      setIsProsesSubmitting(true);
+                      try {
+                        const orderRef = doc(db, 'salesOrders', selectedOrderForProses.id);
+                        const finalOrderNo = selectedOrderForProses.orderNumber || '';
+                        const updateData: any = {
+                          orderNumber: finalOrderNo,
+                          updatedAt: Timestamp.now()
+                        };
+                        
+                        if (cleanResi) {
+                          updateData.shipment = {
+                            orderNumber: finalOrderNo,
+                            shippingNumber: cleanResi,
+                            shippingDate: Timestamp.fromDate(new Date(prosesDate)),
+                            arrangedAt: selectedOrderForProses.shipment?.arrangedAt || Timestamp.now()
+                          };
+                        }
+                        
+                        await updateDoc(orderRef, updateData);
+                        
+                        // Tutup modal sesuai kesepakatan 
+                        await stopScanning();
+                        setIsProsesConfirmOpen(false);
+                        setSelectedOrderForProses(null);
+                      } catch (err: any) {
+                        safeAlert(`Gagal menyimpan perubahan: ${err.message}`);
+                      } finally {
+                        setIsProsesSubmitting(false);
+                      }
+                    }}
+                    className="px-4 py-2 border border-brand-500 hover:bg-brand-50 text-xs font-bold rounded-lg text-brand-600 transition cursor-pointer"
+                  >
+                    Simpan
                   </button>
                   <button
                     type="button"
@@ -8092,6 +8132,7 @@ export const SalesTab: React.FC = () => {
            purchaseOrders={purchaseOrders}
            salesOrders={orders}
            damagedRecords={damagedRecords}
+           books={books}
         />
       )}
 
