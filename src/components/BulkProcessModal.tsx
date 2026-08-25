@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X, Eye, Undo2, Send, Copy, ExternalLink } from 'lucide-react';
 import { SalesOrder } from '../types';
 import { confirmSalesOrderTransaction } from '../lib/db-helpers';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../lib/auth-context';
 import { useSidebar } from '../lib/sidebar-context';
+import { ImagePreviewModal } from './ui/ImagePreviewModal';
 import { useModalEsc } from '../lib/use-modal-esc';
 
 interface BulkProcessModalProps {
@@ -17,6 +18,7 @@ interface BulkProcessModalProps {
   purchaseOrders: any[];
   salesOrders: any[];
   damagedRecords: any[];
+  books: any[];
 }
 
 interface RowData {
@@ -27,6 +29,7 @@ interface RowData {
   status: 'idle' | 'success' | 'error';
   deskripsi: string;
   deskripsiType: '' | 'ok' | 'warn';
+  order: SalesOrder;
 }
 
 const BULAN_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -53,14 +56,27 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   isOpen,
   onClose,
   menungguOrders,
-  salesOrders
+  salesOrders,
+  books
 }) => {
   const { user } = useAuth();
   const { sidebarHidden } = useSidebar();
+
+  const formatPhoneNumber = (phone?: string) => {
+    if (!phone) return '-';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 10) {
+      return `${cleaned.slice(0, 4)}-${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
+    }
+    return phone;
+  };
   
   const [rows, setRows] = useState<RowData[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [summary, setSummary] = useState<{ success: number; warn: number; fail: number } | null>(null);
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const timeoutRefs = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
   useModalEsc(isOpen, onClose, isProcessing);
   
@@ -79,7 +95,8 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
         customerNote: order.customerNote?.trim() || '-',
         status: 'idle',
         deskripsi: '',
-        deskripsiType: ''
+        deskripsiType: '',
+        order: order
       })));
       setSummary(null);
     }
@@ -89,11 +106,36 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
 
   const handleInputChange = (r: number, value: string) => {
     const newRows = [...rows];
-    newRows[r].resi = value;
+    newRows[r].resi = value.toUpperCase().replace(/\s/g, '');
     if (newRows[r].status === 'error') newRows[r].status = 'idle';
-    newRows[r].deskripsi = '';
-    newRows[r].deskripsiType = '';
+    newRows[r].deskripsi = 'Menyimpan...';
+    newRows[r].deskripsiType = 'warn';
     setRows(newRows);
+
+    const orderId = newRows[r].orderId;
+    if (timeoutRefs.current[orderId]) {
+      clearTimeout(timeoutRefs.current[orderId]);
+    }
+    timeoutRefs.current[orderId] = setTimeout(async () => {
+      try {
+        const orderRef = doc(db, 'salesOrders', orderId);
+        await updateDoc(orderRef, {
+          'shipment.shippingNumber': newRows[r].resi,
+          updatedAt: Timestamp.now()
+        });
+        setRows(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(x => x.orderId === orderId);
+          if (idx !== -1) {
+             next[idx].deskripsi = 'Tersimpan';
+             next[idx].deskripsiType = 'ok';
+          }
+          return next;
+        });
+      } catch (err) {
+        console.error('Failed to auto-save resi', err);
+      }
+    }, 1000);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
@@ -114,7 +156,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
       const rowIndex = startRow + i;
       if (rowIndex < newRows.length && newRows[rowIndex].status !== 'success') {
         const cells = line.split('\t');
-        newRows[rowIndex].resi = cells[0]?.trim() || line.trim();
+        newRows[rowIndex].resi = (cells[0] || line).toUpperCase().replace(/\s/g, '');
         newRows[rowIndex].status = 'idle';
         newRows[rowIndex].deskripsi = '';
         newRows[rowIndex].deskripsiType = '';
@@ -122,6 +164,55 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     });
 
     setRows(newRows);
+  };
+
+  const handleRowProcess = async (rowIndex: number) => {
+    const newRows = [...rows];
+    const row = newRows[rowIndex];
+    const orderNo = row.orderNo.trim();
+    const resi = row.resi.trim();
+    if (!orderNo || !resi || row.status === 'success') return;
+
+    try {
+      await confirmSalesOrderTransaction(row.order.id, user?.uid || 'anonymous');
+      const orderRef = doc(db, 'salesOrders', row.order.id);
+      const finalOrderNo = row.order.orderNumber || row.order.orderCode || '';
+      await updateDoc(orderRef, {
+        status: 'shipped',
+        shippedAt: Timestamp.now(),
+        orderNumber: finalOrderNo,
+        shipment: {
+          orderNumber: finalOrderNo,
+          shippingNumber: resi,
+          shippingDate: Timestamp.fromDate(new Date()),
+          arrangedAt: Timestamp.now()
+        },
+        updatedAt: Timestamp.now()
+      });
+      row.status = 'success';
+      row.deskripsi = 'Berhasil dikirim';
+      row.deskripsiType = 'ok';
+      setSummary(prev => prev ? { ...prev, success: prev.success + 1 } : { success: 1, warn: 0, fail: 0 });
+    } catch (err: any) {
+      row.status = 'error';
+      row.deskripsi = err.message || 'Gagal memproses';
+      setSummary(prev => prev ? { ...prev, fail: prev.fail + 1 } : { success: 0, warn: 0, fail: 1 });
+    }
+    setRows(newRows);
+  };
+
+  const handleRowRevert = async (rowIndex: number) => {
+    const row = rows[rowIndex];
+    try {
+      const orderRef = doc(db, 'salesOrders', row.order.id);
+      await updateDoc(orderRef, {
+        status: 'confirmed',
+        updatedAt: Timestamp.now()
+      });
+      setRows(prev => prev.filter((_, i) => i !== rowIndex));
+    } catch (err: any) {
+      console.error('Revert failed:', err);
+    }
   };
 
   const handleProcess = async () => {
@@ -208,7 +299,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
       } transition-all duration-300 ease-in-out bg-neutral-950/60 backdrop-blur-xs z-40 flex items-center justify-center p-4 sm:p-8 overflow-y-auto`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl w-[92%] max-w-[920px] shadow-2xl overflow-hidden flex flex-col my-auto" style={{ filter: 'drop-shadow(0 30px 80px rgba(6,14,30,0.55))' }}>
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl w-[92%] max-w-[920px] h-[85vh] shadow-2xl overflow-hidden flex flex-col my-auto" style={{ filter: 'drop-shadow(0 30px 80px rgba(6,14,30,0.55))' }}>
         
         {/* Header */}
         <div className="relative bg-gradient-to-br from-[#173a6b] via-[#2b5a9e] to-[#3d6eb0] text-white px-6 pt-5 pb-0">
@@ -232,7 +323,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-5 pb-3">
+        <div className="p-5 pb-3 flex flex-col flex-1 min-h-0">
           {summary && (
             <div className="flex flex-wrap gap-4 px-4 py-3 bg-[#f3f7fc] border border-[#e5edf9] rounded-lg text-[12.5px] mb-3 items-center">
               {summary.success > 0 && <span className="text-[#12876b] font-medium inline-flex items-center gap-1">✓ <span className="font-['IBM_Plex_Mono'] font-bold">{summary.success}</span> order berhasil diproses</span>}
@@ -241,16 +332,17 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
             </div>
           )}
 
-          <div className="border border-[#dde4f0] rounded-lg overflow-hidden bg-white">
-            <div className="overflow-x-auto relative">
-              <div className="grid grid-cols-[40px_1.2fr_1.5fr_2fr] gap-0 min-w-[680px] bg-[#f1f6fc] border-b border-[#dde4f0]">
+          <div className="border border-[#dde4f0] rounded-lg overflow-hidden bg-white flex flex-col flex-1 min-h-0">
+            <div className="overflow-x-auto relative flex flex-col flex-1 min-h-0">
+              <div className="grid grid-cols-[40px_1.2fr_1.5fr_2fr_80px] gap-0 min-w-[760px] bg-[#f1f6fc] border-b border-[#dde4f0] flex-none">
                 <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center">#</span>
                 <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center">Nomor Order</span>
                 <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center">No Resi</span>
                 <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start p-2.5 flex items-center pl-4">Note Dari Customer</span>
+                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center p-2.5 flex items-center border-l border-[#dde4f0]">Aksi</span>
               </div>
               <div 
-                className="max-h-[400px] overflow-y-auto" 
+                className="flex-1 overflow-y-auto" 
                 ref={gridRef}
                 onPaste={handlePaste}
               >
@@ -260,18 +352,120 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                   </div>
                 ) : (
                   rows.map((row, i) => (
-                    <div key={row.orderId || i} className={`grid grid-cols-[40px_1.2fr_1.5fr_2fr] gap-0 min-w-[680px] border-b border-[#dde4f0] transition-colors items-center
-                      ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : i % 2 !== 0 ? 'bg-[#f3f7fc]' : 'bg-white'}
-                    `}>
+                    <React.Fragment key={row.orderId || i}>
+                      <div className={`grid grid-cols-[40px_1.2fr_1.5fr_2fr_80px] gap-0 min-w-[760px] border-b border-[#dde4f0] transition-colors items-center
+                        ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : i % 2 !== 0 ? 'bg-[#f3f7fc]' : 'bg-white'}
+                      `}>
                       <div className="flex items-center justify-center text-[11px] text-[#98a1b0] font-['IBM_Plex_Mono'] border-r border-[#dde4f0] py-2.5">
                         {String(i + 1).padStart(2, '0')}
                       </div>
                       
                       {/* Nomor Order (Disabled / Read-only) */}
-                      <div className="flex items-center justify-center px-2.5 py-2 border-r border-[#dde4f0]">
+                      <div className="flex items-center justify-center px-2.5 py-2 border-r border-[#dde4f0] relative">
                         <span className="font-['IBM_Plex_Mono'] text-[12.5px] font-semibold text-[#173a6b]">
                           {row.orderNo}
                         </span>
+                        <div 
+                          className="ml-2 text-neutral-400 hover:text-brand-500 cursor-pointer"
+                          onClick={() => setActiveTooltip(activeTooltip === row.orderId ? null : row.orderId)}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </div>
+                        {activeTooltip === row.orderId && (
+                           <div className="absolute top-10 left-0 sm:left-4 w-[320px] bg-white shadow-[0_12px_48px_rgba(0,0,0,0.12)] border border-[#e5e7eb] rounded-xl p-4 z-50 text-left cursor-default flex flex-col" onClick={e => e.stopPropagation()}>
+                             <div className="flex justify-between items-center mb-3">
+                               <span className="font-semibold text-[13px] text-neutral-800 tracking-tight">Detail Pesanan</span>
+                               <X className="w-3.5 h-3.5 cursor-pointer text-neutral-400 hover:text-neutral-600 shrink-0" onClick={() => setActiveTooltip(null)} />
+                             </div>
+                             
+                             <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-3">
+                               {/* Nama Pembeli */}
+                               <div className="flex flex-col group items-start">
+                                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Nama</span>
+                                 <div className="flex items-center gap-1.5">
+                                   <span className="text-[11.5px] text-neutral-800 font-medium truncate" title={row.order.customerName}>{row.order.customerName || '-'}</span>
+                                   {row.order.customerName && (
+                                      <button onClick={() => navigator.clipboard.writeText(row.order.customerName || '')} className="text-neutral-300 hover:text-brand-600 transition-colors opacity-0 group-hover:opacity-100" title="Copy">
+                                        <Copy className="w-3 h-3" />
+                                      </button>
+                                   )}
+                                 </div>
+                               </div>
+
+                               {/* No Handphone */}
+                               <div className="flex flex-col group items-start">
+                                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">No. HP</span>
+                                 <div className="flex items-center gap-1.5">
+                                   <span className="text-[11.5px] text-neutral-800 font-medium truncate font-['Inter']">{formatPhoneNumber(row.order.phoneNumber)}</span>
+                                   {row.order.phoneNumber && (
+                                      <button onClick={() => navigator.clipboard.writeText(row.order.phoneNumber || '')} className="text-neutral-300 hover:text-brand-600 transition-colors opacity-0 group-hover:opacity-100" title="Copy">
+                                        <Copy className="w-3 h-3" />
+                                      </button>
+                                   )}
+                                 </div>
+                               </div>
+
+                               {/* Opsi Pengiriman */}
+                               <div className="flex flex-col">
+                                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Pengiriman</span>
+                                 <span className="text-[11.5px] text-neutral-800 font-medium truncate">{row.order.pickupLogistics || '-'}</span>
+                               </div>
+
+                               {/* Total Belanja */}
+                               <div className="flex flex-col">
+                                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Total</span>
+                                 <span className="text-[11.5px] font-bold text-[#173a6b]">NT$ {((row.order.totalPrice || 0) / 100).toLocaleString()}</span>
+                               </div>
+                             </div>
+
+                             {/* Kode / Alamat */}
+                             <div className="flex flex-col bg-neutral-50 rounded-lg p-2.5 mb-3 border border-neutral-100 group">
+                               <div className="flex items-center gap-2 mb-1">
+                                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Kode / Alamat</span>
+                                 <div className="flex gap-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {row.order.addressPhotoUrl && (
+                                      <div className="relative group/img flex">
+                                        <div 
+                                          className="text-neutral-400 hover:text-brand-600 transition-colors flex items-center gap-1 bg-white border border-neutral-200 px-1.5 py-0.5 rounded shadow-sm cursor-pointer"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setPreviewImage(row.order.addressPhotoUrl);
+                                          }}
+                                        >
+                                          <Eye className="w-3 h-3" />
+                                          <span className="text-[8px] font-bold uppercase tracking-wider">View</span>
+                                        </div>
+                                        <div className="absolute bottom-full right-0 mb-2 hidden group-hover/img:block z-[100] bg-white p-1.5 rounded-lg shadow-[0_10px_40px_rgba(0,0,0,0.2)] border border-neutral-200 w-[220px]">
+                                          <img src={row.order.addressPhotoUrl} alt="Foto Alamat" className="w-full h-auto max-h-[280px] object-contain rounded-md" />
+                                        </div>
+                                      </div>
+                                    )}
+                                    {row.order.pickupDetails && (
+                                      <button onClick={() => navigator.clipboard.writeText(row.order.pickupDetails || '')} className="text-neutral-400 hover:text-brand-600 transition-colors" title="Copy Alamat">
+                                        <Copy className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                 </div>
+                               </div>
+                               <span className="text-[11px] text-neutral-700 font-medium line-clamp-2 leading-relaxed" title={row.order.pickupDetails}>{row.order.pickupDetails || '-'}</span>
+                             </div>
+
+                             {/* Images */}
+                             <div className="flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                               {row.order.items?.map((item, idx) => {
+                                 const coverUrl = item.bookCover || books?.find(b => b.id === item.bookId)?.cover;
+                                 return coverUrl ? (
+                                   <div key={idx} className="relative rounded-md shrink-0 overflow-hidden border border-neutral-200 shadow-sm">
+                                      <img src={coverUrl} alt="cover" referrerPolicy="no-referrer" className="w-9 h-12 object-cover" />
+                                      {item.qty > 1 && <div className="absolute top-0 right-0 bg-black/70 text-white text-[7px] font-bold px-1 py-0.5 rounded-bl">{item.qty}</div>}
+                                   </div>
+                                 ) : (
+                                   <div key={idx} className="w-9 h-12 bg-neutral-100 rounded-md border border-neutral-200 flex items-center justify-center shrink-0 text-[6px] text-neutral-400 text-center px-0.5">No Img</div>
+                                 );
+                               })}
+                             </div>
+                           </div>
+                        )}
                       </div>
 
                       {/* No Resi (Editable input) */}
@@ -299,7 +493,27 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           </div>
                         )}
                       </div>
+
+                      {/* Aksi */}
+                      <div className="px-2 py-2 flex items-center justify-center gap-2 border-l border-[#dde4f0] h-full">
+                        <button
+                          onClick={() => handleRowRevert(i)}
+                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded transition"
+                          title="Kembalikan ke status Confirmed"
+                        >
+                          <Undo2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleRowProcess(i)}
+                          disabled={row.status === 'success' || !row.resi.trim()}
+                          className="p-1.5 text-brand-600 hover:bg-brand-50 rounded transition disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Proses Kirim (Baris ini)"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
+                  </React.Fragment>
                   ))
                 )}
               </div>
@@ -324,6 +538,15 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
           </div>
         </div>
       </div>
+
+      {previewImage && (
+        <ImagePreviewModal
+          isOpen={!!previewImage}
+          onClose={() => setPreviewImage(null)}
+          imageUrl={previewImage}
+          title="Foto Alamat"
+        />
+      )}
     </div>
   );
 };
