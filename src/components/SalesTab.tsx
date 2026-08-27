@@ -17,15 +17,15 @@ import './SalesOrderDetail.css';
 import { db, storage, handleFirestoreError, OperationType } from '../lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { fetchCurrentExchangeRate } from '../lib/period-closing-utils';
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
+import {
+  collection,
+  onSnapshot,
+  doc,
+  setDoc,
   addDoc,
-  updateDoc, 
-  deleteDoc, 
-  query, 
+  updateDoc,
+  deleteDoc,
+  query,
   where,
   Timestamp,
   getDocs,
@@ -39,16 +39,16 @@ import { useAuth } from '../lib/auth-context';
 import { useSettings } from '../lib/use-settings';
 import { useSidebar } from '../lib/sidebar-context';
 import { useModalEsc, getModalOverlayClass } from '../lib/use-modal-esc';
-import { 
-  Plus, 
-  Search, 
-  ShoppingBag, 
-  FileDown, 
-  Truck, 
-  Trash2, 
-  Sparkles, 
-  Check, 
-  X, 
+import {
+  Plus,
+  Search,
+  ShoppingBag,
+  FileDown,
+  Truck,
+  Trash2,
+  Sparkles,
+  Check,
+  X,
   ChevronRight,
   ChevronDown,
   ChevronUp,
@@ -155,9 +155,9 @@ const getTimestampMs = (val: any): number | null => {
 };
 
 const getShippedDateMs = (order: SalesOrder): number => {
-  const ts = getTimestampMs(order.shippedAt) || 
-             getTimestampMs(order.shipment?.arrangedAt) || 
-             getTimestampMs(order.shipment?.shippingDate);
+  const ts = getTimestampMs(order.shippedAt) ||
+    getTimestampMs(order.shipment?.arrangedAt) ||
+    getTimestampMs(order.shipment?.shippingDate);
   return ts ?? getOrderDateMs(order);
 };
 
@@ -219,7 +219,7 @@ const formatPhoneNumber = (digits: string) => {
 
 const NewOrderModalWrapper = ({ isOpen, onClose, isMobileScreen, sidebarHidden, children }) => {
   if (!isOpen) return null;
-  
+
   if (isMobileScreen) {
     return createPortal(
       <Drawer.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -294,20 +294,27 @@ export const SalesTab: React.FC = () => {
     itemName?: string;
     tab: 'type' | 'channel' | 'platform' | 'logistik' | 'marketplace';
   } | null>(null);
-  
+
   // Open Form modal
-  const [previewImage, setPreviewImage] = useState<{url: string, title: string} | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ url: string, title: string } | null>(null);
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
   const [isOrderSubmitting, setIsOrderSubmitting] = useState(false);
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<SalesOrder | null>(null);
-    
+
+  const isLockedOrder = editingOrder && editingOrder.status && editingOrder.status !== 'draft' && !editingOrder.isDraft;
+  const isOwner = profile?.role === 'owner';
+  const canEditMetadata = isLockedOrder && isOwner;
+  const isFormLockedForMetadata = isLockedOrder && !isOwner;
+  const isFinancialsLocked = !!isLockedOrder;
+
+
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isBulkProcessOpen, setIsBulkProcessOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  
+
   const [recoOrderData, setRecoOrderData] = useState<{ bookIds: string[], categories: string[] } | null>(null);
- 
+
   // Print Invoice state
   const [printInvoiceOrder, setPrintInvoiceOrder] = useState<SalesOrder | null>(null);
 
@@ -398,7 +405,7 @@ export const SalesTab: React.FC = () => {
       setIsRefundSubmitting(false);
     }
   };
- 
+
   // New order form fields
   const [orderDateInput, setOrderDateInput] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [customerName, setCustomerName] = useState('');
@@ -422,9 +429,9 @@ export const SalesTab: React.FC = () => {
   const [orderNumber, setOrderNumber] = useState('');
   const [estimatedShippingDate, setEstimatedShippingDate] = useState('');
   const [perluKonfirmasiSebelumKirim, setPerluKonfirmasiSebelumKirim] = useState<boolean>(false);
-  
+
   const [buyerType, setBuyerType] = useState<'langsung' | 'reseller' | 'marketplace'>('marketplace');
-  const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string, profitSharePercent: number} | null>(null);
+  const [selectedPartner, setSelectedPartner] = useState<{ id: string, name: string, profitSharePercent: number } | null>(null);
   const [addressPhotoUrl, setAddressPhotoUrl] = useState<string>('');
   const [addressPhotoFile, setAddressPhotoFile] = useState<File | null>(null);
 
@@ -539,24 +546,24 @@ export const SalesTab: React.FC = () => {
     try {
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtxClass) return;
-      
+
       const audioCtx = new AudioCtxClass();
-      
+
       // A pleasant premium high-pitched upward notification chime
       const playTone = (freq: number, startDelay: number, duration: number) => {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        
+
         osc.type = "sine";
         osc.frequency.setValueAtTime(freq, audioCtx.currentTime + startDelay);
-        
+
         gain.gain.setValueAtTime(0, audioCtx.currentTime + startDelay);
         gain.gain.linearRampToValueAtTime(0.25, audioCtx.currentTime + startDelay + 0.01);
         gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + startDelay + duration);
-        
+
         osc.connect(gain);
         gain.connect(audioCtx.destination);
-        
+
         osc.start(audioCtx.currentTime + startDelay);
         osc.stop(audioCtx.currentTime + startDelay + duration);
       };
@@ -570,6 +577,37 @@ export const SalesTab: React.FC = () => {
   };
 
   // Scan initialization effect
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsNewOrderOpen(false);
+        setEditingOrder(null);
+        setViewingOrderDetail(null);
+        setPreviewImage(null);
+        setIsChecklistOpen(false);
+        setIsBulkProcessOpen(false);
+        setIsImportModalOpen(false);
+        setIsManageConfigOpen(false);
+        setRecoOrderData(null);
+        setSplitOrderModalData(null);
+        setPrintInvoiceOrder(null);
+        setRefundConfirmOrder(null);
+        setShowPaymentChangeConfirmModal(false);
+        setConfirmingKemasOrder(null);
+        setConfirmingCustomerPreKemasOrder(null);
+        setConfirmingSelesaiOrder(null);
+        setConfirmingDiambilOrder(null);
+        setRevertConfirmState(null);
+        setSelectedOrderForDelete(null);
+        setIsProsesConfirmOpen(false);
+        setSelectedOrderForProses(null);
+        stopScanning();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   useEffect(() => {
     if (isScanning) {
       const timer = setTimeout(() => {
@@ -602,7 +640,7 @@ export const SalesTab: React.FC = () => {
               }
             });
             html5QrCodeRef.current = scanner;
-            
+
             // Deep-level engine override: Force ZXing's TRY_HARDER decoding hint to true
             try {
               const anyScanner = scanner as any;
@@ -611,7 +649,7 @@ export const SalesTab: React.FC = () => {
                   anyScanner.qrcode.primaryDecoder,
                   anyScanner.qrcode.secondaryDecoder
                 ].filter(Boolean);
-                
+
                 decoders.forEach(decoder => {
                   if (decoder.hints && typeof decoder.hints.forEach === "function") {
                     decoder.hints.forEach((value: any, key: any) => {
@@ -626,7 +664,7 @@ export const SalesTab: React.FC = () => {
             } catch (e) {
               console.warn("Could not set TRY_HARDER hint override:", e);
             }
-            
+
             scanner.start(
               { facingMode: cameraFacingMode },
               {
@@ -716,7 +754,7 @@ export const SalesTab: React.FC = () => {
 
   // One path to "new order", shared by the desktop toolbar button and the
   // mobile floating action button.
-  
+
   const [isMobileScreen, setIsMobileScreen] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
 
@@ -876,7 +914,7 @@ export const SalesTab: React.FC = () => {
           getDocs(collection(db, 'purchaseOrders')),
           getDocs(collection(db, 'damagedStock'))
         ]);
-        
+
         const pList = [];
         partnersSnap.forEach((d) => pList.push({ id: d.id, ...d.data() }));
         setPartners(pList);
@@ -906,9 +944,9 @@ export const SalesTab: React.FC = () => {
 
       } catch (err) {
         if (String(err).includes('quota') || String(err).includes('Quota')) {
-           console.warn('Quota exceeded while fetching SalesTab data');
+          console.warn('Quota exceeded while fetching SalesTab data');
         } else {
-           console.error('Error fetching data for SalesTab:', err);
+          console.error('Error fetching data for SalesTab:', err);
         }
       }
     };
@@ -927,7 +965,7 @@ export const SalesTab: React.FC = () => {
         let hasLogistics = false;
         let hasMarketplaces = false;
         let isV2 = false;
-        
+
         configSnap.forEach((d) => {
           if (d.id === 'config_initialized') {
             isInitializedDocPresent = true;
@@ -1036,7 +1074,7 @@ export const SalesTab: React.FC = () => {
     initializeConfigSeeding();
   }, []);
 
-// 2. Strict Read-Only Categories Listener (subscribes only after Seeding is fully resolved)
+  // 2. Strict Read-Only Categories Listener (subscribes only after Seeding is fully resolved)
   useEffect(() => {
     if (!isSeedingDone) return;
 
@@ -1094,7 +1132,7 @@ export const SalesTab: React.FC = () => {
     });
 
     return () => {
-      
+
     };
   }, [isSeedingDone]);
 
@@ -1220,7 +1258,7 @@ export const SalesTab: React.FC = () => {
     }
   }, [availableLogistics, pickupLogistics, editingOrder]);
 
-  const matchingBooks = bookSearch.trim().length >= 1 ? books.filter(b => 
+  const matchingBooks = bookSearch.trim().length >= 1 ? books.filter(b =>
     b.bookNameLower?.includes(bookSearch.toLowerCase()) ||
     b.author?.toLowerCase().includes(bookSearch.toLowerCase())
   ) : [];
@@ -1238,7 +1276,7 @@ export const SalesTab: React.FC = () => {
         finalPrice = platformChannel === 'Shopee' ? (book.shopeePrice || book.generalPrice || 0) : (book.generalPrice || 0);
       }
     }
-    
+
     // If editing, preserve the original unit price of this item if it existed in the original order
     if (editingOrder && editingOrder.items) {
       const originalItem = editingOrder.items.find(
@@ -1271,7 +1309,7 @@ export const SalesTab: React.FC = () => {
         isFree: isFree
       }]);
     }
-    
+
     setBookSearch('');
     setShowSearchResults(false);
   };
@@ -1297,8 +1335,8 @@ export const SalesTab: React.FC = () => {
 
   // Business partner profit share percentage calculation
   const partnerSharePercent = parseFloat(partnerProfitPercent) || 0;
-  const partnerProfitShareVal = orderType === 'Business Partner' 
-    ? Math.round((cartTotalPrice * partnerSharePercent) / 100) 
+  const partnerProfitShareVal = orderType === 'Business Partner'
+    ? Math.round((cartTotalPrice * partnerSharePercent) / 100)
     : 0;
 
   // Recalculate cart prices when buyer type or platform channel changes (auto pricing)
@@ -1426,7 +1464,7 @@ export const SalesTab: React.FC = () => {
             return;
           }
           if (!(await promptDoubleConfirmation("Memproses Pengiriman dan Memotong Persediaan Stok"))) return;
-          
+
           setIsProsesSubmitting(true);
           // Frontend stock verification
           const insufficientItems: string[] = [];
@@ -1602,7 +1640,7 @@ export const SalesTab: React.FC = () => {
       if (target.tagName === 'TEXTAREA') {
         return;
       }
-      
+
       if (target instanceof HTMLInputElement && target.placeholder && target.placeholder.includes("Cari buku")) {
         e.preventDefault();
         if (matchingBooks.length > 0) {
@@ -1613,7 +1651,7 @@ export const SalesTab: React.FC = () => {
         }
         return;
       }
-      
+
       e.preventDefault();
       handleOrderSubmit(e);
     }
@@ -1624,7 +1662,7 @@ export const SalesTab: React.FC = () => {
       e.preventDefault();
     }
     if (isOrderSubmitting) return;
-    
+
     let hasValidationError = false;
     const cleanPhone = phoneNumber.trim();
 
@@ -1647,7 +1685,7 @@ export const SalesTab: React.FC = () => {
       const digitsOnly = cleanPhone.replace(/\D/g, '');
       const isValidLocal = cleanPhone.startsWith('0') && digitsOnly.length === 10;
       const isValidIntl = (cleanPhone.startsWith('+') || cleanPhone.startsWith('886')) && digitsOnly.length >= 7 && digitsOnly.length <= 15;
-      
+
       if (!cleanPhone || (!isValidLocal && !isValidIntl)) {
         triggerShake('phoneNumber');
         hasValidationError = true;
@@ -1665,14 +1703,14 @@ export const SalesTab: React.FC = () => {
 
     try {
       setIsOrderSubmitting(true);
-      const orderDateTs = orderDateInput 
-        ? Timestamp.fromDate(new Date(`${orderDateInput}T12:00:00`)) 
+      const orderDateTs = orderDateInput
+        ? Timestamp.fromDate(new Date(`${orderDateInput}T12:00:00`))
         : Timestamp.now();
 
       const isMarketplace = buyerType === 'marketplace';
       const finalCustomerName = isMarketplace ? '' : customerName.trim().toUpperCase();
-      const finalCustomerPlatformName = isMarketplace 
-        ? (customerPlatformName.trim() || customerName.trim()) 
+      const finalCustomerPlatformName = isMarketplace
+        ? (customerPlatformName.trim() || customerName.trim())
         : customerPlatformName.trim();
       const finalPhone = isMarketplace ? '' : cleanPhone;
       const finalPickupLogistics = isMarketplace ? '' : (pickupLogistics || '');
@@ -1684,7 +1722,56 @@ export const SalesTab: React.FC = () => {
 
       if (editingOrder) {
         // Edit mode
-        if (!(await promptDoubleConfirmation("Menyimpan Perubahan Orderan"))) return;
+        if (isLockedOrder) {
+          if (!isOwner) {
+            safeAlert("Anda tidak memiliki akses untuk mengedit order yang sudah diproses.");
+            return;
+          }
+          if (!(await promptDoubleConfirmation("Menyimpan Perubahan Metadata Orderan (Tanpa merubah harga & stok)"))) return;
+          const orderRef = doc(db, 'salesOrders', editingOrder.id);
+          let resolvedAddressPhotoUrl = addressPhotoUrl;
+          if (addressPhotoUrl && addressPhotoUrl.startsWith('data:')) {
+            resolvedAddressPhotoUrl = await uploadAddressPhoto(addressPhotoUrl);
+          }
+          const metadataPayload: any = {
+            orderDate: orderDateTs,
+            customerName: finalCustomerName,
+            customerPlatformName: finalCustomerPlatformName,
+            platformChannel: finalPlatformChannel,
+            platformOrder: finalPlatformOrder,
+            orderType: finalOrderType,
+            paymentMethod: finalPaymentMethod,
+            phoneNumber: finalPhone,
+            pickupLogistics: finalPickupLogistics,
+            pickupDetails: finalPickupDetails,
+            customerNote: customerNote || '',
+            orderNumber: orderNumber || '',
+            estimatedShippingDate: estimatedShippingDate || '',
+            buyerType,
+            partnerId: isMarketplace ? '' : (selectedPartner?.id || ''),
+            partnerName: isMarketplace ? '' : (selectedPartner?.name || ''),
+            addressPhotoUrl: resolvedAddressPhotoUrl,
+            updatedAt: Timestamp.now()
+          };
+          // Explicitly NOT updating items, subtotal, discount, platformFee, totalPrice, partnerProfitShare
+          try {
+            await updateDoc(orderRef, metadataPayload);
+            setIsNewOrderOpen(false);
+            setEditingOrder(null);
+            resetOrderForm();
+          } catch (err: any) {
+            console.error("Failed updating metadata", err);
+            safeAlert(`Gagal update: ${err.message}`);
+          } finally {
+            setIsOrderSubmitting(false);
+          }
+          return;
+        }
+
+        if (!(await promptDoubleConfirmation("Menyimpan Perubahan Orderan"))) {
+          setIsOrderSubmitting(false);
+          return;
+        }
         const orderRef = doc(db, 'salesOrders', editingOrder.id);
 
         // Upload address photo to Storage if it's a base64 data URL
@@ -1882,11 +1969,11 @@ export const SalesTab: React.FC = () => {
     }
     try {
       // Check for duplicates
-      const currentList = tab === 'type' ? resolvedOrderTypes 
-        : (tab === 'channel' ? resolvedChannels 
-        : (tab === 'platform' ? resolvedPlatforms 
-        : (tab === 'logistik' ? resolvedLogistics 
-        : resolvedMarketplaces)));
+      const currentList = tab === 'type' ? resolvedOrderTypes
+        : (tab === 'channel' ? resolvedChannels
+          : (tab === 'platform' ? resolvedPlatforms
+            : (tab === 'logistik' ? resolvedLogistics
+              : resolvedMarketplaces)));
 
       if (currentList.some(item => item.name?.toLowerCase() === name.trim().toLowerCase())) {
         safeAlert(`Peringatan: Konfigurasi "${name.trim()}" sudah ada.`);
@@ -1896,7 +1983,7 @@ export const SalesTab: React.FC = () => {
       // Generate custom ID
       const newId = `config_${tab}_${doc(collection(db, 'categories')).id}`;
       const nextPosition = currentList.length;
-      
+
       // If Firestore collections are currently empty, copy remaining defaults to Firestore first (omitting nothing)
       // to avoid suddenly populating ONLY the new item.
       if (tab === 'type' && orderTypes.length === 0) {
@@ -1963,25 +2050,25 @@ export const SalesTab: React.FC = () => {
     }
     try {
       // Check for duplicates (excluding self)
-      const currentList = tab === 'type' ? resolvedOrderTypes 
-        : (tab === 'channel' ? resolvedChannels 
-        : (tab === 'platform' ? resolvedPlatforms 
-        : (tab === 'logistik' ? resolvedLogistics 
-        : resolvedMarketplaces)));
+      const currentList = tab === 'type' ? resolvedOrderTypes
+        : (tab === 'channel' ? resolvedChannels
+          : (tab === 'platform' ? resolvedPlatforms
+            : (tab === 'logistik' ? resolvedLogistics
+              : resolvedMarketplaces)));
 
       if (currentList.some(item => item.id !== id && item.name?.toLowerCase() === newName.trim().toLowerCase())) {
         safeAlert(`Peringatan: Konfigurasi "${newName.trim()}" sudah ada.`);
         return;
       }
-      
+
       // If it's a default fallback proxy
       if (id.startsWith('default_type_') || id.startsWith('default_channel_') || id.startsWith('default_platform_') || id.startsWith('default_logistik_') || id.startsWith('default_marketplace_')) {
         // We first populate all current defaults (with the edited one replaced) into Firestore
-        const defaultsList = tab === 'type' ? DEFAULT_ORDER_TYPES 
-          : (tab === 'channel' ? DEFAULT_CHANNELS 
-          : (tab === 'platform' ? DEFAULT_PLATFORMS 
-          : (tab === 'logistik' ? DEFAULT_LOGISTICS 
-          : DEFAULT_MARKETPLACES)));
+        const defaultsList = tab === 'type' ? DEFAULT_ORDER_TYPES
+          : (tab === 'channel' ? DEFAULT_CHANNELS
+            : (tab === 'platform' ? DEFAULT_PLATFORMS
+              : (tab === 'logistik' ? DEFAULT_LOGISTICS
+                : DEFAULT_MARKETPLACES)));
 
         for (const [idx, def] of defaultsList.entries()) {
           const finalName = def === oldName ? newName.trim() : def;
@@ -2029,7 +2116,7 @@ export const SalesTab: React.FC = () => {
     if (!skipConfirm && !window.confirm(`Apakah kamu yakin ingin menghapus "${nameToDelete}"?`)) return;
     try {
       console.log(`[Delete Action] Attempting to delete ID: "${id}" (Name: "${nameToDelete}") from collection 'categories' (${tab})`);
-      
+
       // 1. Instantly filter local state arrays
       if (tab === 'type') {
         setOrderTypes(prevTypes => prevTypes.filter(item => item.id !== id));
@@ -2057,11 +2144,11 @@ export const SalesTab: React.FC = () => {
         });
         setIsConfigInitialized(true);
 
-        const defaultsList = tab === 'type' ? DEFAULT_ORDER_TYPES 
-          : (tab === 'channel' ? DEFAULT_CHANNELS 
-          : (tab === 'platform' ? DEFAULT_PLATFORMS 
-          : (tab === 'logistik' ? DEFAULT_LOGISTICS 
-          : DEFAULT_MARKETPLACES)));
+        const defaultsList = tab === 'type' ? DEFAULT_ORDER_TYPES
+          : (tab === 'channel' ? DEFAULT_CHANNELS
+            : (tab === 'platform' ? DEFAULT_PLATFORMS
+              : (tab === 'logistik' ? DEFAULT_LOGISTICS
+                : DEFAULT_MARKETPLACES)));
 
         for (const [idx, def] of defaultsList.entries()) {
           if (def !== nameToDelete) {
@@ -2090,11 +2177,11 @@ export const SalesTab: React.FC = () => {
       console.error("handleDeleteItem: ID is undefined or empty!");
       return;
     }
-    const item = (manageActiveTab === 'type' ? resolvedOrderTypes 
-      : (manageActiveTab === 'channel' ? resolvedChannels 
-      : (manageActiveTab === 'platform' ? resolvedPlatforms 
-      : (manageActiveTab === 'logistik' ? resolvedLogistics 
-      : resolvedMarketplaces)))).find((x) => x.id === id);
+    const item = (manageActiveTab === 'type' ? resolvedOrderTypes
+      : (manageActiveTab === 'channel' ? resolvedChannels
+        : (manageActiveTab === 'platform' ? resolvedPlatforms
+          : (manageActiveTab === 'logistik' ? resolvedLogistics
+            : resolvedMarketplaces)))).find((x) => x.id === id);
 
     if (!item) {
       console.warn("Item not found in lists for ID:", id);
@@ -2109,21 +2196,21 @@ export const SalesTab: React.FC = () => {
   };
 
   const handleClearAllConfig = async (tab: 'type' | 'channel' | 'platform' | 'logistik' | 'marketplace', skipConfirm = false) => {
-    const listName = tab === 'type' ? 'Sumber Campaign' 
-      : (tab === 'channel' ? 'Channel' 
-      : (tab === 'platform' ? 'Platform Order' 
-      : (tab === 'marketplace' ? 'Platform Marketplace' : 'Opsi Pengiriman')));
+    const listName = tab === 'type' ? 'Sumber Campaign'
+      : (tab === 'channel' ? 'Channel'
+        : (tab === 'platform' ? 'Platform Order'
+          : (tab === 'marketplace' ? 'Platform Marketplace' : 'Opsi Pengiriman')));
 
     if (!skipConfirm && !window.confirm(`Apakah kamu yakin ingin menghapus semua list "${listName}"? Tindakan ini tidak dapat dibatalkan.`)) return;
     try {
-      const itemsToClear = tab === 'type' ? resolvedOrderTypes 
-        : (tab === 'channel' ? resolvedChannels 
-        : (tab === 'platform' ? resolvedPlatforms 
-        : (tab === 'logistik' ? resolvedLogistics 
-        : resolvedMarketplaces)));
+      const itemsToClear = tab === 'type' ? resolvedOrderTypes
+        : (tab === 'channel' ? resolvedChannels
+          : (tab === 'platform' ? resolvedPlatforms
+            : (tab === 'logistik' ? resolvedLogistics
+              : resolvedMarketplaces)));
 
       console.log(`[Clear All Action] Attempting to clear all ${itemsToClear.length} items for "${tab}"`);
-      
+
       // 1. Instantly set local state to empty array
       if (tab === 'type') {
         setOrderTypes([]);
@@ -2151,10 +2238,10 @@ export const SalesTab: React.FC = () => {
 
       // 3. Delete any documents on Firestore in parallel
       const deletePromises = itemsToClear
-        .filter(item => 
-          !item.id.startsWith('default_type_') && 
-          !item.id.startsWith('default_channel_') && 
-          !item.id.startsWith('default_platform_') && 
+        .filter(item =>
+          !item.id.startsWith('default_type_') &&
+          !item.id.startsWith('default_channel_') &&
+          !item.id.startsWith('default_platform_') &&
           !item.id.startsWith('default_logistik_') &&
           !item.id.startsWith('default_marketplace_')
         )
@@ -2162,7 +2249,7 @@ export const SalesTab: React.FC = () => {
           console.log(`[Clear All Action] Deleting document ID: "${item.id}"`);
           return deleteDoc(doc(db, 'categories', item.id));
         });
-      
+
       await Promise.all(deletePromises);
       console.log(`[Clear All Action] Successfully cleared all config items on Firestore and local state.`);
     } catch (error: any) {
@@ -2182,9 +2269,9 @@ export const SalesTab: React.FC = () => {
 
     const activeList = manageActiveTab === 'type' ? [...orderTypes]
       : (manageActiveTab === 'channel' ? [...channels]
-      : (manageActiveTab === 'platform' ? [...platforms]
-      : (manageActiveTab === 'logistik' ? [...logistics]
-      : [...marketplaces])));
+        : (manageActiveTab === 'platform' ? [...platforms]
+          : (manageActiveTab === 'logistik' ? [...logistics]
+            : [...marketplaces])));
 
     const draggedItem = activeList[draggedIndex];
     activeList.splice(draggedIndex, 1);
@@ -2213,9 +2300,9 @@ export const SalesTab: React.FC = () => {
     try {
       const activeList = manageActiveTab === 'type' ? orderTypes
         : (manageActiveTab === 'channel' ? channels
-        : (manageActiveTab === 'platform' ? platforms
-        : (manageActiveTab === 'logistik' ? logistics
-        : marketplaces)));
+          : (manageActiveTab === 'platform' ? platforms
+            : (manageActiveTab === 'logistik' ? logistics
+              : marketplaces)));
 
       const batch = writeBatch(db);
       activeList.forEach((item, index) => {
@@ -2252,7 +2339,7 @@ export const SalesTab: React.FC = () => {
     // Helper: converts oklch(L C H / A) layout style to standard rgb/rgba
     const oklchToRgb = (oklchStr: string): string => {
       const regex = /oklch\s*\(\s*([\d\.]+%?)\s+([\d\.]+)\s+([\d\.]+(?:deg|rad|turn)?)(?:\s*\/\s*([\d\.]+%?))?\s*\)/g;
-      
+
       return oklchStr.replace(regex, (match, lStr, cStr, hStr, aStr) => {
         let L = parseFloat(lStr);
         if (lStr.endsWith('%')) {
@@ -2265,7 +2352,7 @@ export const SalesTab: React.FC = () => {
         } else if (hStr.endsWith('turn')) {
           H = H * 360;
         }
-        
+
         let alpha = 1;
         if (aStr) {
           if (aStr.endsWith('%')) {
@@ -2274,35 +2361,35 @@ export const SalesTab: React.FC = () => {
             alpha = parseFloat(aStr);
           }
         }
-        
+
         const hRad = (H * Math.PI) / 180;
         const aVal = C * Math.cos(hRad);
         const bVal = C * Math.sin(hRad);
-        
+
         const l_ = L + 0.3963377774 * aVal + 0.2158037573 * bVal;
         const m_ = L - 0.1055613458 * aVal - 0.0638541728 * bVal;
         const s_ = L - 0.0894841775 * aVal - 1.2914855480 * bVal;
-        
+
         const l = l_ * l_ * l_;
         const m = m_ * m_ * m_;
         const s = s_ * s_ * s_;
-        
+
         const rLinear = +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
         const gLinear = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
         const bLinear = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
-        
+
         const f = (c: number) => {
           return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
         };
-        
+
         let r = Math.round(f(rLinear) * 255);
         let g = Math.round(f(gLinear) * 255);
         let b = Math.round(f(bLinear) * 255);
-        
+
         r = Math.max(0, Math.min(255, r));
         g = Math.max(0, Math.min(255, g));
         b = Math.max(0, Math.min(255, b));
-        
+
         if (alpha === 1) {
           return `rgb(${r}, ${g}, ${b})`;
         } else {
@@ -2335,7 +2422,7 @@ export const SalesTab: React.FC = () => {
         }
       }
     };
-    
+
     try {
       const html2canvas = await loadHtml2Canvas();
       const canvas = await html2canvas(element, {
@@ -2376,7 +2463,7 @@ export const SalesTab: React.FC = () => {
           });
         }
       });
-      
+
       const imgData = canvas.toDataURL('image/png');
       const jsPDF = await loadJsPDF();
       const pdf = new jsPDF({
@@ -2384,23 +2471,23 @@ export const SalesTab: React.FC = () => {
         unit: 'mm',
         format: 'a4',
       });
-      
+
       const imgWidth = 210; // A4 width in mm
       const pageHeight = 297; // A4 height in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       let heightLeft = imgHeight;
       let position = 0;
-      
+
       pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
-      
+
       while (heightLeft >= 0) {
         position = heightLeft - imgHeight;
         pdf.addPage();
         pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
         heightLeft -= pageHeight;
       }
-      
+
       pdf.save(`Invoice-${printInvoiceOrder?.orderCode || 'Faktur'}.pdf`);
     } catch (error) {
       console.error("PDF generation failed:", error);
@@ -2581,7 +2668,7 @@ export const SalesTab: React.FC = () => {
             const ledgerId = `LEDGER-${damagedId}`;
             const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
             const batch = writeBatch(db);
-            
+
             const ledgerRef = doc(db, 'inventoryLedger', ledgerId);
             batch.set(ledgerRef, {
               id: ledgerId,
@@ -2946,7 +3033,7 @@ export const SalesTab: React.FC = () => {
     return order.status;
   };
 
-  
+
   const handleProcessCSVImport = () => {
     if (!selectedFile) return;
 
@@ -2978,9 +3065,9 @@ export const SalesTab: React.FC = () => {
             return;
           }
 
-          if (buyerTypeRaw !== 'Direct Order' && buyerTypeRaw !== 'Pembeli Langsung' && 
-              buyerTypeRaw !== 'Reseller Order' && buyerTypeRaw !== 'Reseller/Partner' && 
-              buyerTypeRaw !== 'Marketplace') {
+          if (buyerTypeRaw !== 'Direct Order' && buyerTypeRaw !== 'Pembeli Langsung' &&
+            buyerTypeRaw !== 'Reseller Order' && buyerTypeRaw !== 'Reseller/Partner' &&
+            buyerTypeRaw !== 'Marketplace') {
             alert(`Gagal Import ke Sales Orders - Pada baris ${rowNum}, kolom Kategori Order hanya diperbolehkan berisi "Direct Order", "Reseller Order", atau "Marketplace".`);
             return;
           }
@@ -3022,7 +3109,7 @@ export const SalesTab: React.FC = () => {
           const paymentMethodInput = (row['Sistem Pembayaran'] || row['Metode Bayar'] || '').trim();
           const pickupLogisticsInput = (row['Pickup Logistik'] || row['Opsi Pengiriman'] || '').trim();
           const pickupDetailsInput = row['Kode Toko/Alamat']?.trim() || '';
-          
+
           const rawGrandTotal = row['Grand Total (TWD)']?.trim();
           const hasGrandTotal = rawGrandTotal !== undefined && rawGrandTotal !== '';
           const grandTotalInput = parseFloat(rawGrandTotal || '0');
@@ -3062,33 +3149,33 @@ export const SalesTab: React.FC = () => {
           const parts = itemsStr.split(/[;,]/);
           let computedSubtotal = 0;
           for (const part of parts) {
-             const match = part.trim().split(':');
-             if (match.length >= 2) {
-                const itemIdent = match[0].trim();
-                const qtyStr = match[1].trim();
-                const qtyDigits = qtyStr.replace(/\D/g, '');
-                const qty = parseInt(qtyDigits) || 1;
+            const match = part.trim().split(':');
+            if (match.length >= 2) {
+              const itemIdent = match[0].trim();
+              const qtyStr = match[1].trim();
+              const qtyDigits = qtyStr.replace(/\D/g, '');
+              const qty = parseInt(qtyDigits) || 1;
 
-                const foundBook = books.find(b => 
-                  (b.productId && b.productId.toLowerCase() === itemIdent.toLowerCase()) ||
-                  (b.id && b.id.toLowerCase() === itemIdent.toLowerCase()) ||
-                  (b.bookName && b.bookName.toLowerCase() === itemIdent.toLowerCase())
-                );
+              const foundBook = books.find(b =>
+                (b.productId && b.productId.toLowerCase() === itemIdent.toLowerCase()) ||
+                (b.id && b.id.toLowerCase() === itemIdent.toLowerCase()) ||
+                (b.bookName && b.bookName.toLowerCase() === itemIdent.toLowerCase())
+              );
 
-                const bName = foundBook ? foundBook.bookName : itemIdent;
-                const unitPrice = foundBook ? (isShopee ? (foundBook.shopeePrice || 0) : (foundBook.generalPrice || 0)) : 0;
-                newItems.push({
-                   bookId: foundBook ? foundBook.id : 'unknown',
-                   bookName: bName,
-                   bookCover: foundBook ? (foundBook.cover || '') : '',
-                   qty: qty,
-                   unitPrice: unitPrice,
-                   lineTotal: unitPrice * qty,
-                   cogsSnapshot: 0,
-                   isFree: false
-                });
-                computedSubtotal += (unitPrice * qty);
-             }
+              const bName = foundBook ? foundBook.bookName : itemIdent;
+              const unitPrice = foundBook ? (isShopee ? (foundBook.shopeePrice || 0) : (foundBook.generalPrice || 0)) : 0;
+              newItems.push({
+                bookId: foundBook ? foundBook.id : 'unknown',
+                bookName: bName,
+                bookCover: foundBook ? (foundBook.cover || '') : '',
+                qty: qty,
+                unitPrice: unitPrice,
+                lineTotal: unitPrice * qty,
+                cogsSnapshot: 0,
+                isFree: false
+              });
+              computedSubtotal += (unitPrice * qty);
+            }
           }
 
           const finalTotalPrice = hasGrandTotal ? grandTotalCents : computedSubtotal;
@@ -3124,7 +3211,7 @@ export const SalesTab: React.FC = () => {
 
           const isImportMkp = buyerTypeInput === 'marketplace';
           const importCustomerName = isImportMkp ? '' : customerNameInput;
-          const importCustomerPlatformName = isImportMkp 
+          const importCustomerPlatformName = isImportMkp
             ? (customerPlatformNameInput || customerNameInput || channelOrderInput || 'Shopee')
             : customerPlatformNameInput;
           const importPhone = isImportMkp ? '' : phoneInput;
@@ -3170,10 +3257,10 @@ export const SalesTab: React.FC = () => {
           };
 
           if (shippingNumberInput) {
-             payload.shipment = {
-                shippingNumber: shippingNumberInput,
-                shippedAt: Timestamp.now()
-             };
+            payload.shipment = {
+              shippingNumber: shippingNumberInput,
+              shippedAt: Timestamp.now()
+            };
           }
 
           if (mappedStatus === 'shipped') {
@@ -3417,7 +3504,7 @@ export const SalesTab: React.FC = () => {
 
       // Status & configuration values for dropdown formulae
       const statusFormula = `"${['Draft', 'Pending', 'Confirmed', 'Dikirim', 'Selesai', 'Return', 'Cancelled'].join(',')}"`;
-      
+
       const mkpNames = resolvedMarketplaces.map(m => m.name).filter(Boolean);
       const mkpFormula = `"${mkpNames.join(',')}"`;
 
@@ -3627,13 +3714,13 @@ export const SalesTab: React.FC = () => {
 
     const rows = searchedOrders.map(order => {
       const itemsStr = (order.items || []).map(i => `${i.bookName}:${i.qty}pcs`).join(', ');
-      
+
       let tanggalStr = '';
       if (order.orderDate) {
         try {
           const d = order.orderDate.toDate ? order.orderDate.toDate() : new Date(order.orderDate.seconds * 1000);
           tanggalStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        } catch (e) {}
+        } catch (e) { }
       }
 
       let buyerTypeLabel = 'Direct Order';
@@ -3664,7 +3751,7 @@ export const SalesTab: React.FC = () => {
       ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
     });
 
-    const csvContent = "\uFEFF" + [headers, ...rows].join("\n");const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const csvContent = "\uFEFF" + [headers, ...rows].join("\n"); const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
@@ -3682,7 +3769,7 @@ export const SalesTab: React.FC = () => {
       try {
         const d = order.orderDate.toDate ? order.orderDate.toDate() : new Date(order.orderDate.seconds * 1000);
         dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      } catch (e) {}
+      } catch (e) { }
     }
     setOrderDateInput(dateStr);
     setCustomerName(order.customerName || '');
@@ -3702,8 +3789,8 @@ export const SalesTab: React.FC = () => {
     setPartnerProfitPercent(order.orderType === 'Business Partner' && order.partnerProfitShare ? '10' : '0'); // fallback default
     setCustomerNote(order.customerNote || '');
     setOrderNumber(order.orderNumber || '');
-      setEstimatedShippingDate(order.estimatedShippingDate || '');
-      setPerluKonfirmasiSebelumKirim(order.perluKonfirmasiSebelumKirim || false);
+    setEstimatedShippingDate(order.estimatedShippingDate || '');
+    setPerluKonfirmasiSebelumKirim(order.perluKonfirmasiSebelumKirim || false);
     setPhoneWarning('');
     const initialBuyerType = order.buyerType || (
       (order.platformOrder && ['Shopee', 'Tokopedia', 'TikTok Shop', 'Lazada'].includes(order.platformOrder)) || order.orderType === 'Marketplace'
@@ -3739,734 +3826,748 @@ export const SalesTab: React.FC = () => {
   // so it keeps closing over the ~20 handlers and lookups it needs, rather than
   // threading them through props.
   const renderOrderDetail = (o: SalesOrder) => {
-        const formatDetailDate = (dt: any) => {
-          if (!dt) return '—';
-          let dateObj: Date | null = null;
-          if (dt && typeof dt.toDate === 'function') {
-            dateObj = dt.toDate();
-          } else if (dt && dt.seconds !== undefined) {
-            dateObj = new Date(dt.seconds * 1000);
-          } else if (dt instanceof Date) {
-            dateObj = dt;
-          } else if (typeof dt === 'string' || typeof dt === 'number') {
-            dateObj = new Date(dt);
-          }
-          if (!dateObj || isNaN(dateObj.getTime())) {
-            return '—';
-          }
-          const yyyy = dateObj.getFullYear();
-          const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-          const dd = String(dateObj.getDate()).padStart(2, '0');
-          return `${yyyy}/${mm}/${dd}`;
-        };
+    const formatDetailDate = (dt: any) => {
+      if (!dt) return '—';
+      let dateObj: Date | null = null;
+      if (dt && typeof dt.toDate === 'function') {
+        dateObj = dt.toDate();
+      } else if (dt && dt.seconds !== undefined) {
+        dateObj = new Date(dt.seconds * 1000);
+      } else if (dt instanceof Date) {
+        dateObj = dt;
+      } else if (typeof dt === 'string' || typeof dt === 'number') {
+        dateObj = new Date(dt);
+      }
+      if (!dateObj || isNaN(dateObj.getTime())) {
+        return '—';
+      }
+      const yyyy = dateObj.getFullYear();
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      return `${yyyy}/${mm}/${dd}`;
+    };
 
-        const formatUpdatedAt = (dt: any) => {
-          if (!dt) return '';
-          let dateObj: Date | null = null;
-          if (dt && typeof dt.toDate === 'function') {
-            dateObj = dt.toDate();
-          } else if (dt && dt.seconds !== undefined) {
-            dateObj = new Date(dt.seconds * 1000);
-          } else if (dt instanceof Date) {
-            dateObj = dt;
-          } else if (typeof dt === 'string' || typeof dt === 'number') {
-            dateObj = new Date(dt);
-          }
-          if (!dateObj || isNaN(dateObj.getTime())) {
-            return '';
-          }
-          const yyyy = dateObj.getFullYear();
-          const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-          const dd = String(dateObj.getDate()).padStart(2, '0');
-          const hh = String(dateObj.getHours()).padStart(2, '0');
-          const min = String(dateObj.getMinutes()).padStart(2, '0');
-          return `${yyyy}/${mm}/${dd}, ${hh}:${min}`;
-        };
+    const formatUpdatedAt = (dt: any) => {
+      if (!dt) return '';
+      let dateObj: Date | null = null;
+      if (dt && typeof dt.toDate === 'function') {
+        dateObj = dt.toDate();
+      } else if (dt && dt.seconds !== undefined) {
+        dateObj = new Date(dt.seconds * 1000);
+      } else if (dt instanceof Date) {
+        dateObj = dt;
+      } else if (typeof dt === 'string' || typeof dt === 'number') {
+        dateObj = new Date(dt);
+      }
+      if (!dateObj || isNaN(dateObj.getTime())) {
+        return '';
+      }
+      const yyyy = dateObj.getFullYear();
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      const hh = String(dateObj.getHours()).padStart(2, '0');
+      const min = String(dateObj.getMinutes()).padStart(2, '0');
+      return `${yyyy}/${mm}/${dd}, ${hh}:${min}`;
+    };
 
-        const getStatusBadge = (status?: string) => {
-          if (status === 'shipped' || status === 'confirmed') {
-            return { label: 'Dikirim', bc: 'var(--sky)', bt: 'var(--sky-tint)' };
-          }
-          if (status === 'completed') {
-            return { label: 'Selesai', bc: 'var(--green)', bt: 'var(--green-tint)' };
-          }
-          if (status === 'returned') {
-            return { label: 'Return', bc: 'var(--slate)', bt: 'var(--slate-tint)' };
-          }
-          if (status === 'cancelled') {
-            return { label: 'Dibatalkan', bc: 'var(--rose)', bt: 'var(--rose-tint)' };
-          }
-          return { label: 'Pending', bc: 'var(--amber)', bt: 'var(--amber-tint)' };
-        };
+    const getStatusBadge = (status?: string) => {
+      if (status === 'shipped' || status === 'confirmed') {
+        return { label: 'Dikirim', bc: 'var(--sky)', bt: 'var(--sky-tint)' };
+      }
+      if (status === 'completed') {
+        return { label: 'Selesai', bc: 'var(--green)', bt: 'var(--green-tint)' };
+      }
+      if (status === 'returned') {
+        return { label: 'Return', bc: 'var(--slate)', bt: 'var(--slate-tint)' };
+      }
+      if (status === 'cancelled') {
+        return { label: 'Dibatalkan', bc: 'var(--rose)', bt: 'var(--rose-tint)' };
+      }
+      return { label: 'Pending', bc: 'var(--amber)', bt: 'var(--amber-tint)' };
+    };
 
-        const getCategoryBadge = (order: SalesOrder) => {
-          if (order.buyerType === 'marketplace') {
-            return { label: 'Marketplace', bc: 'var(--sky)', bt: 'var(--sky-tint)' };
-          }
-          if (order.buyerType === 'reseller') {
-            return { label: 'Reseller', bc: 'var(--amber)', bt: 'var(--amber-tint)' };
-          }
-          if (order.buyerType === 'langsung') {
-            return { label: 'Direct', bc: 'var(--green)', bt: 'var(--green-tint)' };
-          }
-          if (order.platformOrder && ['Shopee', 'Tokopedia', 'TikTok Shop', 'Lazada'].includes(order.platformOrder)) {
-            return { label: 'Marketplace', bc: 'var(--sky)', bt: 'var(--sky-tint)' };
-          }
-          if (order.orderType === 'Reseller Order') {
-            return { label: 'Reseller', bc: 'var(--amber)', bt: 'var(--amber-tint)' };
-          }
-          return { label: 'Direct', bc: 'var(--green)', bt: 'var(--green-tint)' };
-        };
+    const getCategoryBadge = (order: SalesOrder) => {
+      if (order.buyerType === 'marketplace') {
+        return { label: 'Marketplace', bc: 'var(--sky)', bt: 'var(--sky-tint)' };
+      }
+      if (order.buyerType === 'reseller') {
+        return { label: 'Reseller', bc: 'var(--amber)', bt: 'var(--amber-tint)' };
+      }
+      if (order.buyerType === 'langsung') {
+        return { label: 'Direct', bc: 'var(--green)', bt: 'var(--green-tint)' };
+      }
+      if (order.platformOrder && ['Shopee', 'Tokopedia', 'TikTok Shop', 'Lazada'].includes(order.platformOrder)) {
+        return { label: 'Marketplace', bc: 'var(--sky)', bt: 'var(--sky-tint)' };
+      }
+      if (order.orderType === 'Reseller Order') {
+        return { label: 'Reseller', bc: 'var(--amber)', bt: 'var(--amber-tint)' };
+      }
+      return { label: 'Direct', bc: 'var(--green)', bt: 'var(--green-tint)' };
+    };
 
-        const getStatusHistory = (order: SalesOrder) => {
-          const events: { label: string; date: any; key: string; color: string; tint: string; badgeLabel: string; author?: string }[] = [];
-          
-          const creatorName = (order as any).createdByName || order.createdBy || 'Felix Salim';
-          const dateMenunggu = order.orderDate || order.createdAt;
-          if (dateMenunggu) {
-            events.push({ 
-              key: 'pending', 
-              label: 'Order Dibuat', 
-              date: dateMenunggu,
-              color: 'var(--amber)',
-              tint: 'var(--amber-tint)',
-              badgeLabel: 'Pending',
-              author: creatorName
-            });
-          }
-          
-          const datePacked = order.packedAt;
-          if (datePacked && (order.status === 'packed' || order.status === 'shipped' || order.status === 'completed' || order.status === 'returned' || order.precedingStatus === 'returned')) {
-            events.push({ 
-              key: 'packed', 
-              label: 'Order Dikemas', 
-              date: datePacked,
-              color: 'var(--indigo)',
-              tint: 'var(--indigo-tint)',
-              badgeLabel: 'Dikemas'
-            });
-          }
+    const getStatusHistory = (order: SalesOrder) => {
+      const events: { label: string; date: any; key: string; color: string; tint: string; badgeLabel: string; author?: string }[] = [];
 
-          const dateDikirim = order.shippedAt || order.shipment?.arrangedAt || order.shipment?.shippingDate;
-          if (dateDikirim && (order.status === 'shipped' || order.status === 'completed' || order.status === 'returned' || order.precedingStatus === 'returned')) {
-            const shippingNo = order.shipment?.shippingNumber;
-            events.push({ 
-              key: 'dikirim', 
-              label: 'Order Dikirim', 
-              date: dateDikirim,
-              color: 'var(--sky)',
-              tint: 'var(--sky-tint)',
-              badgeLabel: 'Dikirim',
-              author: shippingNo ? `Resi ${shippingNo}` : undefined
-            });
-          }
-          
-          const dateSelesai = order.completedAt;
-          if (dateSelesai && order.status === 'completed') {
-            events.push({ 
-              key: 'selesai', 
-              label: 'Order Selesai', 
-              date: dateSelesai,
-              color: 'var(--green)',
-              tint: 'var(--green-tint)',
-              badgeLabel: 'Selesai'
-            });
-          }
-          
-          const dateReturn = order.returnedAt;
-          if (dateReturn && (order.status === 'returned' || order.precedingStatus === 'returned')) {
-            events.push({ 
-              key: 'returned', 
-              label: 'Order Diretur', 
-              date: dateReturn,
-              color: 'var(--slate)',
-              tint: 'var(--slate-tint)',
-              badgeLabel: 'Return'
-            });
-          }
-          
-          const dateDiambil = order.diambilAt;
-          if (dateDiambil) {
-            events.push({ 
-              key: 'diambil', 
-              label: 'Buku Return Diambil Pemilik', 
-              date: dateDiambil,
-              color: 'var(--brand)',
-              tint: 'var(--brand-tint)',
-              badgeLabel: 'Diambil'
-            });
-          }
-          
-          const dateCancel = order.cancelledAt;
-          if (dateCancel && order.status === 'cancelled') {
-            events.push({ 
-              key: 'cancelled', 
-              label: 'Order Dibatalkan', 
-              date: dateCancel,
-              color: 'var(--rose)',
-              tint: 'var(--rose-tint)',
-              badgeLabel: 'Dibatalkan'
-            });
-          }
+      const creatorName = (order as any).createdByName || order.createdBy || 'Felix Salim';
+      const dateMenunggu = order.orderDate || order.createdAt;
+      if (dateMenunggu) {
+        events.push({
+          key: 'pending',
+          label: 'Order Dibuat',
+          date: dateMenunggu,
+          color: 'var(--amber)',
+          tint: 'var(--amber-tint)',
+          badgeLabel: 'Pending',
+          author: creatorName
+        });
+      }
 
-          const getMillis = (d: any) => {
-            if (!d) return 0;
-            if (typeof d.toDate === 'function') return d.toDate().getTime();
-            if (d.seconds !== undefined) return d.seconds * 1000;
-            if (d instanceof Date) return d.getTime();
-            const parsed = new Date(d).getTime();
-            return isNaN(parsed) ? 0 : parsed;
-          };
+      const datePacked = order.packedAt;
+      if (datePacked && (order.status === 'packed' || order.status === 'shipped' || order.status === 'completed' || order.status === 'returned' || order.precedingStatus === 'returned')) {
+        events.push({
+          key: 'packed',
+          label: 'Order Dikemas',
+          date: datePacked,
+          color: 'var(--indigo)',
+          tint: 'var(--indigo-tint)',
+          badgeLabel: 'Dikemas'
+        });
+      }
 
-          return events.sort((a, b) => getMillis(a.date) - getMillis(b.date));
-        };
+      const dateDikirim = order.shippedAt || order.shipment?.arrangedAt || order.shipment?.shippingDate;
+      if (dateDikirim && (order.status === 'shipped' || order.status === 'completed' || order.status === 'returned' || order.precedingStatus === 'returned')) {
+        const shippingNo = order.shipment?.shippingNumber;
+        events.push({
+          key: 'dikirim',
+          label: 'Order Dikirim',
+          date: dateDikirim,
+          color: 'var(--sky)',
+          tint: 'var(--sky-tint)',
+          badgeLabel: 'Dikirim',
+          author: shippingNo ? `Resi ${shippingNo}` : undefined
+        });
+      }
 
-        const historyEvents = getStatusHistory(o);
-        const statusBadge = getStatusBadge(o.status);
-        const categoryBadge = getCategoryBadge(o);
+      const dateSelesai = order.completedAt;
+      if (dateSelesai && order.status === 'completed') {
+        events.push({
+          key: 'selesai',
+          label: 'Order Selesai',
+          date: dateSelesai,
+          color: 'var(--green)',
+          tint: 'var(--green-tint)',
+          badgeLabel: 'Selesai'
+        });
+      }
 
-        const totalQty = o.items?.reduce((sum, item) => sum + (Number(item.qty) || 0), 0) || 0;
-        const itemsCount = o.items?.length || 0;
-        const rawCode = o.orderCode || '';
-        const displayOrderCode = rawCode.startsWith('#') ? rawCode : `#${rawCode}`;
-        // createdByName is written by InventoryTab but absent from the SalesOrder
-        // type; same cast the stepper uses for this field.
-        const creatorName = (o as any).createdByName || o.createdBy || 'Felix Salim';
+      const dateReturn = order.returnedAt;
+      if (dateReturn && (order.status === 'returned' || order.precedingStatus === 'returned')) {
+        events.push({
+          key: 'returned',
+          label: 'Order Diretur',
+          date: dateReturn,
+          color: 'var(--slate)',
+          tint: 'var(--slate-tint)',
+          badgeLabel: 'Return'
+        });
+      }
 
-        const estShipping = o.estimatedShippingDate
-          ? formatDetailDate(o.estimatedShippingDate)
-          : '–';
+      const dateDiambil = order.diambilAt;
+      if (dateDiambil) {
+        events.push({
+          key: 'diambil',
+          label: 'Buku Return Diambil Pemilik',
+          date: dateDiambil,
+          color: 'var(--brand)',
+          tint: 'var(--brand-tint)',
+          badgeLabel: 'Diambil'
+        });
+      }
 
-        const bt = o.buyerType;
-        const isMarketplace = bt === 'marketplace' || (!bt && (
-          (o.platformOrder && ['Shopee', 'Tokopedia', 'TikTok Shop', 'Lazada'].includes(o.platformOrder)) ||
-          o.orderType === 'Marketplace'
-        ));
-        const isReseller = bt === 'reseller' || (!bt && (o.orderType === 'Reseller Order' || !!o.partnerId));
+      const dateCancel = order.cancelledAt;
+      if (dateCancel && order.status === 'cancelled') {
+        events.push({
+          key: 'cancelled',
+          label: 'Order Dibatalkan',
+          date: dateCancel,
+          color: 'var(--rose)',
+          tint: 'var(--rose-tint)',
+          badgeLabel: 'Dibatalkan'
+        });
+      }
 
-        const rawOrderDate = o.orderDate || o.createdAt;
-        const orderDateFormatted = rawOrderDate ? formatDetailDate(rawOrderDate) : '–';
-        const customerNameFormatted = o.customerName?.trim() || '–';
+      const getMillis = (d: any) => {
+        if (!d) return 0;
+        if (typeof d.toDate === 'function') return d.toDate().getTime();
+        if (d.seconds !== undefined) return d.seconds * 1000;
+        if (d instanceof Date) return d.getTime();
+        const parsed = new Date(d).getTime();
+        return isNaN(parsed) ? 0 : parsed;
+      };
 
-        const rawSocial = o.customerPlatformName?.trim();
-        const socialAccountFormatted = rawSocial ? rawSocial : '–';
+      return events.sort((a, b) => getMillis(a.date) - getMillis(b.date));
+    };
 
-        const phoneFormatted = o.phoneNumber?.trim() || '–';
-        const logisticsFormatted = o.pickupLogistics?.trim() || '–';
-        const pickupDetailsFormatted = o.pickupDetails?.trim() || '–';
-        const paymentMethodFormatted = o.paymentMethod?.trim() || '–';
+    const historyEvents = getStatusHistory(o);
+    const statusBadge = getStatusBadge(o.status);
+    const categoryBadge = getCategoryBadge(o);
 
-        const platformOrderFormatted = o.platformOrder?.trim() || '–';
-        const sumberCampaignFormatted = o.orderType?.trim() || '–';
-        const orderNumberFormatted = o.orderNumber?.trim() || '–';
-        const shippingNumberFormatted = o.shipment?.shippingNumber?.trim() || '–';
-        const customerNoteFormatted = o.customerNote?.trim() || '–';
+    const totalQty = o.items?.reduce((sum, item) => sum + (Number(item.qty) || 0), 0) || 0;
+    const itemsCount = o.items?.length || 0;
+    const rawCode = o.orderCode || '';
+    const displayOrderCode = rawCode.startsWith('#') ? rawCode : `#${rawCode}`;
+    // createdByName is written by InventoryTab but absent from the SalesOrder
+    // type; same cast the stepper uses for this field.
+    const creatorName = (o as any).createdByName || o.createdBy || 'Felix Salim';
 
-        const lastUpdated = o.updatedAt
-          ? formatUpdatedAt(o.updatedAt)
-          : formatUpdatedAt(o.orderDate || o.createdAt);
+    const estShipping = o.estimatedShippingDate
+      ? formatDetailDate(o.estimatedShippingDate)
+      : '–';
+
+    const bt = o.buyerType;
+    const isMarketplace = bt === 'marketplace' || (!bt && (
+      (o.platformOrder && ['Shopee', 'Tokopedia', 'TikTok Shop', 'Lazada'].includes(o.platformOrder)) ||
+      o.orderType === 'Marketplace'
+    ));
+    const isReseller = bt === 'reseller' || (!bt && (o.orderType === 'Reseller Order' || !!o.partnerId));
+
+    const rawOrderDate = o.orderDate || o.createdAt;
+    const orderDateFormatted = rawOrderDate ? formatDetailDate(rawOrderDate) : '–';
+    const customerNameFormatted = o.customerName?.trim() || '–';
+
+    const rawSocial = o.customerPlatformName?.trim();
+    const socialAccountFormatted = rawSocial ? rawSocial : '–';
+
+    const phoneFormatted = o.phoneNumber?.trim() || '–';
+    const logisticsFormatted = o.pickupLogistics?.trim() || '–';
+    const pickupDetailsFormatted = o.pickupDetails?.trim() || '–';
+    const paymentMethodFormatted = o.paymentMethod?.trim() || '–';
+
+    const platformOrderFormatted = o.platformOrder?.trim() || '–';
+    const sumberCampaignFormatted = o.orderType?.trim() || '–';
+    const orderNumberFormatted = o.orderNumber?.trim() || '–';
+    const shippingNumberFormatted = o.shipment?.shippingNumber?.trim() || '–';
+    const customerNoteFormatted = o.customerNote?.trim() || '–';
+
+    const lastUpdated = o.updatedAt
+      ? formatUpdatedAt(o.updatedAt)
+      : formatUpdatedAt(o.orderDate || o.createdAt);
 
     return (
       <>
-              {/* ══════ HEADER ══════ */}
-              <div className="mhead">
-                <div className="mk">
-                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 4h8a2 2 0 0 1 2 2v14l-6-3-6 3V6a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
-                  </svg>
+        {/* ══════ HEADER ══════ */}
+        <div className="mhead">
+          <div className="mk">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 4h8a2 2 0 0 1 2 2v14l-6-3-6 3V6a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <div className="htx">
+            <div className="eyebrow">Rincian Sales Order</div>
+            <div className="hrow">
+              <h2>{displayOrderCode}</h2>
+              <span className="bdg" style={{ '--bc': statusBadge.bc, '--bt': statusBadge.bt } as React.CSSProperties}>
+                <span className="d"></span>
+                {statusBadge.label}
+              </span>
+              <span className="bdg" style={{ '--bc': categoryBadge.bc, '--bt': categoryBadge.bt } as React.CSSProperties}>
+                <span className="d"></span>
+                {categoryBadge.label}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 flex-none">
+            <button
+              type="button"
+              className="w-8 h-8 rounded-lg text-[#9ca3af] hover:text-[#02a077] hover:bg-[#e7f5ef] dark:hover:bg-emerald-950/40 transition flex items-center justify-center cursor-pointer"
+              title="Rekomendasi Buku"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (o.items && o.items.length > 0) {
+                  const bookIds = o.items.map(item => item.bookId);
+                  const categories = new Set<string>();
+                  o.items.forEach(item => {
+                    const b = books.find(bk => bk.id === item.bookId);
+                    if (b) {
+                      const catArray = Array.isArray(b.category) ? b.category : [b.category];
+                      catArray.forEach(c => categories.add(c));
+                    }
+                  });
+                  if (categories.size > 0) {
+                    setRecoOrderData({
+                      bookIds,
+                      categories: Array.from(categories)
+                    });
+                  }
+                }
+              }}
+            >
+              <Lightbulb className="w-4 h-4" />
+            </button>
+            <button className="mclose" aria-label="Tutup" onClick={() => setViewingOrderDetail(null)}>
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* ══════ BODY ══════ */}
+        <div className="mbody">
+          {/* Informasi Umum */}
+          <div className="sec">
+            <div className="sec-h">
+              <h3>Informasi Umum</h3>
+              <span className="rule"></span>
+            </div>
+            <div className="info-grid">
+              {/* BARIS 1 (4 kolom): Kategori Order | Tanggal Pembelian | Nama Pembeli | Nama Akun Sosial Media / Platform */}
+              <div className="icell">
+                <div className="k">Kategori Order</div>
+                <div className="v">
+                  {isMarketplace ? (
+                    <>
+                      <div>Marketplace</div>
+                      <div className="text-[12px] text-neutral-500 font-medium mt-0.5">{o.platformChannel || 'Shopee'}</div>
+                    </>
+                  ) : isReseller ? (
+                    <>
+                      <div>Reseller Order</div>
+                      <div className="text-[12px] text-neutral-500 font-medium mt-0.5">{o.partnerName || '–'}</div>
+                      <div className="text-[11px] text-neutral-400 font-normal mt-0.5">{o.platformChannel || o.platformOrder || o.orderType || '–'}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div>Direct Order</div>
+                      <div className="text-[12px] text-neutral-500 font-medium mt-0.5">{o.platformChannel || o.platformOrder || o.orderType || '–'}</div>
+                    </>
+                  )}
                 </div>
-                <div className="htx">
-                  <div className="eyebrow">Rincian Sales Order</div>
-                  <div className="hrow">
-                    <h2>{displayOrderCode}</h2>
-                    <span className="bdg" style={{ '--bc': statusBadge.bc, '--bt': statusBadge.bt } as React.CSSProperties}>
-                      <span className="d"></span>
-                      {statusBadge.label}
-                    </span>
-                    <span className="bdg" style={{ '--bc': categoryBadge.bc, '--bt': categoryBadge.bt } as React.CSSProperties}>
-                      <span className="d"></span>
-                      {categoryBadge.label}
-                    </span>
-                  </div>
+              </div>
+
+              <div className="icell">
+                <div className="k">Tanggal Pembelian</div>
+                <div className={`v ${orderDateFormatted !== '–' ? 'mono' : 'muted'}`}>{orderDateFormatted}</div>
+              </div>
+
+              <div className="icell">
+                <div className="k">Nama Pembeli</div>
+                <div className={`v ${customerNameFormatted === '–' ? 'muted' : ''}`}>{customerNameFormatted}</div>
+              </div>
+
+              <div className="icell">
+                <div className="k">Nama Platform</div>
+                <div className={`v ${socialAccountFormatted === '–' ? 'muted' : ''} inline-flex items-center gap-1.5`}>
+                  <span>{socialAccountFormatted}</span>
+                  {socialAccountFormatted !== '–' && socialAccountFormatted !== '-' && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(socialAccountFormatted); }}
+                      className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer"
+                      title="Salin Nama Platform"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
-                <div className="flex items-center gap-1.5 flex-none">
-                  <button
-                    type="button"
-                    className="w-8 h-8 rounded-lg text-[#9ca3af] hover:text-[#02a077] hover:bg-[#e7f5ef] dark:hover:bg-emerald-950/40 transition flex items-center justify-center cursor-pointer"
-                    title="Rekomendasi Buku"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (o.items && o.items.length > 0) {
-                        const bookIds = o.items.map(item => item.bookId);
-                        const categories = new Set<string>();
-                        o.items.forEach(item => {
-                          const b = books.find(bk => bk.id === item.bookId);
-                          if (b) {
-                            const catArray = Array.isArray(b.category) ? b.category : [b.category];
-                            catArray.forEach(c => categories.add(c));
-                          }
-                        });
-                        if (categories.size > 0) {
-                          setRecoOrderData({
-                            bookIds,
-                            categories: Array.from(categories)
-                          });
+              </div>
+
+              {/* BARIS 2 (4 kolom): No. Handphone | Opsi Pengiriman | Kode Toko / Alamat | Metode Bayar */}
+              <div className="icell">
+                <div className="k">No. Handphone</div>
+                <div className={`v ${phoneFormatted !== '–' ? 'mono' : 'muted'} inline-flex items-center gap-1.5`}>
+                  <span>{phoneFormatted}</span>
+                  {phoneFormatted !== '–' && phoneFormatted !== '-' && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(phoneFormatted); }}
+                      className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer"
+                      title="Salin No. Handphone"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="icell">
+                <div className="k">Opsi Pengiriman</div>
+                <div className={`v ${logisticsFormatted === '–' ? 'muted' : ''}`}>{logisticsFormatted}</div>
+              </div>
+
+              <div className="icell">
+                <div className="k">Kode Toko / Alamat</div>
+                <div className={`v ${pickupDetailsFormatted === '–' ? 'muted' : ''} inline-flex items-center gap-1.5`}>
+                  {o.addressPhotoUrl ? (
+                    <div
+                      className="inline-flex items-center gap-1.5 text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 cursor-pointer hover:underline"
+                      onClick={(e) => { e.stopPropagation(); setPreviewImage({ url: o.addressPhotoUrl!, title: 'Foto Alamat / Kode Toko' }); }}
+                      title="Lihat Foto Alamat"
+                    >
+                      <span>{pickupDetailsFormatted}</span>
+                      <Eye className="w-4 h-4 shrink-0" />
+                    </div>
+                  ) : (
+                    <span>{pickupDetailsFormatted}</span>
+                  )}
+                  {pickupDetailsFormatted !== '–' && pickupDetailsFormatted !== '-' && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(pickupDetailsFormatted); }}
+                      className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer shrink-0"
+                      title="Salin Kode Toko / Alamat"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="icell">
+                <div className="k">Metode Bayar</div>
+                <div className={`v ${paymentMethodFormatted === '–' ? 'muted' : ''}`}>{paymentMethodFormatted}</div>
+              </div>
+
+              {/* BARIS 3 (4 kolom): Platform Order | Nomor Order | Nomor Resi | Tanggal Diminta Kirim */}
+              <div className="icell">
+                <div className="k">Platform Order</div>
+                <div className={`v ${isMarketplace || platformOrderFormatted === '–' ? 'muted' : ''}`}>
+                  {isMarketplace ? '–' : (platformOrderFormatted !== '–' ? platformOrderFormatted : (o.platformChannel || '–'))}
+                </div>
+              </div>
+
+              <div className="icell">
+                <div className="k">Nomor Order</div>
+                <div className={`v ${orderNumberFormatted !== '–' ? 'mono' : 'muted'} inline-flex items-center gap-1.5`}>
+                  <span>{orderNumberFormatted}</span>
+                  {orderNumberFormatted !== '–' && orderNumberFormatted !== '-' && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(orderNumberFormatted); }}
+                      className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer"
+                      title="Salin Nomor Order"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="icell">
+                <div className="k">Nomor Resi</div>
+                <div className="v inline-flex items-center gap-1.5">
+                  {shippingNumberFormatted !== '–' ? (
+                    <span className="chip">{shippingNumberFormatted}</span>
+                  ) : (
+                    <span className="muted">–</span>
+                  )}
+                  {shippingNumberFormatted !== '–' && shippingNumberFormatted !== '-' && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(shippingNumberFormatted); }}
+                      className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer"
+                      title="Salin Nomor Resi"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="icell">
+                <div className="k">Tanggal Diminta Kirim</div>
+                <div className={`v ${estShipping === '–' ? 'muted' : ''}`}>{estShipping}</div>
+              </div>
+
+              {/* BARIS 4: Sumber Campaign (1 kolom, tepat dibawah Platform Order) | Note dari Customer (3 kolom) */}
+              <div className="icell">
+                <div className="k">Sumber Campaign</div>
+                <div className={`v ${sumberCampaignFormatted === '–' ? 'muted' : ''}`}>{sumberCampaignFormatted}</div>
+              </div>
+
+              <div className="icell span-3">
+                <div className="k">Note dari Customer</div>
+                <div className={`v ${customerNoteFormatted === '–' ? 'muted' : ''}`}>{customerNoteFormatted}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Buku + Ringkasan */}
+          <div className="sec">
+            <div className="cols">
+              <div>
+                <div className="sec-h">
+                  <h3>Daftar Buku</h3>
+                  <span className="cnt n">{itemsCount} item · {totalQty} Pcs</span>
+                  <span className="rule"></span>
+                </div>
+                <div className="book-wrap">
+                  <div
+                    className="book-scroll"
+                    ref={(el) => {
+                      if (el) {
+                        const fade = el.nextElementSibling;
+                        if (fade) {
+                          const scrollable = el.scrollHeight > el.clientHeight + 2;
+                          fade.classList.toggle('on', scrollable);
                         }
                       }
                     }}
-                  >
-                    <Lightbulb className="w-4 h-4" />
-                  </button>
-                  <button className="mclose" aria-label="Tutup" onClick={() => setViewingOrderDetail(null)}>
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* ══════ BODY ══════ */}
-              <div className="mbody">
-                {/* Informasi Umum */}
-                <div className="sec">
-                  <div className="sec-h">
-                    <h3>Informasi Umum</h3>
-                    <span className="rule"></span>
-                  </div>
-                  <div className="info-grid">
-                    {/* BARIS 1 (4 kolom): Kategori Order | Tanggal Pembelian | Nama Pembeli | Nama Akun Sosial Media / Platform */}
-                    <div className="icell">
-                      <div className="k">Kategori Order</div>
-                      <div className="v">
-                        {isMarketplace ? (
-                          <>
-                            <div>Marketplace</div>
-                            <div className="text-[12px] text-neutral-500 font-medium mt-0.5">{o.platformChannel || 'Shopee'}</div>
-                          </>
-                        ) : isReseller ? (
-                          <>
-                            <div>Reseller Order</div>
-                            <div className="text-[12px] text-neutral-500 font-medium mt-0.5">{o.partnerName || '–'}</div>
-                            <div className="text-[11px] text-neutral-400 font-normal mt-0.5">{o.platformChannel || o.platformOrder || o.orderType || '–'}</div>
-                          </>
-                        ) : (
-                          <>
-                            <div>Direct Order</div>
-                            <div className="text-[12px] text-neutral-500 font-medium mt-0.5">{o.platformChannel || o.platformOrder || o.orderType || '–'}</div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="icell">
-                      <div className="k">Tanggal Pembelian</div>
-                      <div className={`v ${orderDateFormatted !== '–' ? 'mono' : 'muted'}`}>{orderDateFormatted}</div>
-                    </div>
-
-                    <div className="icell">
-                      <div className="k">Nama Pembeli</div>
-                      <div className={`v ${customerNameFormatted === '–' ? 'muted' : ''}`}>{customerNameFormatted}</div>
-                    </div>
-
-                    <div className="icell">
-                      <div className="k">Nama Platform</div>
-                      <div className={`v ${socialAccountFormatted === '–' ? 'muted' : ''} inline-flex items-center gap-1.5`}>
-                        <span>{socialAccountFormatted}</span>
-                        {socialAccountFormatted !== '–' && socialAccountFormatted !== '-' && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(socialAccountFormatted); }}
-                            className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer"
-                            title="Salin Nama Platform"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* BARIS 2 (4 kolom): No. Handphone | Opsi Pengiriman | Kode Toko / Alamat | Metode Bayar */}
-                    <div className="icell">
-                      <div className="k">No. Handphone</div>
-                      <div className={`v ${phoneFormatted !== '–' ? 'mono' : 'muted'} inline-flex items-center gap-1.5`}>
-                        <span>{phoneFormatted}</span>
-                        {phoneFormatted !== '–' && phoneFormatted !== '-' && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(phoneFormatted); }}
-                            className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer"
-                            title="Salin No. Handphone"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="icell">
-                      <div className="k">Opsi Pengiriman</div>
-                      <div className={`v ${logisticsFormatted === '–' ? 'muted' : ''}`}>{logisticsFormatted}</div>
-                    </div>
-
-                    <div className="icell">
-                      <div className="k">Kode Toko / Alamat</div>
-                      <div className={`v ${pickupDetailsFormatted === '–' ? 'muted' : ''} inline-flex items-center gap-1.5`}>
-                        {o.addressPhotoUrl ? (
-                          <div 
-                            className="inline-flex items-center gap-1.5 text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 cursor-pointer hover:underline"
-                            onClick={(e) => { e.stopPropagation(); setPreviewImage({ url: o.addressPhotoUrl!, title: 'Foto Alamat / Kode Toko' }); }}
-                            title="Lihat Foto Alamat"
-                          >
-                            <span>{pickupDetailsFormatted}</span>
-                            <Eye className="w-4 h-4 shrink-0" />
-                          </div>
-                        ) : (
-                          <span>{pickupDetailsFormatted}</span>
-                        )}
-                        {pickupDetailsFormatted !== '–' && pickupDetailsFormatted !== '-' && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(pickupDetailsFormatted); }}
-                            className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer shrink-0"
-                            title="Salin Kode Toko / Alamat"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="icell">
-                      <div className="k">Metode Bayar</div>
-                      <div className={`v ${paymentMethodFormatted === '–' ? 'muted' : ''}`}>{paymentMethodFormatted}</div>
-                    </div>
-
-                    {/* BARIS 3 (4 kolom): Platform Order | Nomor Order | Nomor Resi | Tanggal Diminta Kirim */}
-                    <div className="icell">
-                      <div className="k">Platform Order</div>
-                      <div className={`v ${isMarketplace || platformOrderFormatted === '–' ? 'muted' : ''}`}>
-                        {isMarketplace ? '–' : (platformOrderFormatted !== '–' ? platformOrderFormatted : (o.platformChannel || '–'))}
-                      </div>
-                    </div>
-
-                    <div className="icell">
-                      <div className="k">Nomor Order</div>
-                      <div className={`v ${orderNumberFormatted !== '–' ? 'mono' : 'muted'} inline-flex items-center gap-1.5`}>
-                        <span>{orderNumberFormatted}</span>
-                        {orderNumberFormatted !== '–' && orderNumberFormatted !== '-' && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(orderNumberFormatted); }}
-                            className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer"
-                            title="Salin Nomor Order"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="icell">
-                      <div className="k">Nomor Resi</div>
-                      <div className="v inline-flex items-center gap-1.5">
-                        {shippingNumberFormatted !== '–' ? (
-                          <span className="chip">{shippingNumberFormatted}</span>
-                        ) : (
-                          <span className="muted">–</span>
-                        )}
-                        {shippingNumberFormatted !== '–' && shippingNumberFormatted !== '-' && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(shippingNumberFormatted); }}
-                            className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer"
-                            title="Salin Nomor Resi"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="icell">
-                      <div className="k">Tanggal Diminta Kirim</div>
-                      <div className={`v ${estShipping === '–' ? 'muted' : ''}`}>{estShipping}</div>
-                    </div>
-
-                    {/* BARIS 4: Sumber Campaign (1 kolom, tepat dibawah Platform Order) | Note dari Customer (3 kolom) */}
-                    <div className="icell">
-                      <div className="k">Sumber Campaign</div>
-                      <div className={`v ${sumberCampaignFormatted === '–' ? 'muted' : ''}`}>{sumberCampaignFormatted}</div>
-                    </div>
-
-                    <div className="icell span-3">
-                      <div className="k">Note dari Customer</div>
-                      <div className={`v ${customerNoteFormatted === '–' ? 'muted' : ''}`}>{customerNoteFormatted}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Buku + Ringkasan */}
-                <div className="sec">
-                  <div className="cols">
-                    <div>
-                      <div className="sec-h">
-                        <h3>Daftar Buku</h3>
-                        <span className="cnt n">{itemsCount} item · {totalQty} Pcs</span>
-                        <span className="rule"></span>
-                      </div>
-                      <div className="book-wrap">
-                        <div 
-                          className="book-scroll"
-                          ref={(el) => {
-                            if (el) {
-                              const fade = el.nextElementSibling;
-                              if (fade) {
-                                const scrollable = el.scrollHeight > el.clientHeight + 2;
-                                fade.classList.toggle('on', scrollable);
-                              }
-                            }
-                          }}
-                          onScroll={(e) => {
-                            const el = e.currentTarget;
-                            const fade = el.nextElementSibling;
-                            if (fade) {
-                              const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-                              const scrollable = el.scrollHeight > el.clientHeight + 2;
-                              fade.classList.toggle('on', scrollable && !atBottom);
-                            }
-                          }}
-                        >
-                          {o.items?.map((it, idx) => {
-                            const isTertinggal = it.markedTertinggal || it.markedRefund;
-                            const resolvedCover = it.bookCover || books.find(b => b.id === it.bookId)?.cover || '';
-                            return (
-                              <div key={idx} className={`book ${isTertinggal ? '!bg-neutral-100 dark:!bg-neutral-800/80 opacity-60 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700/60 mb-2' : ''}`}>
-                                <div 
-                                  className="cov"
-                                  onClick={(e) => {
-                                    if (resolvedCover) {
-                                      e.stopPropagation();
-                                      setPreviewImage({ url: resolvedCover, title: it.bookName });
-                                    }
-                                  }}
-                                  style={{ cursor: resolvedCover ? 'pointer' : 'default' }}
-                                >
-                                  {resolvedCover ? (
-                                    <img referrerPolicy="no-referrer" src={resolvedCover} alt="" className="w-full h-full object-cover rounded-[5px]" />
-                                  ) : (
-                                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5V5.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
-                                    </svg>
-                                  )}
-                                </div>
-                                <div className="bi">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <div className="bt" title={it.bookName}>{it.bookName}</div>
-                                    {isTertinggal && (
-                                      <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shrink-0">
-                                        Tertinggal
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="bs">{it.qty} Pcs × {formatNTD(it.unitPrice)}</div>
-                                </div>
-                                <div className="bp">{formatNTD(it.lineTotal)}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="fade"></div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="sec-h">
-                        <h3>Ringkasan Total</h3>
-                        <span className="rule"></span>
-                      </div>
-                      <div className="summary">
-                        {canViewAmount ? (
-                          <>
-                            <div className="srow">
-                              <span className="k">Subtotal</span>
-                              <span className="v n">{formatNTD(o.subtotal)}</span>
-                            </div>
-                            <div className="srow disc">
-                              <span className="k">Diskon</span>
-                              <span className="v n">−{formatNTD(o.discount || 0)}</span>
-                            </div>
-                            {o.platformFee ? (
-                              <div className="srow" style={{ color: '#d97706' }}>
-                                <span className="k">Biaya Platform</span>
-                                <span className="v n">−{formatNTD(o.platformFee)}</span>
-                              </div>
-                            ) : null}
-                            <div className="srow grand">
-                              <span className="k">Total Akhir (TWD)</span>
-                              <span className="v n">{formatNTD(o.totalPrice)}</span>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="srow" style={{ color: '#9ca3af', fontStyle: 'italic' }}>
-                            <span className="k">Nilai disembunyikan</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Riwayat */}
-                <div className="sec">
-                  <div className="sec-h">
-                    <h3>Riwayat Status &amp; Transaksi</h3>
-                    <span className="rule"></span>
-                  </div>
-                  <div className="tl">
-                    {historyEvents.map((ev) => (
-                      <div key={ev.key} className="tli" style={{ '--tc': ev.color } as React.CSSProperties}>
-                        <div className="tli-h">
-                          <div>
-                            <div className="tli-t">{ev.label}</div>
-                            <div className="tli-d">
-                              {formatDetailDate(ev.date)}
-                              {ev.author ? ` · ${ev.author}` : ''}
-                            </div>
-                            {ev.key === 'pending' && o.parentOrderCode && (
-                              <div className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold mt-1 flex items-center gap-1">
-                                <span>Bagian Dari SO:</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const parent = orders.find(o => o.id === o.parentOrderId || o.orderCode === o.parentOrderCode || `#${o.orderCode}` === o.parentOrderCode);
-                                    if (parent) setViewingOrderDetail(parent);
-                                    else alert(`SO #${o.parentOrderCode} tidak ditemukan`);
-                                  }}
-                                  className="underline hover:text-indigo-800 dark:hover:text-indigo-300 cursor-pointer"
-                                >
-                                  #{o.parentOrderCode.replace(/^#/, '')}
-                                </button>
-                              </div>
-                            )}
-                            {o.childOrderCodes && o.childOrderCodes.length > 0 && (ev.key === 'pending' || ev.key === 'dikirim') && (
-                              <div className="text-xs text-amber-600 dark:text-amber-400 font-semibold mt-1 flex items-center gap-1 flex-wrap">
-                                <span>SO Barang Tertinggal:</span>
-                                {o.childOrderCodes.map((ccode, idx) => (
-                                  <button
-                                    key={idx}
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const child = orders.find(o => o.orderCode === ccode || `#${o.orderCode}` === ccode || o.orderCode === `#${ccode}`);
-                                      if (child) setViewingOrderDetail(child);
-                                      else alert(`SO ${ccode} tidak ditemukan`);
-                                    }}
-                                    className="underline hover:text-amber-800 dark:hover:text-amber-300 cursor-pointer"
-                                  >
-                                    #{ccode.replace(/^#/, '')}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <span className="bdg" style={{ '--bc': ev.color, '--bt': ev.tint } as React.CSSProperties}>
-                            <span className="d"></span>
-                            {ev.badgeLabel}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* ══════ FOOT ══════ */}
-              <div className="mfoot">
-                <span className="foot-meta">
-                  {lastUpdated ? `Terakhir diperbarui ${lastUpdated}` : ''}
-                </span>
-                <div className="foot-btns">
-                  {isStaffValue && (o.status === 'draft' || o.status === 'confirmed') && (o.items?.length || 0) > 1 && (
-                    <button
-                      type="button"
-                      className="btn bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800"
-                      onClick={() => {
-                        const ord = o;
-                        setViewingOrderDetail(null);
-                        handleOpenSplitOrderModal(ord);
-                      }}
-                    >
-                      <GitFork className="w-4 h-4" />
-                      Opsi Kirim Sebagian
-                    </button>
-                  )}
-
-                  {isStaffValue && !o.isMarketplaceRefunded && (o.parentOrderId || o.status === 'cancelled' || o.status === 'draft' || o.status === 'confirmed') && (
-                    <button
-                      type="button"
-                      className="btn bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800"
-                      onClick={() => {
-                        setRefundConfirmOrder(o);
-                      }}
-                    >
-                      Refund Marketplace
-                    </button>
-                  )}
-
-                  {o.isMarketplaceRefunded && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800">
-                      <Check className="w-4 h-4" />
-                      Marketplace Refunded
-                    </span>
-                  )}
-
-                  {isStaffValue && (o.status === 'shipped' || o.status === 'confirmed') && (
-                    <>
-                      <button
-                        type="button"
-                        className="btn text-white bg-[#0f7a52] hover:bg-[#0c6342]"
-                        onClick={() => {
-                          setViewingOrderDetail(null);
-                          openSelesaiConfirm(o);
-                        }}
-                      >
-                        Selesai
-                      </button>
-                      <button
-                        type="button"
-                        className="btn text-white bg-[#dd7d84] hover:bg-[#a8323b]"
-                        onClick={() => {
-                          const orderId = o.id;
-                          setViewingOrderDetail(null);
-                          handleTransitionToReturned(orderId);
-                        }}
-                      >
-                        Return
-                      </button>
-                    </>
-                  )}
-                  <button 
-                    type="button" 
-                    className="btn btn-ghost"
-                    onClick={() => {
-                      window.print();
+                    onScroll={(e) => {
+                      const el = e.currentTarget;
+                      const fade = el.nextElementSibling;
+                      if (fade) {
+                        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+                        const scrollable = el.scrollHeight > el.clientHeight + 2;
+                        fade.classList.toggle('on', scrollable && !atBottom);
+                      }
                     }}
                   >
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M6 9V3h12v6M6 18H4v-6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v6h-2M6 14h12v7H6z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/>
-                    </svg>
-                    Cetak
-                  </button>
-                  <button 
-                    type="button" 
-                    className="btn btn-brand"
-                    onClick={() => setViewingOrderDetail(null)}
-                  >
-                    Tutup
-                  </button>
+                    {o.items?.map((it, idx) => {
+                      const isTertinggal = it.markedTertinggal || it.markedRefund;
+                      const resolvedCover = it.bookCover || books.find(b => b.id === it.bookId)?.cover || '';
+                      return (
+                        <div key={idx} className={`book ${isTertinggal ? '!bg-neutral-100 dark:!bg-neutral-800/80 opacity-60 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700/60 mb-2' : ''}`}>
+                          <div
+                            className="cov"
+                            onClick={(e) => {
+                              if (resolvedCover) {
+                                e.stopPropagation();
+                                setPreviewImage({ url: resolvedCover, title: it.bookName });
+                              }
+                            }}
+                            style={{ cursor: resolvedCover ? 'pointer' : 'default' }}
+                          >
+                            {resolvedCover ? (
+                              <img referrerPolicy="no-referrer" src={resolvedCover} alt="" className="w-full h-full object-cover rounded-[5px]" />
+                            ) : (
+                              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5V5.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </div>
+                          <div className="bi">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <div className="bt" title={it.bookName}>{it.bookName}</div>
+                              {isTertinggal && (
+                                <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shrink-0">
+                                  Tertinggal
+                                </span>
+                              )}
+                            </div>
+                            <div className="bs">{it.qty} Pcs × {formatNTD(it.unitPrice)}</div>
+                          </div>
+                          <div className="bp">{formatNTD(it.lineTotal)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="fade"></div>
                 </div>
               </div>
+
+              <div>
+                <div className="sec-h">
+                  <h3>Ringkasan Total</h3>
+                  <span className="rule"></span>
+                </div>
+                <div className="summary">
+                  {canViewAmount ? (
+                    <>
+                      <div className="srow">
+                        <span className="k">Subtotal</span>
+                        <span className="v n">{formatNTD(o.subtotal)}</span>
+                      </div>
+                      <div className="srow disc">
+                        <span className="k">Diskon</span>
+                        <span className="v n">−{formatNTD(o.discount || 0)}</span>
+                      </div>
+                      {o.platformFee ? (
+                        <div className="srow" style={{ color: '#d97706' }}>
+                          <span className="k">Biaya Platform</span>
+                          <span className="v n">−{formatNTD(o.platformFee)}</span>
+                        </div>
+                      ) : null}
+                      <div className="srow grand">
+                        <span className="k">Total Akhir (TWD)</span>
+                        <span className="v n">{formatNTD(o.totalPrice)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="srow" style={{ color: '#9ca3af', fontStyle: 'italic' }}>
+                      <span className="k">Nilai disembunyikan</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Riwayat */}
+          <div className="sec">
+            <div className="sec-h">
+              <h3>Riwayat Status &amp; Transaksi</h3>
+              <span className="rule"></span>
+            </div>
+            <div className="tl">
+              {historyEvents.map((ev) => (
+                <div key={ev.key} className="tli" style={{ '--tc': ev.color } as React.CSSProperties}>
+                  <div className="tli-h">
+                    <div>
+                      <div className="tli-t">{ev.label}</div>
+                      <div className="tli-d">
+                        {formatDetailDate(ev.date)}
+                        {ev.author ? ` · ${ev.author}` : ''}
+                      </div>
+                      {ev.key === 'pending' && o.parentOrderCode && (
+                        <div className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold mt-1 flex items-center gap-1">
+                          <span>Bagian Dari SO:</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const parent = orders.find(o => o.id === o.parentOrderId || o.orderCode === o.parentOrderCode || `#${o.orderCode}` === o.parentOrderCode);
+                              if (parent) setViewingOrderDetail(parent);
+                              else alert(`SO #${o.parentOrderCode} tidak ditemukan`);
+                            }}
+                            className="underline hover:text-indigo-800 dark:hover:text-indigo-300 cursor-pointer"
+                          >
+                            #{o.parentOrderCode.replace(/^#/, '')}
+                          </button>
+                        </div>
+                      )}
+                      {o.childOrderCodes && o.childOrderCodes.length > 0 && (ev.key === 'pending' || ev.key === 'dikirim') && (
+                        <div className="text-xs text-amber-600 dark:text-amber-400 font-semibold mt-1 flex items-center gap-1 flex-wrap">
+                          <span>SO Barang Tertinggal:</span>
+                          {o.childOrderCodes.map((ccode, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const child = orders.find(o => o.orderCode === ccode || `#${o.orderCode}` === ccode || o.orderCode === `#${ccode}`);
+                                if (child) setViewingOrderDetail(child);
+                                else alert(`SO ${ccode} tidak ditemukan`);
+                              }}
+                              className="underline hover:text-amber-800 dark:hover:text-amber-300 cursor-pointer"
+                            >
+                              #{ccode.replace(/^#/, '')}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <span className="bdg" style={{ '--bc': ev.color, '--bt': ev.tint } as React.CSSProperties}>
+                      <span className="d"></span>
+                      {ev.badgeLabel}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ══════ FOOT ══════ */}
+        <div className="mfoot">
+          <span className="foot-meta">
+            {lastUpdated ? `Terakhir diperbarui ${lastUpdated}` : ''}
+          </span>
+          <div className="foot-btns">
+            {isStaffValue && (o.status === 'draft' || o.status === 'confirmed') && (o.items?.length || 0) > 1 && (
+              <button
+                type="button"
+                className="btn bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800"
+                onClick={() => {
+                  const ord = o;
+                  setViewingOrderDetail(null);
+                  handleOpenSplitOrderModal(ord);
+                }}
+              >
+                <GitFork className="w-4 h-4" />
+                Opsi Kirim Sebagian
+              </button>
+            )}
+
+            {isStaffValue && !o.isMarketplaceRefunded && (o.parentOrderId || o.status === 'cancelled' || o.status === 'draft' || o.status === 'confirmed') && (
+              <button
+                type="button"
+                className="btn bg-rose-50 text-rose-700 hover:bg-rose-100 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800"
+                onClick={() => {
+                  setRefundConfirmOrder(o);
+                }}
+              >
+                Refund Marketplace
+              </button>
+            )}
+
+            {o.isMarketplaceRefunded && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800">
+                <Check className="w-4 h-4" />
+                Marketplace Refunded
+              </span>
+            )}
+
+            {isStaffValue && (o.status === 'shipped' || o.status === 'confirmed') && (
+              <>
+                <button
+                  type="button"
+                  className="btn text-white bg-[#0f7a52] hover:bg-[#0c6342]"
+                  onClick={() => {
+                    setViewingOrderDetail(null);
+                    openSelesaiConfirm(o);
+                  }}
+                >
+                  Selesai
+                </button>
+                <button
+                  type="button"
+                  className="btn text-white bg-[#dd7d84] hover:bg-[#a8323b]"
+                  onClick={() => {
+                    const orderId = o.id;
+                    setViewingOrderDetail(null);
+                    handleTransitionToReturned(orderId);
+                  }}
+                >
+                  Return
+                </button>
+              </>
+            )}
+            
+            {profile?.role === 'owner' && (
+              <button
+                type="button"
+                className="btn text-[#3d4451] bg-[#f3f4f6] hover:bg-[#e8eaed] dark:text-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 font-['Lexend']"
+                onClick={() => {
+                  setViewingOrderDetail(null);
+                  handleEditOrderClick(o);
+                }}
+              >
+                <Edit className="w-4 h-4 mr-1.5" />
+                Edit Metadata
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                window.print();
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 9V3h12v6M6 18H4v-6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v6h-2M6 14h12v7H6z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+              </svg>
+              Cetak
+            </button>
+            <button
+              type="button"
+              className="btn btn-brand"
+              onClick={() => setViewingOrderDetail(null)}
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
       </>
     );
   };
@@ -4550,23 +4651,20 @@ export const SalesTab: React.FC = () => {
             <div key={st.key} className="flex flex-col items-center flex-1 relative">
               {/* Connected Connector Line */}
               {i > 0 && (
-                <div className={`absolute right-1/2 left-[-50%] top-3.5 -translate-y-1/2 h-1 z-0 ${
-                  isActive ? 'bg-brand-600' : 'bg-neutral-200 dark:bg-neutral-800'
-                }`} />
+                <div className={`absolute right-1/2 left-[-50%] top-3.5 -translate-y-1/2 h-1 z-0 ${isActive ? 'bg-brand-600' : 'bg-neutral-200 dark:bg-neutral-800'
+                  }`} />
               )}
               {/* Node Circle */}
-              <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 relative z-10 ${
-                isCurrent 
-                  ? 'bg-brand-600 text-white ring-4 ring-brand-500/20' 
-                  : isActive
+              <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 relative z-10 ${isCurrent
+                ? 'bg-brand-600 text-white ring-4 ring-brand-500/20'
+                : isActive
                   ? 'bg-brand-500 text-white'
                   : 'bg-neutral-200 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'
-              }`}>
+                }`}>
                 {i + 1}
               </div>
-              <span className={`text-[10px] mt-1.5 font-semibold uppercase tracking-wider relative z-10 ${
-                isActive ? 'text-brand-600 dark:text-brand-400 font-extrabold' : 'text-neutral-400'
-              }`}>
+              <span className={`text-[10px] mt-1.5 font-semibold uppercase tracking-wider relative z-10 ${isActive ? 'text-brand-600 dark:text-brand-400 font-extrabold' : 'text-neutral-400'
+                }`}>
                 {st.label}
               </span>
               {/* Automated Real-time Timestamp Layout System */}
@@ -4584,21 +4682,21 @@ export const SalesTab: React.FC = () => {
 
   const currentManageList = manageActiveTab === 'type'
     ? resolvedOrderTypes
-    : (manageActiveTab === 'channel' ? resolvedChannels 
-    : (manageActiveTab === 'platform' ? resolvedPlatforms 
-    : (manageActiveTab === 'marketplace' ? resolvedMarketplaces : resolvedLogistics)));
+    : (manageActiveTab === 'channel' ? resolvedChannels
+      : (manageActiveTab === 'platform' ? resolvedPlatforms
+        : (manageActiveTab === 'marketplace' ? resolvedMarketplaces : resolvedLogistics)));
 
   const activeTabLabel = manageActiveTab === 'type'
     ? 'Sumber Campaign'
-    : (manageActiveTab === 'channel' ? 'Channel' 
-    : (manageActiveTab === 'platform' ? 'Platform Order' 
-    : (manageActiveTab === 'marketplace' ? 'Platform Marketplace' : 'Opsi Pengiriman')));
+    : (manageActiveTab === 'channel' ? 'Channel'
+      : (manageActiveTab === 'platform' ? 'Platform Order'
+        : (manageActiveTab === 'marketplace' ? 'Platform Marketplace' : 'Opsi Pengiriman')));
 
   const activeTabPlaceholder = manageActiveTab === 'type'
     ? 'contoh: TikTok shop'
-    : (manageActiveTab === 'channel' ? 'contoh: Telegram' 
-    : (manageActiveTab === 'platform' ? 'contoh: Shopee' 
-    : (manageActiveTab === 'marketplace' ? 'contoh: Shopee' : 'contoh: 7-Eleven')));
+    : (manageActiveTab === 'channel' ? 'contoh: Telegram'
+      : (manageActiveTab === 'platform' ? 'contoh: Shopee'
+        : (manageActiveTab === 'marketplace' ? 'contoh: Shopee' : 'contoh: 7-Eleven')));
 
   const pendingSum = useMemo(() => pendingOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0), [pendingOrders]);
   const packedSum = useMemo(() => packedOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0), [packedOrders]);
@@ -4736,7 +4834,7 @@ export const SalesTab: React.FC = () => {
           </div>
 
           <div className="hidden md:flex items-center gap-2">
-            <DateRangePicker 
+            <DateRangePicker
               startDate={globalStartDate}
               endDate={globalEndDate}
               presetLabel={globalDateLabel}
@@ -4786,11 +4884,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-              activeFilterTab === 'Semua'
-                ? 'border-[#0d1117] dark:border-white bg-[#f5f6f7] dark:bg-neutral-800'
-                : 'border-[#E7E1D2] dark:border-neutral-800'
-            }`}
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${activeFilterTab === 'Semua'
+              ? 'border-[#0d1117] dark:border-white bg-[#f5f6f7] dark:bg-neutral-800'
+              : 'border-[#E7E1D2] dark:border-neutral-800'
+              }`}
           >
             {activeFilterTab === 'Semua' && (
               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#0d1117] dark:bg-white" />
@@ -4817,11 +4914,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-              activeFilterTab === 'Pending'
-                ? 'border-[#b45309] bg-[#fef3e2] dark:bg-amber-955/30'
-                : 'border-[#E7E1D2] dark:border-neutral-800'
-            }`}
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${activeFilterTab === 'Pending'
+              ? 'border-[#b45309] bg-[#fef3e2] dark:bg-amber-955/30'
+              : 'border-[#E7E1D2] dark:border-neutral-800'
+              }`}
           >
             {activeFilterTab === 'Pending' && (
               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#b45309]" />
@@ -4848,11 +4944,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-              activeFilterTab === 'Dikemas'
-                ? 'border-[#6366f1] bg-[#eef2ff] dark:bg-indigo-955/30'
-                : 'border-[#E7E1D2] dark:border-neutral-800'
-            }`}
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${activeFilterTab === 'Dikemas'
+              ? 'border-[#6366f1] bg-[#eef2ff] dark:bg-indigo-955/30'
+              : 'border-[#E7E1D2] dark:border-neutral-800'
+              }`}
           >
             {activeFilterTab === 'Dikemas' && (
               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#6366f1]" />
@@ -4879,11 +4974,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-              activeFilterTab === 'Dikirim'
-                ? 'border-[#1d6fa5] bg-[#e8f2f9] dark:bg-sky-955/30'
-                : 'border-[#E7E1D2] dark:border-neutral-800'
-            }`}
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${activeFilterTab === 'Dikirim'
+              ? 'border-[#1d6fa5] bg-[#e8f2f9] dark:bg-sky-955/30'
+              : 'border-[#E7E1D2] dark:border-neutral-800'
+              }`}
           >
             {activeFilterTab === 'Dikirim' && (
               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#1d6fa5]" />
@@ -4910,11 +5004,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-              activeFilterTab === 'Berhasil' || activeFilterTab === 'Selesai'
-                ? 'border-[#0f7a52] bg-[#e7f5ef] dark:bg-emerald-955/30'
-                : 'border-[#E7E1D2] dark:border-neutral-800'
-            }`}
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${activeFilterTab === 'Berhasil' || activeFilterTab === 'Selesai'
+              ? 'border-[#0f7a52] bg-[#e7f5ef] dark:bg-emerald-955/30'
+              : 'border-[#E7E1D2] dark:border-neutral-800'
+              }`}
           >
             {(activeFilterTab === 'Berhasil' || activeFilterTab === 'Selesai') && (
               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#0f7a52]" />
@@ -4941,11 +5034,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-              activeFilterTab === 'Return'
-                ? 'border-[#a8323b] bg-[#fbecec] dark:bg-rose-955/30'
-                : 'border-[#E7E1D2] dark:border-neutral-800'
-            }`}
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${activeFilterTab === 'Return'
+              ? 'border-[#a8323b] bg-[#fbecec] dark:bg-rose-955/30'
+              : 'border-[#E7E1D2] dark:border-neutral-800'
+              }`}
           >
             {activeFilterTab === 'Return' && (
               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#a8323b]" />
@@ -4972,11 +5064,10 @@ export const SalesTab: React.FC = () => {
               setExpandedOrderId(null);
               setCurrentPage(1);
             }}
-            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-              activeFilterTab === 'Cancel'
-                ? 'border-[#5b6472] bg-[#f1f2f4] dark:bg-neutral-800 shadow-sm'
-                : 'border-[#E7E1D2] dark:border-neutral-800'
-            }`}
+            className={`bg-white dark:bg-neutral-900 rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none border hover:bg-neutral-50 dark:hover:bg-neutral-800 ${activeFilterTab === 'Cancel'
+              ? 'border-[#5b6472] bg-[#f1f2f4] dark:bg-neutral-800 shadow-sm'
+              : 'border-[#E7E1D2] dark:border-neutral-800'
+              }`}
           >
             {activeFilterTab === 'Cancel' && (
               <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#5b6472]" />
@@ -5016,11 +5107,10 @@ export const SalesTab: React.FC = () => {
             type="button"
             onClick={() => setIsFilterDrawerOpen(!isFilterDrawerOpen)}
             aria-label="Filter"
-            className={`inline-flex items-center justify-center md:justify-start gap-1.5 w-11 h-11 md:w-auto md:h-auto px-0 py-0 md:px-3.5 md:py-2.5 border rounded-[8px] font-['Lexend'] font-semibold text-[13px] transition cursor-pointer select-none shrink-0 ${
-              isFilterDrawerOpen
-                ? 'bg-[#eef3fa] border-[#2b5a9e] text-[#2b5a9e]'
-                : 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800 text-[#3d4451] dark:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-700'
-            }`}
+            className={`inline-flex items-center justify-center md:justify-start gap-1.5 w-11 h-11 md:w-auto md:h-auto px-0 py-0 md:px-3.5 md:py-2.5 border rounded-[8px] font-['Lexend'] font-semibold text-[13px] transition cursor-pointer select-none shrink-0 ${isFilterDrawerOpen
+              ? 'bg-[#eef3fa] border-[#2b5a9e] text-[#2b5a9e]'
+              : 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800 text-[#3d4451] dark:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-700'
+              }`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             <span className="hidden md:inline">Filter</span>
@@ -5034,7 +5124,7 @@ export const SalesTab: React.FC = () => {
             {/* MOBILE ONLY: Date Picker in Filter Drawer */}
             <div className="md:hidden col-span-full space-y-1">
               <label className="text-[10px] font-bold capitalize text-neutral-500 tracking-wider">Tanggal Order</label>
-              <DateRangePicker 
+              <DateRangePicker
                 startDate={globalStartDate}
                 endDate={globalEndDate}
                 presetLabel={globalDateLabel}
@@ -5143,7 +5233,7 @@ export const SalesTab: React.FC = () => {
           const isPinnedOrder = !!order.isPinned;
           const showReadyStockHighlight = !isPinnedOrder && isReadyStock;
           const showOverdueHighlight = !isPinnedOrder && !showReadyStockHighlight && isOverdue;
-          
+
           let cardBgClass = '!bg-white dark:!bg-neutral-900 !border-[#E7E1D2] dark:!border-neutral-800';
           if (order.isPinned) {
             cardBgClass = '!bg-amber-50 dark:!bg-amber-900/10 !border-amber-200 dark:!border-amber-900/30';
@@ -5205,8 +5295,8 @@ export const SalesTab: React.FC = () => {
                 {order.orderNumber && (
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <span className="text-[12px] font-mono text-neutral-600 dark:text-neutral-400">{order.orderNumber}</span>
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         if (navigator.clipboard) {
@@ -5230,7 +5320,7 @@ export const SalesTab: React.FC = () => {
                 {/* Baris 4: Date + Tags + COD */}
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2 text-[11px] leading-tight text-neutral-500 dark:text-neutral-400">
                   <span className="font-medium">{formattedDate}</span>
-                  
+
                   {showReadyStockHighlight && (
                     <span className="inline-flex items-center gap-0.5 text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400 px-1 py-0.5 rounded-[4px] font-semibold"><Check className="h-3 w-3" />Stok siap</span>
                   )}
@@ -5325,7 +5415,7 @@ export const SalesTab: React.FC = () => {
                     <button type="button" className="kbi-ocard__mini" title="Kembali ke Status Sebelumnya" aria-label="Kembali ke status sebelumnya"
                       onClick={() => {
                         let msg = '';
-                        let cb = () => {};
+                        let cb = () => { };
                         if (order.status === 'packed') {
                           msg = "Apakah kamu yakin ingin kembali ke status 'Pending'?";
                           cb = () => handleRevertPackedToDraft(order);
@@ -5358,10 +5448,10 @@ export const SalesTab: React.FC = () => {
                 {isDraftLike && isStaffValue ? (() => {
                   const isEstShippingInFuture = isShippingDateFuture(order.estimatedShippingDate);
                   return (
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       className={`kbi-ocard__cta ${isEstShippingInFuture ? 'opacity-55 !bg-indigo-400/80 dark:!bg-indigo-900/60' : ''}`}
-                      style={{ 
+                      style={{
                         backgroundColor: isEstShippingInFuture ? '#818cf8' : '#6366f1',
                         opacity: isEstShippingInFuture ? 0.55 : 1,
                         filter: isEstShippingInFuture ? 'saturate(0.75)' : undefined
@@ -5528,8 +5618,8 @@ export const SalesTab: React.FC = () => {
                 const orderDateMs = getOrderDateMs(order);
                 const formattedDate = orderDateMs ? new Date(orderDateMs).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }) : 'N/A';
 
-                const shipDateMs = order.shipment?.shippingDate?.seconds 
-                  ? order.shipment.shippingDate.seconds * 1000 
+                const shipDateMs = order.shipment?.shippingDate?.seconds
+                  ? order.shipment.shippingDate.seconds * 1000
                   : (order.shippedAt?.seconds ? order.shippedAt.seconds * 1000 : null);
                 let shippedDateFormatted: string | null = null;
                 if (shipDateMs) {
@@ -5551,15 +5641,15 @@ export const SalesTab: React.FC = () => {
                 const isPinnedOrder = !!order.isPinned;
                 const showReadyStockHighlight = !isPinnedOrder && isReadyStock;
                 const showOverdueHighlight = !isPinnedOrder && !showReadyStockHighlight && isOverdue;
-              
-              let cardBgClass = 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800';
-              if (order.isPinned) {
-                cardBgClass = 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/30';
-              } else if (showReadyStockHighlight) {
-                cardBgClass = 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/30';
-              } else if (showOverdueHighlight) {
-                cardBgClass = isCritical ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30' : 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-900/30';
-              }
+
+                let cardBgClass = 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800';
+                if (order.isPinned) {
+                  cardBgClass = 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/30';
+                } else if (showReadyStockHighlight) {
+                  cardBgClass = 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/30';
+                } else if (showOverdueHighlight) {
+                  cardBgClass = isCritical ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-900/30' : 'bg-orange-50 dark:bg-orange-900/10 border-orange-200 dark:border-orange-900/30';
+                }
 
                 const isRowHovered = hoveredRowId === order.id;
 
@@ -5618,15 +5708,15 @@ export const SalesTab: React.FC = () => {
 
                 return (
                   <React.Fragment key={`${order.id}-${orderIdx}`}>
-                    <tr 
+                    <tr
                       onMouseEnter={() => setHoveredRowId(order.id)}
                       onMouseLeave={() => setHoveredRowId(null)}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
                         if (
-                          target.closest('button') || 
-                          target.closest('a') || 
-                          target.closest('input') || 
+                          target.closest('button') ||
+                          target.closest('a') ||
+                          target.closest('input') ||
                           target.closest('select')
                         ) {
                           return;
@@ -5697,7 +5787,7 @@ export const SalesTab: React.FC = () => {
                           const channelObj = resolvedChannels.find(c => (c.name || '').toLowerCase() === channelName.toLowerCase());
                           const channelColor = getChannelColor(channelName, channelObj);
                           return (
-                            <span 
+                            <span
                               className="text-[11px] font-bold tracking-wider px-2.5 py-1 rounded-md inline-block max-w-[120px] truncate border"
                               style={{
                                 color: channelColor,
@@ -5830,11 +5920,10 @@ export const SalesTab: React.FC = () => {
                                     e.stopPropagation();
                                     handleTogglePin(order);
                                   }}
-                                  className={`w-7 h-7 rounded-[7px] transition flex items-center justify-center cursor-pointer ${
-                                    order.isPinned
-                                      ? 'text-[#6366f1] bg-[#eef2ff] dark:bg-indigo-955/40 hover:bg-[#e0e7ff]'
-                                      : 'text-[#9ca3af] hover:text-[#0d1117] dark:hover:text-white hover:bg-[#f3f4f6] dark:hover:bg-neutral-800'
-                                  }`}
+                                  className={`w-7 h-7 rounded-[7px] transition flex items-center justify-center cursor-pointer ${order.isPinned
+                                    ? 'text-[#6366f1] bg-[#eef2ff] dark:bg-indigo-955/40 hover:bg-[#e0e7ff]'
+                                    : 'text-[#9ca3af] hover:text-[#0d1117] dark:hover:text-white hover:bg-[#f3f4f6] dark:hover:bg-neutral-800'
+                                    }`}
                                   title={order.isPinned ? "Unpin Orderan" : "Pin Orderan"}
                                 >
                                   <Pin className={`h-3.5 w-3.5 ${order.isPinned ? 'fill-current text-[#6366f1]' : ''}`} />
@@ -5878,7 +5967,7 @@ export const SalesTab: React.FC = () => {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   let msg = "";
-                                  let cb = () => {};
+                                  let cb = () => { };
                                   if (order.status === 'packed') {
                                     msg = "Apakah kamu yakin ingin kembali ke status 'Pending'?";
                                     cb = () => handleRevertPackedToDraft(order);
@@ -5894,7 +5983,7 @@ export const SalesTab: React.FC = () => {
                                     msg = `Apakah kamu yakin ingin kembali ke status '${targetLabel}'?`;
                                     cb = () => handleRevertToPreceding(order);
                                   }
-                                  
+
                                   if (msg) {
                                     setRevertConfirmState({ message: msg, onConfirm: cb });
                                   }
@@ -5946,11 +6035,10 @@ export const SalesTab: React.FC = () => {
                                   }
                                 }}
                                 title={isEstShippingInFuture ? `Belum waktunya dikemas, request customer: ${order.estimatedShippingDate.replace(/-/g, '/')}` : undefined}
-                                className={`px-3.5 py-1.5 rounded-[7px] font-['Lexend'] font-semibold text-[12px] transition shadow-2xs cursor-pointer select-none ml-1 ${
-                                  isEstShippingInFuture
-                                    ? 'bg-[#6366f1]/35 hover:bg-[#6366f1]/50 text-white/60 dark:bg-[#6366f1]/25 dark:text-white/50 border border-[#6366f1]/25'
-                                    : 'bg-[#6366f1] hover:bg-[#4f46e5] text-white'
-                                }`}
+                                className={`px-3.5 py-1.5 rounded-[7px] font-['Lexend'] font-semibold text-[12px] transition shadow-2xs cursor-pointer select-none ml-1 ${isEstShippingInFuture
+                                  ? 'bg-[#6366f1]/35 hover:bg-[#6366f1]/50 text-white/60 dark:bg-[#6366f1]/25 dark:text-white/50 border border-[#6366f1]/25'
+                                  : 'bg-[#6366f1] hover:bg-[#4f46e5] text-white'
+                                  }`}
                               >
                                 Kemas
                               </button>
@@ -6096,7 +6184,7 @@ export const SalesTab: React.FC = () => {
 
       {/* Invoice Printer Window Overlay */}
       {printInvoiceOrder && (
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setPrintInvoiceOrder(null);
@@ -6108,14 +6196,14 @@ export const SalesTab: React.FC = () => {
             <div className="p-5 border-b border-neutral-150 dark:border-neutral-800 flex items-center justify-between no-print-section">
               <span className="text-sm font-bold flex items-center gap-2"><Printer className="h-4 w-4 text-brand-500" /> CETAK FORMAT INVOICE RETAIL</span>
               <div className="flex gap-2">
-                <button 
+                <button
                   onClick={handleDownloadPDF}
                   className="p-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-500 shadow-sm transition cursor-pointer flex items-center justify-center"
                   title="Download PDF"
                 >
                   <Download className="h-4 w-4" />
                 </button>
-                <button 
+                <button
                   onClick={() => setPrintInvoiceOrder(null)}
                   className="px-3.5 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded text-xs font-semibold transition"
                 >
@@ -6136,51 +6224,51 @@ export const SalesTab: React.FC = () => {
                         {/* Left: Book & Hands Icon */}
                         <g transform="translate(10, 10)">
                           {/* Book cover (orange-red/coral fill, deep teal stroke) */}
-                          <path d="M42,20 C42,10 32,3 22,3 C12,3 2,10 2,20 L2,65 C2,75 12,82 22,82 L72,82 C82,82 92,75 92,65 L92,-5 L42,-5 Z" fill="#ea7462" stroke="#1d4d5e" strokeWidth="4.5" strokeLinejoin="round"/>
-                          <path d="M42,20 L42,82" stroke="#1d4d5e" strokeWidth="4.5" strokeLinecap="round"/>
-                          
+                          <path d="M42,20 C42,10 32,3 22,3 C12,3 2,10 2,20 L2,65 C2,75 12,82 22,82 L72,82 C82,82 92,75 92,65 L92,-5 L42,-5 Z" fill="#ea7462" stroke="#1d4d5e" strokeWidth="4.5" strokeLinejoin="round" />
+                          <path d="M42,20 L42,82" stroke="#1d4d5e" strokeWidth="4.5" strokeLinecap="round" />
+
                           {/* Spine top page curve */}
-                          <path d="M42,-5 C42,5 32,12 22,12 C12,12 2,5 2,-5" fill="#ffffff" stroke="#1d4d5e" strokeWidth="4.5" strokeLinejoin="round"/>
-                          <path d="M38,8 C38,8 30,14 22,14 C14,14 6,8 6,8" stroke="#1d4d5e" strokeWidth="2" strokeLinecap="round"/>
-                          
+                          <path d="M42,-5 C42,5 32,12 22,12 C12,12 2,5 2,-5" fill="#ffffff" stroke="#1d4d5e" strokeWidth="4.5" strokeLinejoin="round" />
+                          <path d="M38,8 C38,8 30,14 22,14 C14,14 6,8 6,8" stroke="#1d4d5e" strokeWidth="2" strokeLinecap="round" />
+
                           {/* Hands cradling the book */}
-                          <path d="M12,42 C-10,50 -5,88 28,95 C60,98 96,85 102,58 C104,46 90,43 87,50 C77,70 54,80 34,77 C18,75 18,48 28,42" stroke="#1d4d5e" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="#ffffff"/>
-                          <path d="M94,52 C102,62 98,72 82,78 M89,66 C96,74 89,81 76,86" stroke="#1d4d5e" strokeWidth="4" strokeLinecap="round"/>
-                          <path d="M14,58 C1,66 11,80 22,78 M23,68 C11,76 18,87 29,84 M33,75 C24,82 30,92 41,87" stroke="#1d4d5e" strokeWidth="3" strokeLinecap="round"/>
-                          <path d="M68,28 C58,23 52,30 56,38 C60,46 80,52 87,50" stroke="#1d4d5e" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="#ffffff"/>
+                          <path d="M12,42 C-10,50 -5,88 28,95 C60,98 96,85 102,58 C104,46 90,43 87,50 C77,70 54,80 34,77 C18,75 18,48 28,42" stroke="#1d4d5e" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="#ffffff" />
+                          <path d="M94,52 C102,62 98,72 82,78 M89,66 C96,74 89,81 76,86" stroke="#1d4d5e" strokeWidth="4" strokeLinecap="round" />
+                          <path d="M14,58 C1,66 11,80 22,78 M23,68 C11,76 18,87 29,84 M33,75 C24,82 30,92 41,87" stroke="#1d4d5e" strokeWidth="3" strokeLinecap="round" />
+                          <path d="M68,28 C58,23 52,30 56,38 C60,46 80,52 87,50" stroke="#1d4d5e" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="#ffffff" />
                         </g>
-                        
+
                         {/* Right Text: KANGEN BUKU INDO */}
                         <g transform="translate(135, 10)">
                           {/* K */}
-                          <path d="M15,15 L15,48 M35,15 L15,31 L35,48" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M15,15 L15,48 M35,15 L15,31 L35,48" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* A */}
-                          <path d="M45,48 L58,15 L71,48 M51,36 L65,36" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M45,48 L58,15 L71,48 M51,36 L65,36" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* N */}
-                          <path d="M82,48 L82,15 L102,48 L102,15" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M82,48 L82,15 L102,48 L102,15" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* G */}
-                          <path d="M135,24 C132,16 122,14 116,18 C110,22 108,31 112,39 C116,47 126,48 132,44 L132,32 L123,32" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M135,24 C132,16 122,14 116,18 C110,22 108,31 112,39 C116,47 126,48 132,44 L132,32 L123,32" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* E */}
-                          <path d="M145,15 L165,15 M145,31.5 L160,31.5 M145,48 L165,48 M145,15 L145,48" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M145,15 L165,15 M145,31.5 L160,31.5 M145,48 L165,48 M145,15 L145,48" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* N */}
-                          <path d="M175,48 L175,15 L195,48 L195,15" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
-                          
+                          <path d="M175,48 L175,15 L195,48 L195,15" stroke="#00829d" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+
                           {/* B */}
-                          <path d="M15,62 L15,95 L28,95 C33,95 38,91 38,86.5 C38,82 34,78.5 28,78.5 C34,78.5 38,75 38,70.5 C38,65 33,62 28,62 Z" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" fill="#ea7462"/>
+                          <path d="M15,62 L15,95 L28,95 C33,95 38,91 38,86.5 C38,82 34,78.5 28,78.5 C34,78.5 38,75 38,70.5 C38,65 33,62 28,62 Z" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" fill="#ea7462" />
                           {/* U */}
-                          <path d="M48,62 L48,85 C48,91 53,95 59,95 C65,95 70,91 70,85 L70,62" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M48,62 L48,85 C48,91 53,95 59,95 C65,95 70,91 70,85 L70,62" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* K */}
-                          <path d="M80,62 L80,95 M100,62 L80,78 L100,95" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M80,62 L80,95 M100,62 L80,78 L100,95" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* U */}
-                          <path d="M110,62 L110,85 C110,91 115,95 121,95 C127,95 132,91 132,85 L132,62" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M110,62 L110,85 C110,91 115,95 121,95 C127,95 132,91 132,85 L132,62" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* I */}
-                          <path d="M150,62 L150,95" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M150,62 L150,95" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* N */}
-                          <path d="M162,95 L162,62 L182,95 L182,62" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M162,95 L162,62 L182,95 L182,62" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* D */}
-                          <path d="M192,62 L192,95 L205,95 C215,95 222,87 222,78.5 C222,70 215,62 205,62 Z" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" fill="#ea7462"/>
+                          <path d="M192,62 L192,95 L205,95 C215,95 222,87 222,78.5 C222,70 215,62 205,62 Z" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" fill="#ea7462" />
                           {/* O */}
-                          <path d="M245,62 C236,62 230,70 230,78.5 C230,87 236,95 245,95 C254,95 260,87 260,78.5 C260,70 254,62 245,62 Z" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M245,62 C236,62 230,70 230,78.5 C230,87 236,95 245,95 C254,95 260,87 260,78.5 C260,70 254,62 245,62 Z" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                         </g>
                       </svg>
                     )}
@@ -6258,29 +6346,29 @@ export const SalesTab: React.FC = () => {
       {isProsesConfirmOpen && selectedOrderForProses && (() => {
         let isEarlyShipping = false;
         if (selectedOrderForProses.estimatedShippingDate && prosesDate) {
-           const estDate = new Date(selectedOrderForProses.estimatedShippingDate);
-           estDate.setHours(0,0,0,0);
-           const pDate = new Date(prosesDate);
-           pDate.setHours(0,0,0,0);
-           if (estDate > pDate) {
-              isEarlyShipping = true;
-           }
+          const estDate = new Date(selectedOrderForProses.estimatedShippingDate);
+          estDate.setHours(0, 0, 0, 0);
+          const pDate = new Date(prosesDate);
+          pDate.setHours(0, 0, 0, 0);
+          if (estDate > pDate) {
+            isEarlyShipping = true;
+          }
         }
 
         const isOrderAlreadyDeducted = selectedOrderForProses.status === 'packed' || selectedOrderForProses.status === 'shipped' || selectedOrderForProses.status === 'confirmed' || selectedOrderForProses.status === 'completed';
-        const insufficientItemsList: {name: string, stock: number, needed: number}[] = [];
+        const insufficientItemsList: { name: string, stock: number, needed: number }[] = [];
         for (const item of selectedOrderForProses.items || []) {
-           if (item.markedTertinggal || item.markedRefund) continue;
-           const physical = getPhysicalOnHandStockForBook(item.bookId, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords);
-           const available = isOrderAlreadyDeducted ? physical + item.qty : physical;
-           if (available < item.qty) {
-             insufficientItemsList.push({name: item.bookName, stock: available, needed: item.qty});
-           }
+          if (item.markedTertinggal || item.markedRefund) continue;
+          const physical = getPhysicalOnHandStockForBook(item.bookId, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords);
+          const available = isOrderAlreadyDeducted ? physical + item.qty : physical;
+          if (available < item.qty) {
+            insufficientItemsList.push({ name: item.bookName, stock: available, needed: item.qty });
+          }
         }
         const hasWarning = isEarlyShipping || insufficientItemsList.length > 0;
 
         return (
-          <div 
+          <div
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 handleCloseProsesModal();
@@ -6298,7 +6386,7 @@ export const SalesTab: React.FC = () => {
               </div>
 
               <div className="p-5 space-y-4 text-xs font-text">
-                
+
                 {/* 1. [Modal Top Info Grid] */}
                 <div className="p-4 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl">
                   <div className="grid grid-cols-2 gap-4 text-xs">
@@ -6326,11 +6414,11 @@ export const SalesTab: React.FC = () => {
                           <div key={idx} className={`flex items-center gap-3 p-1.5 rounded-lg ${isTertinggal ? 'bg-neutral-200/60 dark:bg-neutral-800/80 opacity-60 border border-neutral-300 dark:border-neutral-700' : ''}`}>
                             <span className="text-neutral-400 dark:text-neutral-500">•</span>
                             {resolvedCover ? (
-                              <img 
-                                src={resolvedCover} 
-                                alt={it.bookName} 
+                              <img
+                                src={resolvedCover}
+                                alt={it.bookName}
                                 referrerPolicy="no-referrer"
-                                className="w-10 h-12 object-cover rounded border border-neutral-200 dark:border-neutral-800 shrink-0 cursor-pointer hover:opacity-80 transition" 
+                                className="w-10 h-12 object-cover rounded border border-neutral-200 dark:border-neutral-800 shrink-0 cursor-pointer hover:opacity-80 transition"
                                 onClick={(e) => { e.stopPropagation(); setPreviewImage({ url: resolvedCover, title: it.bookName }); }}
                               />
                             ) : (
@@ -6444,11 +6532,10 @@ export const SalesTab: React.FC = () => {
                         placeholder="Masukkan atau scan barcode resi pengiriman..."
                         value={prosesResi}
                         onChange={(e) => setProsesResi(e.target.value.toUpperCase().replace(/\s/g, ''))}
-                        className={`w-full pl-3 pr-10 py-2 border rounded-lg text-sm text-neutral-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-brand-500 transition-all ${
-                          shakeFields['prosesResi']
-                            ? 'border-red-500 ring-1 ring-red-500 bg-red-50/50 dark:bg-red-950/20'
-                            : 'border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950'
-                        }`}
+                        className={`w-full pl-3 pr-10 py-2 border rounded-lg text-sm text-neutral-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-brand-500 transition-all ${shakeFields['prosesResi']
+                          ? 'border-red-500 ring-1 ring-red-500 bg-red-50/50 dark:bg-red-950/20'
+                          : 'border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950'
+                          }`}
                       />
                       <button
                         type="button"
@@ -6474,7 +6561,7 @@ export const SalesTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 4. Warnings */ }
+                {/* 4. Warnings */}
                 {(isEarlyShipping || insufficientItemsList.length > 0) && (
                   <div className="space-y-2 mb-4">
                     {isEarlyShipping && (
@@ -6520,7 +6607,7 @@ export const SalesTab: React.FC = () => {
                           orderNumber: finalOrderNo,
                           updatedAt: Timestamp.now()
                         };
-                        
+
                         if (cleanResi) {
                           updateData.shipment = {
                             orderNumber: finalOrderNo,
@@ -6529,9 +6616,9 @@ export const SalesTab: React.FC = () => {
                             arrangedAt: selectedOrderForProses.shipment?.arrangedAt || Timestamp.now()
                           };
                         }
-                        
+
                         await updateDoc(orderRef, updateData);
-                        
+
                         // Tutup modal sesuai kesepakatan 
                         await stopScanning();
                         setIsProsesConfirmOpen(false);
@@ -6622,7 +6709,7 @@ export const SalesTab: React.FC = () => {
                   <RefreshCw className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
                   <span className="hidden sm:inline">{cameraFacingMode === 'environment' ? 'Belakang' : 'Depan'}</span>
                 </button>
-                <button 
+                <button
                   onClick={stopScanning}
                   className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-150 p-1 rounded-lg transition"
                 >
@@ -6634,7 +6721,7 @@ export const SalesTab: React.FC = () => {
             <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-black border border-neutral-200 dark:border-neutral-800 flex items-center justify-center">
               {/* Target scan wrapper */}
               <div id="qr-reader" className={`w-full h-full object-cover ${cameraFacingMode === 'user' ? 'video-mirror-user' : 'video-mirror-environment'}`}></div>
-              
+
               {/* Overlay button on top of camera stream for quick mobile flip */}
               <div className="absolute top-2 right-2 z-20">
                 <button
@@ -6646,7 +6733,7 @@ export const SalesTab: React.FC = () => {
                   <span>Kamera {cameraFacingMode === 'environment' ? 'Belakang' : 'Depan'}</span>
                 </button>
               </div>
-              
+
               {/* High precision landscape visual guide corners covering the wide barcode region */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-3">
                 <div className="w-[95%] h-[40%] border border-dashed border-brand-400/80 rounded-lg relative flex items-center justify-center bg-brand-500/5">
@@ -6655,7 +6742,7 @@ export const SalesTab: React.FC = () => {
                   <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-brand-500 rounded-tr-sm"></div>
                   <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-brand-500 rounded-bl-sm"></div>
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-brand-500 rounded-br-sm"></div>
-                  
+
                   {/* High responsiveness guidance message within viewport */}
                   <span className="absolute bottom-1.5 text-[8px] text-brand-300 tracking-wider uppercase bg-neutral-950/45 px-1.5 py-0.5 rounded backdrop-blur-xs font-numeric">
                     Sejajarkan Barcode Di Sini
@@ -6703,84 +6790,84 @@ export const SalesTab: React.FC = () => {
         const transferAlreadyPaid = targetOrder?.paymentStatus === 'paid' || (targetOrder?.amountPaid || 0) >= (targetOrder?.totalPrice || 0) - 5;
         const blockedByUnpaidTransfer = isTransfer && !transferAlreadyPaid;
         return (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setConfirmingSelesaiOrderId(null);
-            }
-          }}
-          className={getModalOverlayClass(sidebarHidden, 'z-50')}
-        >
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto">
-            <div className="flex items-center gap-2 text-emerald-600">
-              <Check className="h-5 w-5" />
-              <h3 className="font-bold text-neutral-800 dark:text-neutral-100">Konfirmasi Pembayaran Selesai?</h3>
-            </div>
-            <p className="text-xs text-neutral-500 leading-relaxed">
-              Konfirmasi status penyelesaian transaksi order ini.
-            </p>
-            <div className={`space-y-1 p-3 rounded-xl border text-xs ${blockedByUnpaidTransfer ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900 text-red-700 dark:text-red-400' : 'bg-neutral-50 dark:bg-neutral-950/40 border-neutral-100 dark:border-neutral-800 text-neutral-500'}`}>
-              {isTransfer ? (
-                blockedByUnpaidTransfer
-                  ? <span>Metode <b>Transfer</b>, tapi order ini <b>belum tercatat lunas</b>. Catat penerimaan transfer dulu lewat tab "Penerimaan Transfer (Income)" sebelum menyelesaikan order.</span>
-                  : <span>Metode <b>Transfer</b> (sudah lunas) &rarr; jurnal Dr Pendapatan Diterima di Muka / Cr Revenue. Order tidak masuk Piutang Usaha.</span>
-              ) : (
-                <span>Metode <b>COD</b> &rarr; order akan otomatis masuk <b>Piutang Usaha</b> (Dr Piutang Usaha / Cr Revenue).</span>
-              )}
-            </div>
-            {!isTransfer && (
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-300">Umur Piutang</label>
-                <select
-                  value={selesaiTermsDays}
-                  onChange={(e) => setSelesaiTermsDays(Number(e.target.value) as 30 | 60 | 90)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-200 cursor-pointer"
-                >
-                  <option value={30}>30 Hari</option>
-                  <option value={60}>60 Hari</option>
-                  <option value={90}>90 Hari</option>
-                </select>
-                <p className="text-[10px] text-neutral-400 leading-relaxed">
-                  Jatuh tempo dihitung {selesaiTermsDays} hari sejak hari ini.
-                </p>
+          <div
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setConfirmingSelesaiOrderId(null);
+              }
+            }}
+            className={getModalOverlayClass(sidebarHidden, 'z-50')}
+          >
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto">
+              <div className="flex items-center gap-2 text-emerald-600">
+                <Check className="h-5 w-5" />
+                <h3 className="font-bold text-neutral-800 dark:text-neutral-100">Konfirmasi Pembayaran Selesai?</h3>
               </div>
-            )}
-            <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs">
-              <button
-                onClick={() => setConfirmingSelesaiOrderId(null)}
-                className="px-3.5 py-1.5 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 rounded text-neutral-600 cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                disabled={isSelesaiSubmitting || blockedByUnpaidTransfer}
-                onClick={async () => {
-                  if (isSelesaiSubmitting || blockedByUnpaidTransfer) return;
-                  if (!(await promptDoubleConfirmation("Menyelesaikan Pembayaran dan Status Orderan"))) return;
-                  try {
-                    setIsSelesaiSubmitting(true);
-                    await completeSalesOrderTransaction(confirmingSelesaiOrderId!, user?.uid || 'anonymous', selesaiTermsDays);
-                    setConfirmingSelesaiOrderId(null);
-                  } catch (err: any) {
-                    console.error("Error setting order completed", err);
-                    alert(err?.message || 'Gagal menyelesaikan order.');
-                  } finally {
-                    setIsSelesaiSubmitting(false);
-                  }
-                }}
-                className={`px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-bold cursor-pointer ${(isSelesaiSubmitting || blockedByUnpaidTransfer) ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {isSelesaiSubmitting ? 'Memproses...' : 'Ya, Selesai & Berhasil'}
-              </button>
+              <p className="text-xs text-neutral-500 leading-relaxed">
+                Konfirmasi status penyelesaian transaksi order ini.
+              </p>
+              <div className={`space-y-1 p-3 rounded-xl border text-xs ${blockedByUnpaidTransfer ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900 text-red-700 dark:text-red-400' : 'bg-neutral-50 dark:bg-neutral-950/40 border-neutral-100 dark:border-neutral-800 text-neutral-500'}`}>
+                {isTransfer ? (
+                  blockedByUnpaidTransfer
+                    ? <span>Metode <b>Transfer</b>, tapi order ini <b>belum tercatat lunas</b>. Catat penerimaan transfer dulu lewat tab "Penerimaan Transfer (Income)" sebelum menyelesaikan order.</span>
+                    : <span>Metode <b>Transfer</b> (sudah lunas) &rarr; jurnal Dr Pendapatan Diterima di Muka / Cr Revenue. Order tidak masuk Piutang Usaha.</span>
+                ) : (
+                  <span>Metode <b>COD</b> &rarr; order akan otomatis masuk <b>Piutang Usaha</b> (Dr Piutang Usaha / Cr Revenue).</span>
+                )}
+              </div>
+              {!isTransfer && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-300">Umur Piutang</label>
+                  <select
+                    value={selesaiTermsDays}
+                    onChange={(e) => setSelesaiTermsDays(Number(e.target.value) as 30 | 60 | 90)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-700 dark:text-neutral-200 cursor-pointer"
+                  >
+                    <option value={30}>30 Hari</option>
+                    <option value={60}>60 Hari</option>
+                    <option value={90}>90 Hari</option>
+                  </select>
+                  <p className="text-[10px] text-neutral-400 leading-relaxed">
+                    Jatuh tempo dihitung {selesaiTermsDays} hari sejak hari ini.
+                  </p>
+                </div>
+              )}
+              <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs">
+                <button
+                  onClick={() => setConfirmingSelesaiOrderId(null)}
+                  className="px-3.5 py-1.5 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 rounded text-neutral-600 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  disabled={isSelesaiSubmitting || blockedByUnpaidTransfer}
+                  onClick={async () => {
+                    if (isSelesaiSubmitting || blockedByUnpaidTransfer) return;
+                    if (!(await promptDoubleConfirmation("Menyelesaikan Pembayaran dan Status Orderan"))) return;
+                    try {
+                      setIsSelesaiSubmitting(true);
+                      await completeSalesOrderTransaction(confirmingSelesaiOrderId!, user?.uid || 'anonymous', selesaiTermsDays);
+                      setConfirmingSelesaiOrderId(null);
+                    } catch (err: any) {
+                      console.error("Error setting order completed", err);
+                      alert(err?.message || 'Gagal menyelesaikan order.');
+                    } finally {
+                      setIsSelesaiSubmitting(false);
+                    }
+                  }}
+                  className={`px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-bold cursor-pointer ${(isSelesaiSubmitting || blockedByUnpaidTransfer) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {isSelesaiSubmitting ? 'Memproses...' : 'Ya, Selesai & Berhasil'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
         );
       })()}
 
       {/* 3. Return "Diambil" Confirmation Modal */}
       {confirmingDiambilOrder && (
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setConfirmingDiambilOrder(null);
@@ -6811,11 +6898,10 @@ export const SalesTab: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedReturnMode('stock')}
-                className={`p-3 border rounded-xl space-y-1 text-left transition cursor-pointer ${
-                  selectedReturnMode === 'stock'
-                    ? 'border-brand-600 dark:border-brand-500 bg-brand-50/50 dark:bg-brand-950/30 text-brand-900 dark:text-brand-200 ring-2 ring-brand-500/20'
-                    : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:bg-neutral-50 text-neutral-800 dark:text-neutral-100'
-                }`}
+                className={`p-3 border rounded-xl space-y-1 text-left transition cursor-pointer ${selectedReturnMode === 'stock'
+                  ? 'border-brand-600 dark:border-brand-500 bg-brand-50/50 dark:bg-brand-950/30 text-brand-900 dark:text-brand-200 ring-2 ring-brand-500/20'
+                  : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:bg-neutral-50 text-neutral-800 dark:text-neutral-100'
+                  }`}
               >
                 <div className="flex items-center gap-1.5 font-bold text-brand-700 dark:text-brand-400">
                   <Check className="h-3.5 w-3.5" />
@@ -6828,11 +6914,10 @@ export const SalesTab: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedReturnMode('writeoff')}
-                className={`p-3 border rounded-xl space-y-1 text-left transition cursor-pointer ${
-                  selectedReturnMode === 'writeoff'
-                    ? 'border-rose-500 dark:border-rose-550 bg-rose-50/50 dark:bg-rose-950/20 text-rose-900 dark:text-rose-200 ring-2 ring-rose-500/20'
-                    : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:bg-neutral-50 text-neutral-800 dark:text-neutral-100'
-                }`}
+                className={`p-3 border rounded-xl space-y-1 text-left transition cursor-pointer ${selectedReturnMode === 'writeoff'
+                  ? 'border-rose-500 dark:border-rose-550 bg-rose-50/50 dark:bg-rose-950/20 text-rose-900 dark:text-rose-200 ring-2 ring-rose-500/20'
+                  : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:bg-neutral-50 text-neutral-800 dark:text-neutral-100'
+                  }`}
               >
                 <div className="flex items-center gap-1.5 font-bold text-rose-600">
                   <XCircle className="h-3.5 w-3.5" />
@@ -6850,8 +6935,8 @@ export const SalesTab: React.FC = () => {
               >
                 Ya, Konfirmasi
               </button>
-              <button 
-                onClick={() => setConfirmingDiambilOrder(null)} 
+              <button
+                onClick={() => setConfirmingDiambilOrder(null)}
                 className="px-3.5 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-350 font-bold rounded-lg cursor-pointer"
               >
                 Tutup
@@ -6870,8 +6955,8 @@ export const SalesTab: React.FC = () => {
           `!left-*` utilities into SalesOrderForm.css: Tailwind v4 emits real cascade
           layers, and a layered `!important` outranks the unlayered `!important` in
           mobile.css, so the mobile full-bleed reset could never win. */}
-            <NewOrderModalWrapper 
-        isOpen={isNewOrderOpen} 
+      <NewOrderModalWrapper
+        isOpen={isNewOrderOpen}
         onClose={() => {
           setIsNewOrderOpen(false);
           setEditingOrder(null);
@@ -6880,140 +6965,223 @@ export const SalesTab: React.FC = () => {
         isMobileScreen={isMobileScreen}
         sidebarHidden={sidebarHidden}
       >
-            <div className="kbi-so-card-header">
-              <div className="kbi-so-card-header-left">
-                <div className="kbi-so-icon-badge">
-                  <ShoppingBag className="w-[18px] h-[18px]" />
-                </div>
-                <h2 className="kbi-so-card-title">{editingOrder ? 'Edit Orderan' : 'Orderan Baru'}</h2>
-                <span className="kbi-so-status-pill"><span className="kbi-so-dot"></span>{editingOrder ? 'EDIT' : 'PENDING'}</span>
-                {buyerType === 'marketplace' && (
-                  <span className="kbi-so-marketplace-pill" id="marketplacePill"><span className="kbi-so-dot"></span>MARKETPLACE</span>
-                )}
-                {buyerType === 'langsung' && (
-                  <span className="kbi-so-direct-pill" id="directPill"><span className="kbi-so-dot"></span>DIRECT</span>
-                )}
-                {buyerType === 'reseller' && (
-                  <span className="kbi-so-reseller-pill" id="resellerPill"><span className="kbi-so-dot"></span>RESELLER</span>
-                )}
-              </div>
-              <button className="kbi-so-icon-btn" onClick={() => { setIsNewOrderOpen(false); setEditingOrder(null); resetOrderForm(); }}>
-                <X className="w-[18px] h-[18px]" />
+        <div className="kbi-so-card-header">
+          <div className="kbi-so-card-header-left">
+            <div className="kbi-so-icon-badge">
+              <ShoppingBag className="w-[18px] h-[18px]" />
+            </div>
+            <h2 className="kbi-so-card-title">{editingOrder ? 'Edit Orderan' : 'Orderan Baru'}</h2>
+            <span className="kbi-so-status-pill"><span className="kbi-so-dot"></span>{editingOrder ? 'EDIT' : 'PENDING'}</span>
+            {buyerType === 'marketplace' && (
+              <span className="kbi-so-marketplace-pill" id="marketplacePill"><span className="kbi-so-dot"></span>MARKETPLACE</span>
+            )}
+            {buyerType === 'langsung' && (
+              <span className="kbi-so-direct-pill" id="directPill"><span className="kbi-so-dot"></span>DIRECT</span>
+            )}
+            {buyerType === 'reseller' && (
+              <span className="kbi-so-reseller-pill" id="resellerPill"><span className="kbi-so-dot"></span>RESELLER</span>
+            )}
+          </div>
+          <button className="kbi-so-icon-btn" onClick={() => { setIsNewOrderOpen(false); setEditingOrder(null); resetOrderForm(); }}>
+            <X className="w-[18px] h-[18px]" />
+          </button>
+        </div>
+
+        <div className="kbi-so-card-body">
+          {/* LEFT: Kategori Order */}
+          <div className="kbi-so-col-left">
+            <p className="kbi-so-col-heading">Kategori Order</p>
+
+            <div className="kbi-so-buyer-type-toggle">
+              <button
+                type="button"
+                disabled={isFormLockedForMetadata}
+                className={buyerType === 'marketplace' ? 'active bt-marketplace' : ''}
+                onClick={() => handleSelectBuyerType('marketplace')}
+              >
+                Marketplace
+              </button>
+              <button
+                type="button"
+                disabled={isFormLockedForMetadata}
+                className={buyerType === 'langsung' ? 'active bt-langsung' : ''}
+                onClick={() => handleSelectBuyerType('langsung')}
+              >
+                Direct Order
+              </button>
+              <button
+                type="button"
+                disabled={isFormLockedForMetadata}
+                className={buyerType === 'reseller' ? 'active bt-reseller' : ''}
+                onClick={() => handleSelectBuyerType('reseller')}
+              >
+                Reseller Order
               </button>
             </div>
 
-            <div className="kbi-so-card-body">
-              {/* LEFT: Kategori Order */}
-              <div className="kbi-so-col-left">
-                <p className="kbi-so-col-heading">Kategori Order</p>
+            {buyerType === 'reseller' && (
+              <div className="kbi-so-field">
+                <label className="kbi-so-label">Pilih Reseller</label>
+                {!selectedPartner ? (
+                  <div className="kbi-so-reseller-search-wrap">
+                    <input
+                      disabled={isFormLockedForMetadata}
+                      className="kbi-so-ledger-input"
+                      placeholder="Pilih dari daftar (opsional)..."
+                      value={configInputVal}
+                      onChange={(e) => setConfigInputVal(e.target.value)}
+                    />
+                    <div className="kbi-so-reseller-suggestions" style={{ position: 'relative', marginTop: 4, display: 'block' }}>
+                      {partners.filter(p => p.name?.toLowerCase().includes(configInputVal.toLowerCase())).map(p => (
+                        <button key={p.id} type="button" className="kbi-so-reseller-row" onClick={() => { setSelectedPartner({ id: p.id, name: p.name, profitSharePercent: p.profitSharePercent }); setConfigInputVal(''); }}>
+                          <span>{p.name}</span>
 
-                <div className="kbi-so-buyer-type-toggle">
-                  <button 
-                    type="button" 
-                    className={buyerType === 'marketplace' ? 'active bt-marketplace' : ''}
-                    onClick={() => handleSelectBuyerType('marketplace')}
-                  >
-                    Marketplace
-                  </button>
-                  <button 
-                    type="button" 
-                    className={buyerType === 'langsung' ? 'active bt-langsung' : ''}
-                    onClick={() => handleSelectBuyerType('langsung')}
-                  >
-                    Direct Order
-                  </button>
-                  <button 
-                    type="button" 
-                    className={buyerType === 'reseller' ? 'active bt-reseller' : ''}
-                    onClick={() => handleSelectBuyerType('reseller')}
-                  >
-                    Reseller Order
-                  </button>
-                </div>
-
-                {buyerType === 'reseller' && (
-                  <div className="kbi-so-field">
-                    <label className="kbi-so-label">Pilih Reseller</label>
-                    {!selectedPartner ? (
-                      <div className="kbi-so-reseller-search-wrap">
-                        <input 
-                          className="kbi-so-ledger-input" 
-                          placeholder="Pilih dari daftar (opsional)..." 
-                          value={configInputVal}
-                          onChange={(e) => setConfigInputVal(e.target.value)}
-                        />
-                        <div className="kbi-so-reseller-suggestions" style={{position: 'relative', marginTop: 4, display: 'block'}}>
-                          {partners.filter(p => p.name?.toLowerCase().includes(configInputVal.toLowerCase())).map(p => (
-                            <button key={p.id} type="button" className="kbi-so-reseller-row" onClick={() => { setSelectedPartner({ id: p.id, name: p.name, profitSharePercent: p.profitSharePercent }); setConfigInputVal(''); }}>
-                              <span>{p.name}</span>
-                              
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="kbi-so-reseller-chip">
-                        <div>
-                          <div className="kbi-so-reseller-chip-name">{selectedPartner.name}</div>
-                          
-                        </div>
-                        <button type="button" onClick={() => setSelectedPartner(null)}>
-                          <X className="w-4 h-4" />
                         </button>
-                      </div>
-                    )}
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="kbi-so-reseller-chip">
+                    <div>
+                      <div className="kbi-so-reseller-chip-name">{selectedPartner.name}</div>
+
+                    </div>
+                    <button type="button" onClick={() => setSelectedPartner(null)}>
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 )}
+              </div>
+            )}
 
+            <div className="kbi-so-field">
+              <label className="kbi-so-label">Tanggal Pembelian *</label>
+              <input
+                type="date"
+                disabled={isFormLockedForMetadata}
+                className="kbi-so-ledger-input font-numeric"
+                value={orderDateInput}
+                onChange={(e) => setOrderDateInput(e.target.value)}
+              />
+            </div>
+
+            <div className="kbi-so-field">
+              <label className="kbi-so-label">{buyerType === 'marketplace' ? 'Nama Platform *' : 'Nama Pembeli *'}</label>
+              <input
+                className={`kbi-so-ledger-input ${shakeFields[buyerType === 'marketplace' ? 'customerPlatformName' : 'customerName'] ? 'animate-shake border-red-500' : ''}`}
+                disabled={isFormLockedForMetadata}
+                placeholder={buyerType === 'marketplace' ? "Contoh: Shopee, Tokopedia..." : "Nama asli penerima..."}
+                value={buyerType === 'marketplace' ? customerPlatformName : customerName}
+                onChange={(e) => {
+                  if (buyerType === 'marketplace') {
+                    setCustomerPlatformName(e.target.value);
+                    setCustomerName('');
+                  } else {
+                    setCustomerName(e.target.value);
+                  }
+                }}
+                onBlur={() => {
+                  if (buyerType === 'marketplace') {
+                    setCustomerPlatformName(customerPlatformName.trim());
+                  } else {
+                    setCustomerName(customerName.trim().toUpperCase());
+                  }
+                }}
+              />
+            </div>
+
+            {buyerType === 'marketplace' && (
+              <div className="kbi-so-field">
+                <label className="kbi-so-label">Sumber Orderan *</label>
+                <div className="kbi-so-select-wrap relative">
+                  <select
+                    className="kbi-so-ledger-input"
+                    disabled={isFormLockedForMetadata}
+                    value={platformChannel}
+                    onChange={e => setPlatformChannel(e.target.value)}
+                  >
+                    {!platformChannel && <option value="" disabled>-- Pilih Sumber Orderan --</option>}
+                    {filteredChannels.map((c, cIdx) => (
+                      <option key={`${c.id || c.name}-${cIdx}`} value={c.name}>{c.name}</option>
+                    ))}
+                    {platformChannel && !filteredChannels.some(c => c.name === platformChannel) && (
+                      <option value={platformChannel}>{platformChannel}</option>
+                    )}
+                  </select>
+                  <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+                </div>
+              </div>
+            )}
+
+            {buyerType !== 'marketplace' && (
+              <>
                 <div className="kbi-so-field">
-                  <label className="kbi-so-label">Tanggal Pembelian *</label>
-                  <input 
-                    type="date"
-                    className="kbi-so-ledger-input font-numeric"
-                    value={orderDateInput}
-                    onChange={(e) => setOrderDateInput(e.target.value)}
+                  <label className="kbi-so-label">Nama Platform *</label>
+                  <input
+                    className={`kbi-so-ledger-input ${shakeFields['customerPlatformName'] ? 'animate-shake border-red-500' : ''}`}
+                    disabled={isFormLockedForMetadata}
+                    placeholder="Contoh: Andrea Hirata"
+                    value={customerPlatformName}
+                    onChange={(e) => setCustomerPlatformName(e.target.value)}
+                    onBlur={() => setCustomerPlatformName(customerPlatformName.trim())}
                   />
                 </div>
 
                 <div className="kbi-so-field">
-                  <label className="kbi-so-label">{buyerType === 'marketplace' ? 'Nama Platform *' : 'Nama Pembeli *'}</label>
-                  <input 
-                    className={`kbi-so-ledger-input ${shakeFields[buyerType === 'marketplace' ? 'customerPlatformName' : 'customerName'] ? 'animate-shake border-red-500' : ''}`}
-                    placeholder={buyerType === 'marketplace' ? "Contoh: Shopee, Tokopedia..." : "Nama asli penerima..."} 
-                    value={buyerType === 'marketplace' ? customerPlatformName : customerName}
+                  <label className="kbi-so-label">Sumber Orderan *</label>
+                  <div className="kbi-so-select-wrap relative">
+                    <select
+                      className="kbi-so-ledger-input"
+                      disabled={isFormLockedForMetadata}
+                      value={platformChannel}
+                      onChange={e => setPlatformChannel(e.target.value)}
+                    >
+                      {!platformChannel && <option value="" disabled>-- Pilih Sumber Orderan --</option>}
+                      {filteredChannels.map((c, cIdx) => (
+                        <option key={`${c.id || c.name}-${cIdx}`} value={c.name}>{c.name}</option>
+                      ))}
+                      {platformChannel && !filteredChannels.some(c => c.name === platformChannel) && (
+                        <option value={platformChannel}>{platformChannel}</option>
+                      )}
+                    </select>
+                    <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="kbi-so-field">
+                  <label className="kbi-so-label">No. Handphone *</label>
+                  <input
+                    className={`kbi-so-ledger-input ${shakeFields['phoneNumber'] ? 'animate-shake !border-red-500 !ring-red-500 border-2' : ''}`}
+                    disabled={isFormLockedForMetadata}
+                    placeholder="0984287114"
+                    value={formatPhoneNumber(phoneNumber)}
                     onChange={(e) => {
-                      if (buyerType === 'marketplace') {
-                        setCustomerPlatformName(e.target.value);
-                        setCustomerName('');
-                      } else {
-                        setCustomerName(e.target.value);
+                      const digits = e.target.value.replace(/\D/g, '');
+                      if (digits.length > 10) {
+                        triggerShake('phoneNumber');
+                        return;
                       }
-                    }}
-                    onBlur={() => {
-                      if (buyerType === 'marketplace') {
-                        setCustomerPlatformName(customerPlatformName.trim());
-                      } else {
-                        setCustomerName(customerName.trim().toUpperCase());
-                      }
+                      setPhoneNumber(digits);
                     }}
                   />
                 </div>
 
-                {buyerType === 'marketplace' && (
+                {buyerType !== 'reseller' && (
                   <div className="kbi-so-field">
-                    <label className="kbi-so-label">Sumber Orderan *</label>
+                    <label className="kbi-so-label">Sumber Campaign</label>
                     <div className="kbi-so-select-wrap relative">
-                      <select 
-                        className="kbi-so-ledger-input" 
-                        value={platformChannel} 
-                        onChange={e => setPlatformChannel(e.target.value)}
+                      <select
+                        className="kbi-so-ledger-input"
+                        disabled={isFormLockedForMetadata}
+                        value={orderType}
+                        onChange={e => setOrderType(e.target.value)}
                       >
-                        {!platformChannel && <option value="" disabled>-- Pilih Sumber Orderan --</option>}
-                        {filteredChannels.map((c, cIdx) => (
-                          <option key={`${c.id || c.name}-${cIdx}`} value={c.name}>{c.name}</option>
+                        <option value="">-- Pilih Sumber Campaign --</option>
+                        {resolvedOrderTypes.map((t, tIdx) => (
+                          <option key={`${t.id || t.name}-${tIdx}`} value={t.name}>{t.name}</option>
                         ))}
-                        {platformChannel && !filteredChannels.some(c => c.name === platformChannel) && (
-                          <option value={platformChannel}>{platformChannel}</option>
+                        {orderType && !resolvedOrderTypes.some(t => t.name === orderType) && (
+                          <option value={orderType}>{orderType}</option>
                         )}
                       </select>
                       <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
@@ -7021,477 +7189,438 @@ export const SalesTab: React.FC = () => {
                   </div>
                 )}
 
-                {buyerType !== 'marketplace' && (
-                  <>
-                    <div className="kbi-so-field">
-                      <label className="kbi-so-label">Nama Platform *</label>
-                      <input 
-                        className={`kbi-so-ledger-input ${shakeFields['customerPlatformName'] ? 'animate-shake border-red-500' : ''}`}
-                        placeholder="Contoh: Andrea Hirata" 
-                        value={customerPlatformName}
-                        onChange={(e) => setCustomerPlatformName(e.target.value)}
-                        onBlur={() => setCustomerPlatformName(customerPlatformName.trim())}
-                      />
+                <div className="kbi-so-field-row">
+                  <div>
+                    <label className="kbi-so-label">Opsi Pengiriman</label>
+                    <div className="kbi-so-select-wrap relative">
+                      <select
+                        className="kbi-so-ledger-input"
+                        disabled={isFormLockedForMetadata}
+                        value={pickupLogistics}
+                        onChange={e => setPickupLogistics(e.target.value)}
+                      >
+                        {!pickupLogistics && <option value="" disabled>-- Pilih Opsi Pengiriman --</option>}
+                        {availableLogistics.map((l, lIdx) => (
+                          <option key={`${l.id || l.name}-${lIdx}`} value={l.name}>{l.name}</option>
+                        ))}
+                        {pickupLogistics && !availableLogistics.some(l => l.name === pickupLogistics) && (
+                          <option value={pickupLogistics}>{pickupLogistics}</option>
+                        )}
+                      </select>
+                      <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
                     </div>
-
-                    <div className="kbi-so-field">
-                      <label className="kbi-so-label">Sumber Orderan *</label>
-                      <div className="kbi-so-select-wrap relative">
-                        <select 
-                          className="kbi-so-ledger-input" 
-                          value={platformChannel} 
-                          onChange={e => setPlatformChannel(e.target.value)}
-                        >
-                          {!platformChannel && <option value="" disabled>-- Pilih Sumber Orderan --</option>}
-                          {filteredChannels.map((c, cIdx) => (
-                            <option key={`${c.id || c.name}-${cIdx}`} value={c.name}>{c.name}</option>
-                          ))}
-                          {platformChannel && !filteredChannels.some(c => c.name === platformChannel) && (
-                            <option value={platformChannel}>{platformChannel}</option>
-                          )}
-                        </select>
-                        <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
-                      </div>
+                  </div>
+                  <div>
+                    <label className="kbi-so-label">Metode Bayar</label>
+                    <div className="kbi-so-select-wrap">
+                      <select className="kbi-so-ledger-input" disabled={isFormLockedForMetadata} value={paymentMethod} onChange={(e: any) => handlePaymentMethodChange(e.target.value)}>
+                        <option value="COD">COD</option>
+                        <option value="Transfer">Transfer</option>
+                      </select>
+                      <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                     </div>
+                  </div>
+                </div>
 
-                    <div className="kbi-so-field">
-                      <label className="kbi-so-label">No. Handphone *</label>
-                      <input 
-                        className={`kbi-so-ledger-input ${shakeFields['phoneNumber'] ? 'animate-shake !border-red-500 !ring-red-500 border-2' : ''}`}
-                        placeholder="0984287114" 
-                        value={formatPhoneNumber(phoneNumber)}
-                        onChange={(e) => {
-                          const digits = e.target.value.replace(/\D/g, '');
-                          if (digits.length > 10) {
-                            triggerShake('phoneNumber');
-                            return;
-                          }
-                          setPhoneNumber(digits);
-                        }}
-                      />
-                    </div>
-
-                    {buyerType !== 'reseller' && (
-                      <div className="kbi-so-field">
-                        <label className="kbi-so-label">Sumber Campaign</label>
-                        <div className="kbi-so-select-wrap relative">
-                          <select 
-                            className="kbi-so-ledger-input" 
-                            value={orderType} 
-                            onChange={e => setOrderType(e.target.value)}
-                          >
-                            <option value="">-- Pilih Sumber Campaign --</option>
-                            {resolvedOrderTypes.map((t, tIdx) => (
-                              <option key={`${t.id || t.name}-${tIdx}`} value={t.name}>{t.name}</option>
-                            ))}
-                            {orderType && !resolvedOrderTypes.some(t => t.name === orderType) && (
-                              <option value={orderType}>{orderType}</option>
-                            )}
-                          </select>
-                          <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="kbi-so-field-row">
-                      <div>
-                        <label className="kbi-so-label">Opsi Pengiriman</label>
-                        <div className="kbi-so-select-wrap relative">
-                          <select 
-                            className="kbi-so-ledger-input" 
-                            value={pickupLogistics} 
-                            onChange={e => setPickupLogistics(e.target.value)}
-                          >
-                            {!pickupLogistics && <option value="" disabled>-- Pilih Opsi Pengiriman --</option>}
-                            {availableLogistics.map((l, lIdx) => (
-                              <option key={`${l.id || l.name}-${lIdx}`} value={l.name}>{l.name}</option>
-                            ))}
-                            {pickupLogistics && !availableLogistics.some(l => l.name === pickupLogistics) && (
-                              <option value={pickupLogistics}>{pickupLogistics}</option>
-                            )}
-                          </select>
-                          <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="kbi-so-label">Metode Bayar</label>
-                        <div className="kbi-so-select-wrap">
-                          <select className="kbi-so-ledger-input" value={paymentMethod} onChange={(e: any) => handlePaymentMethodChange(e.target.value)}>
-                            <option value="COD">COD</option>
-                            <option value="Transfer">Transfer</option>
-                          </select>
-                          <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="kbi-so-field-row" style={{ alignItems: 'start' }}>
-                      <div>
-                        <label className="kbi-so-label">Kode Toko / Alamat</label>
-                        <textarea 
-                          className="kbi-so-ledger-input" 
-                          placeholder="Contoh: Toko No. 991823..."
-                          value={pickupDetails}
-                          onChange={e => setPickupDetails(e.target.value)}
-                        ></textarea>
-                      </div>
-                      <div>
-                        <label className="kbi-so-label">Foto Fapiao / Alamat</label>
-                        <input 
-                          type="file" 
-                          id="fotoAlamatInput" 
-                          accept="image/*" 
-                          className="hidden" 
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              setAddressPhotoFile(file);
-                              const reader = new FileReader();
-                              reader.onload = (ev) => {
-                                setAddressPhotoUrl(ev.target?.result as string);
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }}
-                        />
-                        {!addressPhotoUrl ? (
-                          <label htmlFor="fotoAlamatInput" className="kbi-so-upload-box">
-                            <UploadCloud className="w-[15px] h-[15px]" />
-                            <span>Upload Foto</span>
-                          </label>
-                        ) : (
-                          <div className="kbi-so-upload-preview">
-                            <img src={addressPhotoUrl} alt="Preview" />
-                            <button type="button" onClick={() => { setAddressPhotoUrl(''); setAddressPhotoFile(null); }}>
-                              <X className="w-[12px] h-[12px]" />
-                            </button>
-                          </div>
+                <div className="kbi-so-field-row" style={{ alignItems: 'start' }}>
+                  <div>
+                    <label className="kbi-so-label">Kode Toko / Alamat</label>
+                    <textarea
+                      className="kbi-so-ledger-input"
+                      disabled={isFormLockedForMetadata}
+                      placeholder="Contoh: Toko No. 991823..."
+                      value={pickupDetails}
+                      onChange={e => setPickupDetails(e.target.value)}
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label className="kbi-so-label">Foto Fapiao / Alamat</label>
+                    <input
+                      type="file"
+                      id="fotoAlamatInput"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={isFormLockedForMetadata}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setAddressPhotoFile(file);
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            setAddressPhotoUrl(ev.target?.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    {!addressPhotoUrl ? (
+                      <label htmlFor="fotoAlamatInput" className={`kbi-so-upload-box ${isFormLockedForMetadata ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <UploadCloud className="w-[15px] h-[15px]" />
+                        <span>Upload Foto</span>
+                      </label>
+                    ) : (
+                      <div className="kbi-so-upload-preview">
+                        <img src={addressPhotoUrl} alt="Preview" />
+                        {!isFormLockedForMetadata && (
+                          <button type="button" onClick={() => { setAddressPhotoUrl(''); setAddressPhotoFile(null); }}>
+                            <X className="w-[12px] h-[12px]" />
+                          </button>
                         )}
                       </div>
-                    </div>
+                    )}
+                  </div>
+                </div>
 
-                    <div className="kbi-so-field-row">
-                      <div>
-                        <label className="kbi-so-label">Platform Order</label>
-                        <div className="kbi-so-select-wrap relative">
-                          <select 
-                            className="kbi-so-ledger-input" 
-                            value={platformOrder} 
-                            onChange={e => {
-                              const val = e.target.value;
-                              setPlatformOrder(val);
-                              if (!editingOrder) {
-                                const listToUse = buyerType === 'marketplace' ? resolvedMarketplaces : filteredPlatformsByPayment;
-                                const matched = listToUse.find((p: any) => p.name === val);
-                                if (matched && matched.adminFee !== undefined) {
-                                  setPlatformFeeInput(String(matched.adminFee));
-                                } else {
-                                  setPlatformFeeInput('0');
-                                }
-                              }
-                            }}
-                          >
-                            {!platformOrder && <option value="" disabled>-- Pilih Platform Order --</option>}
-                            {(buyerType === 'marketplace' ? resolvedMarketplaces : filteredPlatformsByPayment).map((p, pIdx) => (
-                              <option key={`${p.id || p.name}-${pIdx}`} value={p.name}>{p.name}</option>
-                            ))}
-                            {platformOrder && !(buyerType === 'marketplace' ? resolvedMarketplaces : filteredPlatformsByPayment).some(p => p.name === platformOrder) && (
-                              <option value={platformOrder}>{platformOrder}</option>
-                            )}
-                          </select>
-                          <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="kbi-so-label">Nomor Order</label>
-                        <div className="kbi-so-nomor-row">
-                          <input className="kbi-so-ledger-input font-numeric" value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="Opsional (Otomatis jika kosong)" />
-                          <button type="button" className="kbi-so-copy-btn" onClick={() => navigator.clipboard.writeText(orderNumber)} title="Salin Nomor Order">
-                            <Copy className="w-[15px] h-[15px]" />
-                          </button>
-                        </div>
-                      </div>
+                <div className="kbi-so-field-row">
+                  <div>
+                    <label className="kbi-so-label">Platform Order</label>
+                    <div className="kbi-so-select-wrap relative">
+                      <select
+                        className="kbi-so-ledger-input"
+                        disabled={isFormLockedForMetadata}
+                        value={platformOrder}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setPlatformOrder(val);
+                          if (!editingOrder) {
+                            const listToUse = buyerType === 'marketplace' ? resolvedMarketplaces : filteredPlatformsByPayment;
+                            const matched = listToUse.find((p: any) => p.name === val);
+                            if (matched && matched.adminFee !== undefined) {
+                              setPlatformFeeInput(String(matched.adminFee));
+                            } else {
+                              setPlatformFeeInput('0');
+                            }
+                          }
+                        }}
+                      >
+                        {!platformOrder && <option value="" disabled>-- Pilih Platform Order --</option>}
+                        {(buyerType === 'marketplace' ? resolvedMarketplaces : filteredPlatformsByPayment).map((p, pIdx) => (
+                          <option key={`${p.id || p.name}-${pIdx}`} value={p.name}>{p.name}</option>
+                        ))}
+                        {platformOrder && !(buyerType === 'marketplace' ? resolvedMarketplaces : filteredPlatformsByPayment).some(p => p.name === platformOrder) && (
+                          <option value={platformOrder}>{platformOrder}</option>
+                        )}
+                      </select>
+                      <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
                     </div>
-                  </>
-                )}
-
-                {buyerType === 'marketplace' && (
-                  <div className="kbi-so-field">
+                  </div>
+                  <div>
                     <label className="kbi-so-label">Nomor Order</label>
                     <div className="kbi-so-nomor-row">
-                      <input className="kbi-so-ledger-input font-numeric" value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="Opsional (Otomatis jika kosong)" />
+                      <input className="kbi-so-ledger-input font-numeric" disabled={isFormLockedForMetadata} value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="Opsional (Otomatis jika kosong)" />
                       <button type="button" className="kbi-so-copy-btn" onClick={() => navigator.clipboard.writeText(orderNumber)} title="Salin Nomor Order">
                         <Copy className="w-[15px] h-[15px]" />
                       </button>
                     </div>
                   </div>
-                )}
-
-                <div className="kbi-so-field">
-                  <label className="kbi-so-label">Note dari Customer</label>
-                  <textarea 
-                    className="kbi-so-ledger-input" 
-                    placeholder="Catatan tambahan dari pembeli..."
-                    value={customerNote}
-                    onChange={e => setCustomerNote(e.target.value)}
-                  ></textarea>
                 </div>
+              </>
+            )}
 
-                <div className="kbi-so-field" style={{ marginBottom: 4 }}>
-                  <label className="kbi-so-label">Konfirmasi Sebelum Dikirim</label>
-                  <label className="kbi-so-toggle-wrapper" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
-                    <div className="kbi-so-toggle relative w-10 h-5">
-                      <input 
-                        type="checkbox" 
-                        checked={perluKonfirmasiSebelumKirim} 
-                        onChange={e => setPerluKonfirmasiSebelumKirim(e.target.checked)} 
-                        className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer peer"
-                      />
-                      <div className="absolute inset-0 bg-neutral-300 dark:bg-neutral-600 rounded-full peer-checked:bg-[#6366f1] transition-colors duration-200"></div>
-                      <div className="absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-4 w-4 transition-transform duration-200 peer-checked:translate-x-5 peer-checked:border-white shadow-sm"></div>
-                    </div>
-                    <span className="text-[13px] font-semibold text-neutral-700 dark:text-neutral-300">
-                      {perluKonfirmasiSebelumKirim ? 'ON' : 'OFF'}
-                    </span>
-                  </label>
-                </div>
-
-                <div className="kbi-so-field" style={{ marginBottom: 4 }}>
-                  <label className="kbi-so-label">Tanggal Diminta Kirim</label>
-                  <div className="relative group">
-                    <input 
-                      type="date"
-                      className="kbi-so-ledger-input font-numeric w-full pr-10 cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-                      value={estimatedShippingDate} 
-                      onChange={e => setEstimatedShippingDate(e.target.value)} 
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400 group-hover:text-brand-500 transition-colors">
-                      <Calendar className="w-[15px] h-[15px]" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* RIGHT: Nama Buku / Barang */}
-              <div className="kbi-so-col-right">
-                <p className="kbi-so-col-heading">Nama Buku / Barang</p>
-
-                <div className="kbi-so-search-wrap">
-                  <Search className="w-4 h-4 search-icon text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input 
-                    className="kbi-so-ledger-input pl-10" 
-                    placeholder="Cari buku aktif untuk ditambahkan..." 
-                    value={bookSearch}
-                    onChange={e => { setBookSearch(e.target.value); setShowSearchResults(true); }}
-                    onFocus={() => setShowSearchResults(true)}
-                  />
-                  {showSearchResults && bookSearch && (
-                    <div className="kbi-so-suggestions">
-                      {matchingBooks.map(b => {
-                        const stok = getCurrentKontrolStokForBook(b.id, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords);
-                        const tone = stok <= 0 ? 'zero' : stok <= 10 ? 'low' : 'ok';
-                        const chipText = `Stok : ${stok}`;
-                        const price = buyerType === 'marketplace'
-                          ? (b.shopeePrice || b.generalPrice || 0)
-                          : buyerType === 'reseller'
-                            ? (b.resellerPrice || b.generalPrice || 0)
-                            : (platformChannel === 'Shopee' ? (b.shopeePrice || b.generalPrice || 0) : (b.generalPrice || 0));
-                        // Cuma harga - tanpa "/pcs" dan tanpa suffix (Marketplace)/(Reseller).
-                        // buyerType berlaku untuk seluruh order, jadi semua baris di dropdown
-                        // selalu memakai daftar harga yang sama; suffix-nya cuma memakan lebar
-                        // yang dibutuhkan judul buku. Warnanya tetap jadi penanda daftar harga.
-                        const priceLabel = formatNTD(price);
-                        return (
-                          <button key={b.id} type="button" className="kbi-so-suggestion-row" onMouseDown={(e) => {
-                            e.preventDefault();
-                            handleAddBookToCart(b);
-                          }}>
-                            <span className="kbi-so-suggestion-title">{b.bookName}</span>
-                            <span className="kbi-so-suggestion-meta">
-                              <span className="kbi-so-suggestion-price" style={buyerType === 'marketplace' ? {color: '#2563EB', fontWeight: 600} : buyerType === 'reseller' ? {color: '#6B4C9A', fontWeight: 600} : {}}>{priceLabel}</span>
-                              <span className={`kbi-so-stock-chip ${tone}`}>{chipText}</span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                      {matchingBooks.length === 0 && (
-                        <div className="p-3 text-sm text-neutral-500 text-center">Tidak ada buku ditemukan.</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="kbi-so-item-list">
-                  {cartItems.length === 0 && (
-                    <div className="kbi-so-empty-items">Belum ada buku ditambahkan ke order ini.</div>
-                  )}
-                  {cartItems.map((it, idx) => {
-                    const stok = getCurrentKontrolStokForBook(it.bookId, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords);
-                    const backorder = it.qty > stok;
-                    const shortfall = Math.max(0, it.qty - stok);
-                    const b = books.find(book => book.id === it.bookId);
-                    return (
-                      <div key={`${it.bookId}-${idx}`} className="kbi-so-item-card">
-                        {(() => { const resolvedCover = it.bookCover || b?.cover || ''; return resolvedCover ? (
-                          <div 
-                            className="w-14 bg-neutral-50 dark:bg-neutral-900 overflow-hidden flex-shrink-0 flex items-center justify-center border-r border-neutral-200 dark:border-neutral-800 cursor-pointer transition hover:opacity-80"
-                            onClick={() => setPreviewImage({ url: resolvedCover, title: it.bookName })}
-                          >
-                            <img referrerPolicy="no-referrer" src={resolvedCover} alt="" className="w-full h-full object-cover" />
-                          </div>
-                        ) : (
-                          <div className="w-14 bg-neutral-100 dark:bg-neutral-800 overflow-hidden flex-shrink-0 flex items-center justify-center border-r border-neutral-200 dark:border-neutral-800" style={{backgroundColor: b?.color || '#2B5A9E'}}>
-                            <BookOpen className="w-4 h-4 text-white" />
-                          </div>
-                        ); })()}
-                        <div className="kbi-so-item-info">
-                          <div className="flex items-center gap-2 max-w-full overflow-hidden">
-                            <TruncatedTooltip content={it.bookName} className="kbi-so-item-title">
-                              {it.bookName.length > 30 ? `${it.bookName.slice(0, 30)}...` : it.bookName}
-                            </TruncatedTooltip>
-                            {it.isFree && <span className="kbi-so-gratis-tag shrink-0">GRATIS</span>}
-                            {(it.markedTertinggal || it.markedRefund) && (
-                              <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shrink-0">
-                                Tertinggal
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <div className={`kbi-so-item-stock-note ${backorder ? 'warn' : 'ok'}`}>
-                              Stok {stok} pcs
-                            </div>
-                            {backorder && (
-                              <span className="kbi-so-backorder-tag shrink-0">BACKORDER</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-col justify-center items-end pr-3 gap-1 border-l border-neutral-100 dark:border-neutral-800/50 pl-2 shrink-0">
-                          <div className="kbi-so-qty-stepper !p-0">
-                            <button type="button" onClick={() => handleCartQtyChange(idx, -1)}><Minus className="w-[13px] h-[13px]" /></button>
-                            <span className="text-sm">{it.qty}</span>
-                            <button type="button" onClick={() => handleCartQtyChange(idx, 1)}><Plus className="w-[13px] h-[13px]" /></button>
-                          </div>
-                          <div className="kbi-so-item-line-total !p-0 font-bold text-brand-600 dark:text-brand-400 whitespace-nowrap whitespace-pre text-xs">{formatNTD(it.lineTotal).replace(' ', '')}</div>
-                        </div>
-                        <div className="kbi-so-item-actions !border-l-0">
-                          <button type="button" className="gift-btn !px-1.5" onClick={() => {
-                            const newItems = [...cartItems];
-                            newItems[idx].isFree = !newItems[idx].isFree;
-                            newItems[idx].lineTotal = newItems[idx].isFree ? 0 : newItems[idx].qty * newItems[idx].unitPrice;
-                            setCartItems(newItems);
-                          }}><Gift className="w-3.5 h-3.5" /></button>
-                          <button type="button" className="remove-btn !px-1.5" onClick={() => {
-                            const newItems = [...cartItems];
-                            newItems.splice(idx, 1);
-                            setCartItems(newItems);
-                          }}><Trash className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="kbi-so-summary-block">
-                  <div className="kbi-so-summary-row"><span>Subtotal</span><span className="val">{formatNTD(cartSubtotal)}</span></div>
-                  <div className="kbi-so-summary-row" style={{ color: '#ec003f' }}>
-                    <span>Diskon Potongan (TWD)</span>
-                    <input 
-                      type="number" 
-                      step="any"
-                      placeholder="0"
-                      value={discountInput === '0' ? '' : discountInput} 
-                      onChange={(e) => {
-                        setIsEditingGrandTotal(false);
-                        setDiscountInput(e.target.value);
-                      }} 
-                      className="kbi-so-ledger-input font-numeric kbi-so-diskon-input" 
-                      style={{ color: '#ec003f' }} 
-                    />
-                  </div>
-                  <div className="kbi-so-summary-row" style={{ color: '#d97706' }}>
-                    <span>Biaya Platform</span>
-                    <input 
-                      type="number" 
-                      step="any"
-                      placeholder="0"
-                      value={platformFeeInput === '0' ? '' : platformFeeInput} 
-                      onChange={(e) => {
-                        setPlatformFeeInput(e.target.value);
-                      }} 
-                      className="kbi-so-ledger-input font-numeric kbi-so-diskon-input" 
-                      style={{ color: '#d97706' }} 
-                    />
-                  </div>
-                  {buyerType === 'reseller' && selectedPartner && (
-                    <div className="kbi-so-summary-row" style={{ color: '#6B4C9A', fontWeight: 600 }}>
-                      <span>Estimasi Komisi Partner</span>
-                      <span className="val">{formatNTD((cartTotalPrice * selectedPartner.profitSharePercent) / 100)} ({selectedPartner.profitSharePercent}%)</span>
-                    </div>
-                  )}
-                  <div className="kbi-so-grand-total-row">
-                    <span className="kbi-so-grand-total-label">Grand Total (TWD)</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-[#2B5A9E] dark:text-[#818cf8]">NT$</span>
-                      <input
-                        type="number"
-                        step="any"
-                        value={isEditingGrandTotal ? grandTotalInput : (cartTotalPrice / 100)}
-                        onFocus={() => {
-                          setIsEditingGrandTotal(true);
-                          setGrandTotalInput(String(cartTotalPrice / 100));
-                        }}
-                        onBlur={() => setIsEditingGrandTotal(false)}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setGrandTotalInput(val);
-                          setIsEditingGrandTotal(true);
-                          const cleanVal = cleanCommas(val);
-                          if (cleanVal.trim() === '') {
-                            setDiscountInput(String(cartSubtotal / 100));
-                          } else {
-                            const parsedGt = parseFloat(cleanVal);
-                            if (!isNaN(parsedGt)) {
-                              const subtotalTwd = cartSubtotal / 100;
-                              const calcDiscount = Math.max(0, subtotalTwd - parsedGt);
-                              setDiscountInput(String(Math.round(calcDiscount * 100) / 100));
-                            }
-                          }
-                        }}
-                        className="kbi-so-ledger-input font-numeric kbi-so-grand-total-input text-right font-extrabold text-lg text-[#2B5A9E] dark:text-[#818cf8] bg-transparent border border-neutral-300 dark:border-neutral-700 rounded-lg px-2 py-0.5 focus:outline-hidden focus:ring-1 focus:ring-[#2B5A9E]"
-                        style={{ width: '120px' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Backorder Banner */}
-            {cartItems.some(it => {
-              const stok = getCurrentKontrolStokForBook(it.bookId, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords);
-              return it.qty > stok;
-            }) && (
-              <div className="kbi-so-backorder-banner">
-                <div className="kbi-so-backorder-banner-left">
-                  <AlertCircle className="w-[18px] h-[18px]" />
-                  <div>
-                    <div className="kbi-so-backorder-banner-title">Beberapa buku butuh PO tambahan setelah order ini disimpan</div>
-                  </div>
+            {buyerType === 'marketplace' && (
+              <div className="kbi-so-field">
+                <label className="kbi-so-label">Nomor Order</label>
+                <div className="kbi-so-nomor-row">
+                  <input className="kbi-so-ledger-input font-numeric" disabled={isFormLockedForMetadata} value={orderNumber} onChange={e => setOrderNumber(e.target.value)} placeholder="Opsional (Otomatis jika kosong)" />
+                  <button type="button" className="kbi-so-copy-btn" onClick={() => navigator.clipboard.writeText(orderNumber)} title="Salin Nomor Order">
+                    <Copy className="w-[15px] h-[15px]" />
+                  </button>
                 </div>
               </div>
             )}
 
-            <div className="kbi-so-card-footer">
-              <button 
-                disabled={isOrderSubmitting} 
-                className="kbi-so-btn-ghost disabled:opacity-50 disabled:cursor-not-allowed" 
-                onClick={() => { setIsNewOrderOpen(false); setEditingOrder(null); resetOrderForm(); }}
-              >
-                Batal
-              </button>
-              <button 
-                disabled={isOrderSubmitting} 
-                className="kbi-so-btn-outline disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5" 
+            <div className="kbi-so-field">
+              <label className="kbi-so-label">Note dari Customer</label>
+              <textarea
+                className="kbi-so-ledger-input"
+                disabled={isFormLockedForMetadata}
+                placeholder="Catatan tambahan dari pembeli..."
+                value={customerNote}
+                onChange={e => setCustomerNote(e.target.value)}
+              ></textarea>
+            </div>
+
+            <div className="kbi-so-field" style={{ marginBottom: 4 }}>
+              <label className="kbi-so-label">Konfirmasi Sebelum Dikirim</label>
+              <label className="kbi-so-toggle-wrapper" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
+                <div className="kbi-so-toggle relative w-10 h-5">
+                  <input
+                    type="checkbox"
+                    disabled={isFormLockedForMetadata}
+                    checked={perluKonfirmasiSebelumKirim}
+                    onChange={e => setPerluKonfirmasiSebelumKirim(e.target.checked)}
+                    className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer peer"
+                  />
+                  <div className="absolute inset-0 bg-neutral-300 dark:bg-neutral-600 rounded-full peer-checked:bg-[#6366f1] transition-colors duration-200"></div>
+                  <div className="absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-4 w-4 transition-transform duration-200 peer-checked:translate-x-5 peer-checked:border-white shadow-sm"></div>
+                </div>
+                <span className="text-[13px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  {perluKonfirmasiSebelumKirim ? 'ON' : 'OFF'}
+                </span>
+              </label>
+            </div>
+
+            <div className="kbi-so-field" style={{ marginBottom: 4 }}>
+              <label className="kbi-so-label">Tanggal Diminta Kirim</label>
+              <div className="relative group">
+                <input
+                  type="date"
+                  disabled={isFormLockedForMetadata}
+                  className="kbi-so-ledger-input font-numeric w-full pr-10 cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                  value={estimatedShippingDate}
+                  onChange={e => setEstimatedShippingDate(e.target.value)}
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400 group-hover:text-brand-500 transition-colors">
+                  <Calendar className="w-[15px] h-[15px]" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT: Nama Buku / Barang */}
+          <div className="kbi-so-col-right">
+            <p className="kbi-so-col-heading">Nama Buku / Barang</p>
+
+            <div className="kbi-so-search-wrap">
+              <Search className="w-4 h-4 search-icon text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                className="kbi-so-ledger-input pl-10"
+                disabled={isFinancialsLocked}
+                placeholder="Cari buku aktif untuk ditambahkan..."
+                value={bookSearch}
+                onChange={e => { setBookSearch(e.target.value); setShowSearchResults(true); }}
+                onFocus={() => setShowSearchResults(true)}
+              />
+              {showSearchResults && bookSearch && (
+                <div className="kbi-so-suggestions">
+                  {matchingBooks.map(b => {
+                    const stok = getCurrentKontrolStokForBook(b.id, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords);
+                    const tone = stok <= 0 ? 'zero' : stok <= 10 ? 'low' : 'ok';
+                    const chipText = `Stok : ${stok}`;
+                    const price = buyerType === 'marketplace'
+                      ? (b.shopeePrice || b.generalPrice || 0)
+                      : buyerType === 'reseller'
+                        ? (b.resellerPrice || b.generalPrice || 0)
+                        : (platformChannel === 'Shopee' ? (b.shopeePrice || b.generalPrice || 0) : (b.generalPrice || 0));
+                    // Cuma harga - tanpa "/pcs" dan tanpa suffix (Marketplace)/(Reseller).
+                    // buyerType berlaku untuk seluruh order, jadi semua baris di dropdown
+                    // selalu memakai daftar harga yang sama; suffix-nya cuma memakan lebar
+                    // yang dibutuhkan judul buku. Warnanya tetap jadi penanda daftar harga.
+                    const priceLabel = formatNTD(price);
+                    return (
+                      <button key={b.id} type="button" className="kbi-so-suggestion-row" onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleAddBookToCart(b);
+                      }}>
+                        <span className="kbi-so-suggestion-title">{b.bookName}</span>
+                        <span className="kbi-so-suggestion-meta">
+                          <span className="kbi-so-suggestion-price" style={buyerType === 'marketplace' ? { color: '#2563EB', fontWeight: 600 } : buyerType === 'reseller' ? { color: '#6B4C9A', fontWeight: 600 } : {}}>{priceLabel}</span>
+                          <span className={`kbi-so-stock-chip ${tone}`}>{chipText}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {matchingBooks.length === 0 && (
+                    <div className="p-3 text-sm text-neutral-500 text-center">Tidak ada buku ditemukan.</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="kbi-so-item-list">
+              {cartItems.length === 0 && (
+                <div className="kbi-so-empty-items">Belum ada buku ditambahkan ke order ini.</div>
+              )}
+              {cartItems.map((it, idx) => {
+                const stok = getCurrentKontrolStokForBook(it.bookId, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords);
+                const backorder = it.qty > stok;
+                const shortfall = Math.max(0, it.qty - stok);
+                const b = books.find(book => book.id === it.bookId);
+                return (
+                  <div key={`${it.bookId}-${idx}`} className="kbi-so-item-card">
+                    {(() => {
+                      const resolvedCover = it.bookCover || b?.cover || ''; return resolvedCover ? (
+                        <div
+                          className="w-14 bg-neutral-50 dark:bg-neutral-900 overflow-hidden flex-shrink-0 flex items-center justify-center border-r border-neutral-200 dark:border-neutral-800 cursor-pointer transition hover:opacity-80"
+                          onClick={() => setPreviewImage({ url: resolvedCover, title: it.bookName })}
+                        >
+                          <img referrerPolicy="no-referrer" src={resolvedCover} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-14 bg-neutral-100 dark:bg-neutral-800 overflow-hidden flex-shrink-0 flex items-center justify-center border-r border-neutral-200 dark:border-neutral-800" style={{ backgroundColor: b?.color || '#2B5A9E' }}>
+                          <BookOpen className="w-4 h-4 text-white" />
+                        </div>
+                      );
+                    })()}
+                    <div className="kbi-so-item-info">
+                      <div className="flex items-center gap-2 max-w-full overflow-hidden">
+                        <TruncatedTooltip content={it.bookName} className="kbi-so-item-title">
+                          {it.bookName.length > 30 ? `${it.bookName.slice(0, 30)}...` : it.bookName}
+                        </TruncatedTooltip>
+                        {it.isFree && <span className="kbi-so-gratis-tag shrink-0">GRATIS</span>}
+                        {(it.markedTertinggal || it.markedRefund) && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shrink-0">
+                            Tertinggal
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <div className={`kbi-so-item-stock-note ${backorder ? 'warn' : 'ok'}`}>
+                          Stok {stok} pcs
+                        </div>
+                        {backorder && (
+                          <span className="kbi-so-backorder-tag shrink-0">BACKORDER</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-center items-end pr-3 gap-1 border-l border-neutral-100 dark:border-neutral-800/50 pl-2 shrink-0">
+                      <div className="kbi-so-qty-stepper !p-0">
+                        <button type="button" disabled={isFinancialsLocked} onClick={() => handleCartQtyChange(idx, -1)}><Minus className="w-[13px] h-[13px]" /></button>
+                        <span className="text-sm">{it.qty}</span>
+                        <button type="button" disabled={isFinancialsLocked} onClick={() => handleCartQtyChange(idx, 1)}><Plus className="w-[13px] h-[13px]" /></button>
+                      </div>
+                      <div className="kbi-so-item-line-total !p-0 font-bold text-brand-600 dark:text-brand-400 whitespace-nowrap whitespace-pre text-xs">{formatNTD(it.lineTotal).replace(' ', '')}</div>
+                    </div>
+                    <div className="kbi-so-item-actions !border-l-0">
+                      <button type="button" disabled={isFinancialsLocked} className="gift-btn !px-1.5" onClick={() => {
+                        const newItems = [...cartItems];
+                        newItems[idx].isFree = !newItems[idx].isFree;
+                        newItems[idx].lineTotal = newItems[idx].isFree ? 0 : newItems[idx].qty * newItems[idx].unitPrice;
+                        setCartItems(newItems);
+                      }}><Gift className="w-3.5 h-3.5" /></button>
+                      <button type="button" disabled={isFinancialsLocked} className="remove-btn !px-1.5" onClick={() => {
+                        const newItems = [...cartItems];
+                        newItems.splice(idx, 1);
+                        setCartItems(newItems);
+                      }}><Trash className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="kbi-so-summary-block">
+              <div className="kbi-so-summary-row"><span>Subtotal</span><span className="val">{formatNTD(cartSubtotal)}</span></div>
+              <div className="kbi-so-summary-row" style={{ color: '#ec003f' }}>
+                <span>Diskon Potongan (TWD)</span>
+                <input
+                  type="number"
+                  step="any"
+                  disabled={isFinancialsLocked}
+                  placeholder="0"
+                  value={discountInput === '0' ? '' : discountInput}
+                  onChange={(e) => {
+                    setIsEditingGrandTotal(false);
+                    setDiscountInput(e.target.value);
+                  }}
+                  className="kbi-so-ledger-input font-numeric kbi-so-diskon-input"
+                  style={{ color: '#ec003f' }}
+                />
+              </div>
+              <div className="kbi-so-summary-row" style={{ color: '#d97706' }}>
+                <span>Biaya Platform</span>
+                <input
+                  type="number"
+                  step="any"
+                  disabled={isFinancialsLocked}
+                  placeholder="0"
+                  value={platformFeeInput === '0' ? '' : platformFeeInput}
+                  onChange={(e) => {
+                    setPlatformFeeInput(e.target.value);
+                  }}
+                  className="kbi-so-ledger-input font-numeric kbi-so-diskon-input"
+                  style={{ color: '#d97706' }}
+                />
+              </div>
+              {buyerType === 'reseller' && selectedPartner && (
+                <div className="kbi-so-summary-row" style={{ color: '#6B4C9A', fontWeight: 600 }}>
+                  <span>Estimasi Komisi Partner</span>
+                  <span className="val">{formatNTD((cartTotalPrice * selectedPartner.profitSharePercent) / 100)} ({selectedPartner.profitSharePercent}%)</span>
+                </div>
+              )}
+              <div className="kbi-so-grand-total-row">
+                <span className="kbi-so-grand-total-label">Grand Total (TWD)</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-[#2B5A9E] dark:text-[#818cf8]">NT$</span>
+                  <input
+                    type="number"
+                    step="any"
+                    disabled={isFinancialsLocked}
+                    value={isEditingGrandTotal ? grandTotalInput : (cartTotalPrice / 100)}
+                    onFocus={() => {
+                      setIsEditingGrandTotal(true);
+                      setGrandTotalInput(String(cartTotalPrice / 100));
+                    }}
+                    onBlur={() => setIsEditingGrandTotal(false)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setGrandTotalInput(val);
+                      setIsEditingGrandTotal(true);
+                      const cleanVal = cleanCommas(val);
+                      if (cleanVal.trim() === '') {
+                        setDiscountInput(String(cartSubtotal / 100));
+                      } else {
+                        const parsedGt = parseFloat(cleanVal);
+                        if (!isNaN(parsedGt)) {
+                          const subtotalTwd = cartSubtotal / 100;
+                          const calcDiscount = Math.max(0, subtotalTwd - parsedGt);
+                          setDiscountInput(String(Math.round(calcDiscount * 100) / 100));
+                        }
+                      }
+                    }}
+                    className="kbi-so-ledger-input font-numeric kbi-so-grand-total-input text-right font-extrabold text-lg text-[#2B5A9E] dark:text-[#818cf8] bg-transparent border border-neutral-300 dark:border-neutral-700 rounded-lg px-2 py-0.5 focus:outline-hidden focus:ring-1 focus:ring-[#2B5A9E]"
+                    style={{ width: '120px' }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Backorder Banner */}
+        {cartItems.some(it => {
+          const stok = getCurrentKontrolStokForBook(it.bookId, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords);
+          return it.qty > stok;
+        }) && (
+            <div className="kbi-so-backorder-banner">
+              <div className="kbi-so-backorder-banner-left">
+                <AlertCircle className="w-[18px] h-[18px]" />
+                <div>
+                  <div className="kbi-so-backorder-banner-title">Beberapa buku butuh PO tambahan setelah order ini disimpan</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+        <div className="kbi-so-card-footer">
+          <button
+            disabled={isOrderSubmitting}
+            className="kbi-so-btn-ghost disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => { setIsNewOrderOpen(false); setEditingOrder(null); resetOrderForm(); }}
+          >
+            Batal
+          </button>
+
+          {canEditMetadata ? (
+            <button
+              disabled={isOrderSubmitting}
+              className="kbi-so-btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+              onClick={(e) => handleOrderSubmit(e)}
+            >
+              {isOrderSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin inline-block" />
+                  <span>Sedang Diproses...</span>
+                </>
+              ) : (
+                'Simpan Perubahan Metadata'
+              )}
+            </button>
+          ) : !isLockedOrder ? (
+            <>
+              <button
+                disabled={isOrderSubmitting}
+                className="kbi-so-btn-outline disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                 onClick={(e) => handleOrderSubmit(e, { isDraft: true })}
               >
                 {isOrderSubmitting ? (
@@ -7503,9 +7632,9 @@ export const SalesTab: React.FC = () => {
                   'Simpan Draft'
                 )}
               </button>
-              <button 
-                disabled={isOrderSubmitting} 
-                className="kbi-so-btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5" 
+              <button
+                disabled={isOrderSubmitting}
+                className="kbi-so-btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                 onClick={(e) => handleOrderSubmit(e, { isDraft: false })}
               >
                 {isOrderSubmitting ? (
@@ -7517,13 +7646,15 @@ export const SalesTab: React.FC = () => {
                   'Konfirmasi Order'
                 )}
               </button>
-            </div>
+            </>
+          ) : null}
+        </div>
       </NewOrderModalWrapper>
 
       {/* Category Change Confirmation Overlay — rendered via portal so it always
           floats above the order-form portal (kbi-so-overlay z-index 40). */}
       {categoryChangeConfirm && createPortal(
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setCategoryChangeConfirm(null);
@@ -7559,20 +7690,20 @@ export const SalesTab: React.FC = () => {
                 {categoryChangeConfirm.targetCategory === 'marketplace'
                   ? 'Format input akan disesuaikan untuk Marketplace (pilihan platform marketplace & nomor pesanan marketplace).'
                   : categoryChangeConfirm.targetCategory === 'reseller'
-                  ? 'Format input akan disesuaikan untuk Reseller Order (pilih mitra reseller & skema komisi).'
-                  : 'Format input akan disesuaikan untuk Direct Order (pilihan akun sosial media / platform & saluran order).'}
+                    ? 'Format input akan disesuaikan untuk Reseller Order (pilih mitra reseller & skema komisi).'
+                    : 'Format input akan disesuaikan untuk Direct Order (pilihan akun sosial media / platform & saluran order).'}
               </p>
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs font-text">
-              <button 
+              <button
                 type="button"
                 onClick={() => setCategoryChangeConfirm(null)}
                 className="px-4 py-2 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-xl text-neutral-600 dark:text-neutral-350 font-bold cursor-pointer transition"
               >
                 Batal
               </button>
-              <button 
+              <button
                 type="button"
                 onClick={() => applyBuyerTypeChange(categoryChangeConfirm.targetCategory)}
                 className="px-5 py-2 bg-brand-600 hover:bg-brand-700 rounded-xl text-white font-bold cursor-pointer transition shadow-sm"
@@ -7582,11 +7713,11 @@ export const SalesTab: React.FC = () => {
             </div>
           </div>
         </div>
-      , document.body)}
+        , document.body)}
 
       {/* Revert Status Confirmation Overlay */}
       {revertConfirmState && (
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setRevertConfirmState(null);
@@ -7603,13 +7734,13 @@ export const SalesTab: React.FC = () => {
               {revertConfirmState.message}
             </p>
             <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs font-text">
-              <button 
+              <button
                 onClick={() => setRevertConfirmState(null)}
                 className="px-3.5 py-1.5 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-lg text-neutral-600 dark:text-neutral-350 font-bold cursor-pointer transition"
               >
                 Batal
               </button>
-              <button 
+              <button
                 onClick={async () => {
                   try {
                     await revertConfirmState.onConfirm();
@@ -7630,7 +7761,7 @@ export const SalesTab: React.FC = () => {
 
       {/* Delete Config Confirmation Overlay */}
       {deleteConfigState && (
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setDeleteConfigState(null);
@@ -7651,13 +7782,13 @@ export const SalesTab: React.FC = () => {
                 : `Hapus semua ${deleteConfigState.tab === 'channel' ? 'Channel' : 'Sumber Campaign'}? Semua data akan dihapus permanen.`}
             </p>
             <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs font-text">
-              <button 
+              <button
                 onClick={() => setDeleteConfigState(null)}
                 className="px-4 py-2 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-lg text-neutral-600 dark:text-neutral-350 font-bold cursor-pointer transition select-none"
               >
                 Batal
               </button>
-              <button 
+              <button
                 onClick={async () => {
                   try {
                     if (deleteConfigState.type === 'individual') {
@@ -7688,7 +7819,7 @@ export const SalesTab: React.FC = () => {
       {/* Manage Sistem Konfigurasi Modal */}
       {/* Import Modal */}
       {isImportModalOpen && (
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setIsImportModalOpen(false);
@@ -7737,10 +7868,9 @@ export const SalesTab: React.FC = () => {
               {/* File Upload Selector */}
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase">Pilih File Excel / CSV</label>
-                <div 
-                  className={`border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer hover:border-indigo-500 ${
-                    selectedFile ? 'border-indigo-500 bg-indigo-50/10 dark:bg-indigo-950/5' : 'border-neutral-300 dark:border-neutral-700'
-                  }`}
+                <div
+                  className={`border-2 border-dashed rounded-xl p-6 text-center transition cursor-pointer hover:border-indigo-500 ${selectedFile ? 'border-indigo-500 bg-indigo-50/10 dark:bg-indigo-950/5' : 'border-neutral-300 dark:border-neutral-700'
+                    }`}
                   onClick={() => document.getElementById('sales-csv-file-input')?.click()}
                 >
                   <FileSpreadsheet className="h-8 w-8 text-neutral-450 mx-auto mb-2" />
@@ -7791,7 +7921,7 @@ export const SalesTab: React.FC = () => {
       )}
 
       {isManageConfigOpen && (
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setIsManageConfigOpen(false);
@@ -7807,8 +7937,8 @@ export const SalesTab: React.FC = () => {
                   Manage Sistem Konfigurasi
                 </h3>
               </div>
-              <button 
-                onClick={() => setIsManageConfigOpen(false)} 
+              <button
+                onClick={() => setIsManageConfigOpen(false)}
                 className="text-neutral-400 hover:text-neutral-305 hover:bg-neutral-50 dark:hover:bg-neutral-800 p-1.5 rounded-lg transition cursor-pointer"
               >
                 <X className="h-5 w-5" />
@@ -7823,11 +7953,10 @@ export const SalesTab: React.FC = () => {
                   setConfigInputVal('');
                   setEditingConfigId(null);
                 }}
-                className={`flex-shrink-0 px-4 py-3 text-center text-sm font-bold border-b-2 transition select-none cursor-pointer ${
-                  manageActiveTab === 'channel'
-                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-350'
-                }`}
+                className={`flex-shrink-0 px-4 py-3 text-center text-sm font-bold border-b-2 transition select-none cursor-pointer ${manageActiveTab === 'channel'
+                  ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                  : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-350'
+                  }`}
               >
                 Channel
               </button>
@@ -7837,11 +7966,10 @@ export const SalesTab: React.FC = () => {
                   setConfigInputVal('');
                   setEditingConfigId(null);
                 }}
-                className={`flex-shrink-0 px-4 py-3 text-center text-sm font-bold border-b-2 transition select-none cursor-pointer ${
-                  manageActiveTab === 'platform'
-                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-350'
-                }`}
+                className={`flex-shrink-0 px-4 py-3 text-center text-sm font-bold border-b-2 transition select-none cursor-pointer ${manageActiveTab === 'platform'
+                  ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                  : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-350'
+                  }`}
               >
                 Platform Order
               </button>
@@ -7851,11 +7979,10 @@ export const SalesTab: React.FC = () => {
                   setConfigInputVal('');
                   setEditingConfigId(null);
                 }}
-                className={`flex-shrink-0 px-4 py-3 text-center text-sm font-bold border-b-2 transition select-none cursor-pointer ${
-                  manageActiveTab === 'type'
-                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-350'
-                }`}
+                className={`flex-shrink-0 px-4 py-3 text-center text-sm font-bold border-b-2 transition select-none cursor-pointer ${manageActiveTab === 'type'
+                  ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                  : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-350'
+                  }`}
               >
                 Sumber Campaign
               </button>
@@ -7865,11 +7992,10 @@ export const SalesTab: React.FC = () => {
                   setConfigInputVal('');
                   setEditingConfigId(null);
                 }}
-                className={`flex-shrink-0 px-4 py-3 text-center text-sm font-bold border-b-2 transition select-none cursor-pointer ${
-                  manageActiveTab === 'logistik'
-                    ? 'border-brand-500 text-brand-600 dark:text-brand-400'
-                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-350'
-                }`}
+                className={`flex-shrink-0 px-4 py-3 text-center text-sm font-bold border-b-2 transition select-none cursor-pointer ${manageActiveTab === 'logistik'
+                  ? 'border-brand-500 text-brand-600 dark:text-brand-400'
+                  : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-350'
+                  }`}
               >
                 Opsi Pengiriman
               </button>
@@ -7887,11 +8013,10 @@ export const SalesTab: React.FC = () => {
                     placeholder={activeTabPlaceholder}
                     value={configInputVal}
                     onChange={(e) => setConfigInputVal(e.target.value)}
-                    className={`flex-1 px-3.5 py-2 border rounded-lg text-sm bg-white dark:bg-neutral-950 text-neutral-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-brand-500 transition-all ${
-                      shakeFields['configInput']
-                        ? 'border-red-500 ring-1 ring-red-500 animate-shake bg-red-50/20 dark:bg-red-950/20'
-                        : 'border-neutral-300 dark:border-neutral-700'
-                    }`}
+                    className={`flex-1 px-3.5 py-2 border rounded-lg text-sm bg-white dark:bg-neutral-950 text-neutral-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-brand-500 transition-all ${shakeFields['configInput']
+                      ? 'border-red-500 ring-1 ring-red-500 animate-shake bg-red-50/20 dark:bg-red-950/20'
+                      : 'border-neutral-300 dark:border-neutral-700'
+                      }`}
                   />
 
                   {manageActiveTab === 'platform' && (
@@ -7900,22 +8025,19 @@ export const SalesTab: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setNewPlatformOngkosKirim(!newPlatformOngkosKirim)}
-                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          newPlatformOngkosKirim ? 'bg-emerald-600' : 'bg-neutral-300 dark:bg-neutral-700'
-                        }`}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${newPlatformOngkosKirim ? 'bg-emerald-600' : 'bg-neutral-300 dark:bg-neutral-700'
+                          }`}
                         title={`Toggle Ongkos Kirim: ${newPlatformOngkosKirim ? 'ON' : 'OFF'}`}
                       >
                         <span
-                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                            newPlatformOngkosKirim ? 'translate-x-4' : 'translate-x-0'
-                          }`}
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${newPlatformOngkosKirim ? 'translate-x-4' : 'translate-x-0'
+                            }`}
                         />
                       </button>
-                      <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
-                        newPlatformOngkosKirim
-                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border border-neutral-200 dark:border-neutral-700'
-                      }`}>
+                      <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${newPlatformOngkosKirim
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border border-neutral-200 dark:border-neutral-700'
+                        }`}>
                         {newPlatformOngkosKirim ? 'ON' : 'OFF'}
                       </span>
                     </div>
@@ -7965,27 +8087,25 @@ export const SalesTab: React.FC = () => {
                     </div>
                   ) : (
                     currentManageList.map((item, index) => (
-                      <div 
-                        key={`${item.id || item.name}-${index}`} 
+                      <div
+                        key={`${item.id || item.name}-${index}`}
                         draggable
                         onDragStart={(e) => handleDragStart(e, index)}
                         onDragOver={(e) => handleDragOver(e, index)}
                         onDragEnd={handleDragEnd}
-                        className={`p-3 flex items-center justify-between gap-3 text-sm transition-all select-none ${
-                          draggedIndex === index 
-                            ? 'opacity-40 bg-neutral-100 dark:bg-neutral-800 border-2 border-dashed border-brand-300' 
-                            : 'hover:bg-neutral-100/50 dark:hover:bg-neutral-800/30'
-                        }`}
+                        className={`p-3 flex items-center justify-between gap-3 text-sm transition-all select-none ${draggedIndex === index
+                          ? 'opacity-40 bg-neutral-100 dark:bg-neutral-800 border-2 border-dashed border-brand-300'
+                          : 'hover:bg-neutral-100/50 dark:hover:bg-neutral-800/30'
+                          }`}
                       >
                         {editingConfigId === item.id ? (
                           <div className="flex items-center gap-1.5 w-full">
                             <input
                               type="text"
-                              className={`flex-1 px-2.5 py-1 text-xs border bg-white dark:bg-neutral-900 text-neutral-800 dark:text-white rounded focus:outline-none focus:ring-1 focus:ring-brand-500 ${
-                                shakeFields[`editConfig_${item.id}`]
-                                  ? 'border-red-500 ring-1 ring-red-500 animate-shake'
-                                  : 'border-neutral-300 dark:border-neutral-700'
-                              }`}
+                              className={`flex-1 px-2.5 py-1 text-xs border bg-white dark:bg-neutral-900 text-neutral-800 dark:text-white rounded focus:outline-none focus:ring-1 focus:ring-brand-500 ${shakeFields[`editConfig_${item.id}`]
+                                ? 'border-red-500 ring-1 ring-red-500 animate-shake'
+                                : 'border-neutral-300 dark:border-neutral-700'
+                                }`}
                               value={editingConfigVal}
                               onChange={(e) => setEditingConfigVal(e.target.value)}
                             />
@@ -8007,7 +8127,7 @@ export const SalesTab: React.FC = () => {
                         ) : (
                           <>
                             <div className="flex items-center gap-2.5 flex-1 overflow-hidden">
-                              <div 
+                              <div
                                 className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition cursor-grab active:cursor-grabbing p-1"
                                 title="Tarik untuk mengurutkan"
                               >
@@ -8028,22 +8148,19 @@ export const SalesTab: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => handleTogglePlatformOngkosKirim(item)}
-                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                      isOngkirEnabled ? 'bg-emerald-600' : 'bg-neutral-300 dark:bg-neutral-700'
-                                    }`}
+                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isOngkirEnabled ? 'bg-emerald-600' : 'bg-neutral-300 dark:bg-neutral-700'
+                                      }`}
                                     title={`Ongkos Kirim untuk ${item.name}: ${isOngkirEnabled ? 'ON' : 'OFF'}`}
                                   >
                                     <span
-                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                                        isOngkirEnabled ? 'translate-x-4' : 'translate-x-0'
-                                      }`}
+                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${isOngkirEnabled ? 'translate-x-4' : 'translate-x-0'
+                                        }`}
                                     />
                                   </button>
-                                  <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
-                                    isOngkirEnabled
-                                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border border-neutral-200 dark:border-neutral-700'
-                                  }`}>
+                                  <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${isOngkirEnabled
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border border-neutral-200 dark:border-neutral-700'
+                                    }`}>
                                     {isOngkirEnabled ? 'ON' : 'OFF'}
                                   </span>
                                 </div>
@@ -8116,29 +8233,29 @@ export const SalesTab: React.FC = () => {
         books={books}
         inventories={inventories}
       />
-      <ImagePreviewModal 
-        isOpen={!!previewImage} 
-        onClose={() => setPreviewImage(null)} 
-        imageUrl={previewImage?.url || ''} 
-        title={previewImage?.title} 
+      <ImagePreviewModal
+        isOpen={!!previewImage}
+        onClose={() => setPreviewImage(null)}
+        imageUrl={previewImage?.url || ''}
+        title={previewImage?.title}
       />
       {isBulkProcessOpen && (
-        <BulkProcessModal 
-           isOpen={isBulkProcessOpen} 
-           onClose={() => setIsBulkProcessOpen(false)} 
-           menungguOrders={orders.filter(o => o.status === 'packed')} 
-           inventories={inventories}
-           ledgerEntries={ledgerEntries}
-           purchaseOrders={purchaseOrders}
-           salesOrders={orders}
-           damagedRecords={damagedRecords}
-           books={books}
+        <BulkProcessModal
+          isOpen={isBulkProcessOpen}
+          onClose={() => setIsBulkProcessOpen(false)}
+          menungguOrders={orders.filter(o => o.status === 'packed')}
+          inventories={inventories}
+          ledgerEntries={ledgerEntries}
+          purchaseOrders={purchaseOrders}
+          salesOrders={orders}
+          damagedRecords={damagedRecords}
+          books={books}
         />
       )}
 
       {/* ================= MODAL: Konfirmasi Customer Pre-Kemas ================= */}
       {confirmingCustomerPreKemasOrder && (
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setConfirmingCustomerPreKemasOrder(null);
@@ -8206,7 +8323,7 @@ export const SalesTab: React.FC = () => {
         const hasStockError = insufficientKemasItems.length > 0;
 
         return (
-          <div 
+          <div
             onClick={(e) => {
               if (e.target === e.currentTarget && !isKemasSubmitting) {
                 setConfirmingKemasOrder(null);
@@ -8286,7 +8403,7 @@ export const SalesTab: React.FC = () => {
 
       {/* ================= MODAL: Konfirmasi Hapus Orderan ================= */}
       {selectedOrderForDelete && (
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget && !isDeleteOrderSubmitting) {
               setSelectedOrderForDelete(null);
@@ -8333,7 +8450,7 @@ export const SalesTab: React.FC = () => {
       )}
       {/* ================= MODAL: Konfirmasi Perubahan Metode Bayar ================= */}
       {showPaymentChangeConfirmModal && (
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelPaymentMethodChange();
@@ -8384,7 +8501,7 @@ export const SalesTab: React.FC = () => {
         const splitTotal = splitItems.reduce((sum, i) => sum + i.lineTotal, 0);
 
         return (
-          <div 
+          <div
             onClick={(e) => {
               if (e.target === e.currentTarget && !isSplitSubmitting) {
                 setSplitOrderModalData(null);
@@ -8513,7 +8630,7 @@ export const SalesTab: React.FC = () => {
 
       {/* ================= MODAL: Marketplace Refund ================= */}
       {refundConfirmOrder && (
-        <div 
+        <div
           onClick={(e) => {
             if (e.target === e.currentTarget && !isRefundSubmitting) {
               setRefundConfirmOrder(null);
