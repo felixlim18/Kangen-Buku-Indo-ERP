@@ -175,7 +175,7 @@ export const BookRecommendationsModal: React.FC<BookRecommendationsModalProps> =
 
   return createPortal(
     <div 
-      className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+      className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

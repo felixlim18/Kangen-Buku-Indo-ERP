@@ -252,15 +252,39 @@ const formatPhoneNumber = (digits: string) => {
 };
 
 
-const NewOrderModalWrapper = ({ isOpen, onClose, isMobileScreen, sidebarHidden, children }) => {
+const NewOrderModalWrapper = ({ isOpen, onClose, isMobileScreen, sidebarHidden, isSuspended = false, children }: {
+  isOpen: boolean;
+  onClose: () => void;
+  isMobileScreen: boolean;
+  sidebarHidden: boolean;
+  isSuspended?: boolean;
+  children: React.ReactNode;
+}) => {
   if (!isOpen) return null;
 
   if (isMobileScreen) {
     return createPortal(
-      <Drawer.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Drawer.Root
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open && !isSuspended) onClose();
+        }}
+        modal={false}
+        shouldScaleBackground={false}
+      >
         <Drawer.Portal>
-          <Drawer.Overlay className="fixed inset-0 bg-black/60 z-[9999]" />
-          <Drawer.Content className="bg-[#f5f6f7] dark:bg-[#0d1117] flex flex-col rounded-t-[16px] h-[96%] mt-24 fixed bottom-0 left-0 right-0 z-[10000] outline-none">
+          <Drawer.Overlay
+            onClick={() => {
+              if (!isSuspended) onClose();
+            }}
+            className={`fixed inset-0 bg-black/60 z-[9999] ${isSuspended ? 'pointer-events-none' : ''}`}
+          />
+          <Drawer.Content
+            inert={isSuspended ? true : undefined}
+            className={`bg-[#f5f6f7] dark:bg-[#0d1117] flex flex-col rounded-t-[16px] h-[96%] mt-24 fixed bottom-0 left-0 right-0 z-[10000] outline-none ${
+              isSuspended ? 'pointer-events-none select-none opacity-90' : ''
+            }`}
+          >
             <div className="p-4 bg-white dark:bg-neutral-900 rounded-t-[16px] flex-1 flex flex-col overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.08)] border border-neutral-200/50 dark:border-neutral-800">
               <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-neutral-300 dark:bg-neutral-700 mb-4 cursor-grab active:cursor-grabbing" />
               <div className="flex-1 overflow-y-auto w-full max-w-full pb-safe">
@@ -277,9 +301,13 @@ const NewOrderModalWrapper = ({ isOpen, onClose, isMobileScreen, sidebarHidden, 
   }
 
   return createPortal(
-    <div className={`kbi-so-overlay${sidebarHidden ? ' kbi-so-overlay--rail' : ''}`} onClick={(e) => {
-      if (e.target === e.currentTarget) onClose();
-    }}>
+    <div
+      inert={isSuspended ? true : undefined}
+      className={`kbi-so-overlay${sidebarHidden ? ' kbi-so-overlay--rail' : ''} ${isSuspended ? 'pointer-events-none opacity-90' : ''}`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="kbi-so-card" onClick={e => e.stopPropagation()}>
         {children}
       </div>
@@ -521,7 +549,7 @@ const QrCodeModal: React.FC<{
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+      className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
     >
       <div
         className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[92%] p-5 space-y-4 animate-scale-up my-auto text-center"
@@ -6652,9 +6680,9 @@ export const SalesTab: React.FC = () => {
                 handleCloseProsesModal();
               }
             }}
-            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
           >
-            <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[92%] max-w-lg overflow-hidden animate-scaleIn my-auto">
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[92%] max-w-lg overflow-hidden animate-scaleIn my-auto" onClick={e => e.stopPropagation()}>
               <div className="p-5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
                 <h3 className="text-sm font-bold flex items-center gap-2 uppercase tracking-tight text-neutral-800 dark:text-neutral-100">
                   <Truck className="h-4 w-4 text-brand-500 animate-pulse" />
@@ -6971,8 +6999,8 @@ export const SalesTab: React.FC = () => {
 
       {/* Camera Scanner Interstitial Layer Overlay */}
       {isScanning && createPortal(
-        <div className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}>
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[92%] max-w-md overflow-hidden p-5 space-y-4 animate-scaleIn my-auto">
+        <div className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}>
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[92%] max-w-md overflow-hidden p-5 space-y-4 animate-scaleIn my-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-bold flex items-center gap-2 uppercase tracking-tight text-neutral-800 dark:text-neutral-100">
                 <Scan className="h-4 w-4 text-brand-500 animate-pulse" />
@@ -7076,9 +7104,9 @@ export const SalesTab: React.FC = () => {
                 setConfirmingSelesaiOrderId(null);
               }
             }}
-            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
           >
-            <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto">
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-2 text-emerald-600">
                 <Check className="h-5 w-5" />
                 <h3 className="font-bold text-neutral-800 dark:text-neutral-100">Konfirmasi Pembayaran Selesai?</h3>
@@ -7154,9 +7182,9 @@ export const SalesTab: React.FC = () => {
               setConfirmingDiambilOrder(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
         >
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-md overflow-hidden animate-scaleIn p-5 space-y-4 text-xs font-text my-auto">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-md overflow-hidden animate-scaleIn p-5 space-y-4 text-xs font-text my-auto" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold flex items-center gap-2 uppercase tracking-tight text-neutral-800 dark:text-neutral-100">
               <RefreshCw className="h-4 w-4 text-brand-500 animate-spin" />
               Buku Return Telah Diambil?
@@ -7239,6 +7267,7 @@ export const SalesTab: React.FC = () => {
           mobile.css, so the mobile full-bleed reset could never win. */}
       <NewOrderModalWrapper
         isOpen={isNewOrderOpen}
+        isSuspended={!!categoryChangeConfirm || isScanning}
         onClose={() => {
           setIsNewOrderOpen(false);
           setEditingOrder(null);
@@ -7937,14 +7966,26 @@ export const SalesTab: React.FC = () => {
           floats above the order-form portal (kbi-so-overlay z-index 40). */}
       {categoryChangeConfirm && createPortal(
         <div
+          data-vaul-no-drag
           onClick={(e) => {
             if (e.target === e.currentTarget) {
+              e.preventDefault();
+              e.stopPropagation();
               setCategoryChangeConfirm(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+          onTouchStart={(e) => {
+            if (e.target === e.currentTarget) {
+              e.stopPropagation();
+            }
+          }}
+          className={`${getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)} pointer-events-auto select-none`}
         >
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-md overflow-hidden animate-scaleIn p-6 space-y-4 my-auto">
+          <div
+            data-vaul-no-drag
+            className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-md overflow-hidden animate-scaleIn p-6 space-y-4 my-auto relative z-10 pointer-events-auto select-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
                 <AlertCircle className="w-5 h-5" />
@@ -7980,22 +8021,33 @@ export const SalesTab: React.FC = () => {
             <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs font-text">
               <button
                 type="button"
-                onClick={() => setCategoryChangeConfirm(null)}
-                className="px-4 py-2 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-xl text-neutral-600 dark:text-neutral-350 font-bold cursor-pointer transition"
+                data-vaul-no-drag
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setCategoryChangeConfirm(null);
+                }}
+                className="px-4 py-2 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-xl text-neutral-600 dark:text-neutral-350 font-bold cursor-pointer transition select-none active:scale-95 touch-manipulation"
               >
                 Batal
               </button>
               <button
                 type="button"
-                onClick={() => applyBuyerTypeChange(categoryChangeConfirm.targetCategory)}
-                className="px-5 py-2 bg-brand-600 hover:bg-brand-700 rounded-xl text-white font-bold cursor-pointer transition shadow-sm"
+                data-vaul-no-drag
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  applyBuyerTypeChange(categoryChangeConfirm.targetCategory);
+                }}
+                className="px-5 py-2 bg-brand-600 hover:bg-brand-700 rounded-xl text-white font-bold cursor-pointer transition shadow-sm select-none active:scale-95 touch-manipulation"
               >
                 Ya, Ubah Kategori
               </button>
             </div>
           </div>
-        </div>
-        , document.body)}
+        </div>,
+        document.body
+      )}
 
       {/* Revert Status Confirmation Overlay */}
       {revertConfirmState && createPortal(
@@ -8005,9 +8057,9 @@ export const SalesTab: React.FC = () => {
               setRevertConfirmState(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
         >
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 text-brand-600 dark:text-brand-400">
               <RefreshCw className="h-5 w-5" />
               <h3 className="font-bold text-neutral-800 dark:text-neutral-100">Konfirmasi Balik Status</h3>
@@ -8050,9 +8102,9 @@ export const SalesTab: React.FC = () => {
               setDeleteConfigState(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
         >
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 text-rose-650 dark:text-rose-400">
               <Trash2 className="h-5 w-5" />
               <h3 className="font-bold text-neutral-800 dark:text-neutral-100">
@@ -8110,9 +8162,9 @@ export const SalesTab: React.FC = () => {
               setSelectedFile(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
         >
-          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xl w-[92%] max-w-lg overflow-hidden my-auto">
+          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xl w-[92%] max-w-lg overflow-hidden my-auto" onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
               <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
                 <Upload className="h-5 w-5 text-indigo-600 animate-pulse" />
@@ -8212,9 +8264,9 @@ export const SalesTab: React.FC = () => {
               setIsManageConfigOpen(false);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
         >
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl overflow-hidden flex flex-col my-auto max-w-[92vw] max-h-[92vh]" style={{ width: '544px', height: '659px' }}>
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl overflow-hidden flex flex-col my-auto max-w-[92vw] max-h-[92vh]" style={{ width: '544px', height: '659px' }} onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-2.5">
                 <Settings className="h-5 w-5 text-brand-500" />
@@ -8568,7 +8620,7 @@ export const SalesTab: React.FC = () => {
               setConfirmingCustomerPreKemasOrder(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
         >
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[90%] p-5 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
             <div className="h-12 w-12 rounded-2xl bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
@@ -8642,7 +8694,7 @@ export const SalesTab: React.FC = () => {
                 setConfirmingKemasOrder(null);
               }
             }}
-            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
           >
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[90%] p-5 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
               <div className="h-12 w-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
@@ -8723,7 +8775,7 @@ export const SalesTab: React.FC = () => {
               setSelectedOrderForDelete(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
         >
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[90%] p-5 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
             <div className="h-12 w-12 rounded-2xl bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
@@ -8786,7 +8838,7 @@ export const SalesTab: React.FC = () => {
               handleCancelPaymentMethodChange();
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
         >
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[90%] p-5 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
             <div className="h-12 w-12 rounded-2xl bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
@@ -8838,7 +8890,7 @@ export const SalesTab: React.FC = () => {
                 setSplitOrderModalData(null);
               }
             }}
-            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
           >
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-lg w-[92%] p-6 space-y-5 animate-scale-up my-auto max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
@@ -8968,7 +9020,7 @@ export const SalesTab: React.FC = () => {
               setRefundConfirmOrder(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
         >
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-md w-[90%] p-6 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
             <div className="h-12 w-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">

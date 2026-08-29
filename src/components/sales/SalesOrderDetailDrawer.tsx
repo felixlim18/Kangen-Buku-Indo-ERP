@@ -199,12 +199,18 @@ export const SalesOrderDetailDrawer: React.FC<SalesOrderDetailDrawerProps> = ({
     <Drawer.Root
       open={isOpen}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open && !isSuspended) onClose();
       }}
+      modal={false}
       shouldScaleBackground={false}
     >
       <Drawer.Portal>
-        <Drawer.Overlay className={`fixed inset-0 bg-black/60 backdrop-blur-xs z-[9999] ${isSuspended ? 'pointer-events-none' : ''}`} />
+        <Drawer.Overlay
+          onClick={() => {
+            if (!isSuspended) onClose();
+          }}
+          className={`fixed inset-0 bg-black/60 backdrop-blur-xs z-[9999] ${isSuspended ? 'pointer-events-none' : ''}`}
+        />
         <Drawer.Content
           inert={isSuspended ? true : undefined}
           className={`fixed bottom-0 left-0 right-0 max-h-[94dvh] h-[94dvh] flex flex-col bg-[#f8fafc] dark:bg-[#0f141c] rounded-t-[22px] z-[10000] outline-none shadow-2xl border-t border-neutral-200/80 dark:border-neutral-800 overflow-hidden ${isSuspended ? 'pointer-events-none select-none opacity-90' : ''}`}

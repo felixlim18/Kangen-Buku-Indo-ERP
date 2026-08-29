@@ -326,10 +326,10 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
 
   return createPortal(
     <div
-      className={`kbi-modal-backdrop fixed inset-0 transition-all duration-300 ease-in-out bg-neutral-950/70 backdrop-blur-xs ${MODAL_TIERS.DIALOG} flex items-center justify-center p-4 sm:p-8 overflow-y-auto`}
+      className={`fixed inset-0 transition-all duration-300 ease-in-out bg-neutral-950/70 backdrop-blur-xs ${MODAL_TIERS.DIALOG} flex items-center justify-center p-4 sm:p-8 overflow-y-auto`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl w-[96%] max-w-[1400px] h-[92vh] shadow-2xl overflow-hidden flex flex-col my-auto" style={{ filter: 'drop-shadow(0 30px 80px rgba(6,14,30,0.55))' }}>
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl w-[96%] max-w-[1400px] h-[92vh] shadow-2xl overflow-hidden flex flex-col my-auto" style={{ filter: 'drop-shadow(0 30px 80px rgba(6,14,30,0.55))' }} onClick={e => e.stopPropagation()}>
         
         {/* Header */}
         <div className="relative bg-gradient-to-br from-[#173a6b] via-[#2b5a9e] to-[#3d6eb0] text-white px-6 pt-5 pb-0">
