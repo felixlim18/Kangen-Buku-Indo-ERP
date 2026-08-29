@@ -35,21 +35,40 @@ interface RowData {
 
 const BULAN_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
+function parseDateRobust(dateStr?: string | null): Date | null {
+  if (!dateStr) return null;
+  const clean = dateStr.trim();
+  if (!clean) return null;
+
+  const ymd = clean.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (ymd) {
+    return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10), 0, 0, 0, 0);
+  }
+
+  const dmy = clean.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmy) {
+    return new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10), 0, 0, 0, 0);
+  }
+
+  const d = new Date(clean);
+  if (!isNaN(d.getTime())) {
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  return null;
+}
+
 function formatIndoDate(isoStr: string) {
-  const d = new Date(isoStr + 'T00:00:00');
+  const d = parseDateRobust(isoStr);
+  if (!d) return isoStr;
   return `${d.getDate()} ${BULAN_ID[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 function isNotYetDue(isoStr: string) {
-  if (!isoStr) return false;
-  const requested = startOfDay(new Date(isoStr + 'T00:00:00'));
-  const today = startOfDay(new Date());
+  const requested = parseDateRobust(isoStr);
+  if (!requested) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   return requested.getTime() > today.getTime();
 }
 

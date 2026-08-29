@@ -550,6 +550,33 @@ export async function packSalesOrderTransaction(orderId: string, currentUserId: 
         throw new Error('Order is already packed or processed');
       }
 
+      if (order.estimatedShippingDate) {
+        const clean = order.estimatedShippingDate.trim();
+        let shipDate: Date | null = null;
+        const ymd = clean.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+        if (ymd) {
+          shipDate = new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10), 0, 0, 0, 0);
+        } else {
+          const dmy = clean.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+          if (dmy) {
+            shipDate = new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10), 0, 0, 0, 0);
+          } else {
+            const d = new Date(clean);
+            if (!isNaN(d.getTime())) {
+              d.setHours(0, 0, 0, 0);
+              shipDate = d;
+            }
+          }
+        }
+        if (shipDate) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          if (shipDate.getTime() > today.getTime()) {
+            throw new Error(`Belum waktunya untuk dikemas, request customer adalah ${order.estimatedShippingDate.replace(/-/g, '/')}`);
+          }
+        }
+      }
+
       // 1. Fetch all required inventory snapshots first (reads)
       const invSnapsMap = new Map<string, { ref: any, snap: any }>();
       for (const item of order.items || []) {

@@ -166,15 +166,45 @@ const getCompletedDateMs = (order: SalesOrder): number => {
   return ts ?? getOrderDateMs(order);
 };
 
-const isShippingDateFuture = (dateStr?: string | null): boolean => {
-  if (!dateStr) return false;
+const parseShippingDate = (dateStr?: string | null): Date | null => {
+  if (!dateStr) return null;
   const clean = dateStr.trim();
-  if (!clean) return false;
-  const shipDate = new Date(clean.includes('T') ? clean : clean + 'T00:00:00');
-  if (isNaN(shipDate.getTime())) return false;
+  if (!clean) return null;
+
+  // 1. Check YYYY-MM-DD or YYYY/MM/DD
+  const ymd = clean.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (ymd) {
+    const y = parseInt(ymd[1], 10);
+    const m = parseInt(ymd[2], 10) - 1;
+    const d = parseInt(ymd[3], 10);
+    return new Date(y, m, d, 0, 0, 0, 0);
+  }
+
+  // 2. Check DD-MM-YYYY or DD/MM/YYYY
+  const dmy = clean.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmy) {
+    const d = parseInt(dmy[1], 10);
+    const m = parseInt(dmy[2], 10) - 1;
+    const y = parseInt(dmy[3], 10);
+    return new Date(y, m, d, 0, 0, 0, 0);
+  }
+
+  // 3. Fallback standard parsing
+  const parsed = new Date(clean);
+  if (!isNaN(parsed.getTime())) {
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+  }
+
+  return null;
+};
+
+const isShippingDateFuture = (dateStr?: string | null): boolean => {
+  const shipDate = parseShippingDate(dateStr);
+  if (!shipDate) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return shipDate > today;
+  return shipDate.getTime() > today.getTime();
 };
 
 const getReturnedDateMs = (order: SalesOrder): number => {
@@ -595,7 +625,7 @@ export const SalesTab: React.FC = () => {
         setShowPaymentChangeConfirmModal(false);
         setConfirmingKemasOrder(null);
         setConfirmingCustomerPreKemasOrder(null);
-        setConfirmingSelesaiOrder(null);
+        setConfirmingSelesaiOrderId(null);
         setConfirmingDiambilOrder(null);
         setRevertConfirmState(null);
         setSelectedOrderForDelete(null);
@@ -2509,6 +2539,11 @@ export const SalesTab: React.FC = () => {
 
   const handleConfirmKemas = async () => {
     if (!confirmingKemasOrder) return;
+    if (isShippingDateFuture(confirmingKemasOrder.estimatedShippingDate)) {
+      safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${confirmingKemasOrder.estimatedShippingDate?.replace(/-/g, '/')}`);
+      setConfirmingKemasOrder(null);
+      return;
+    }
     setIsKemasSubmitting(true);
     try {
       await packSalesOrderTransaction(confirmingKemasOrder.id, user?.uid || 'anonymous');
@@ -5450,22 +5485,16 @@ export const SalesTab: React.FC = () => {
                   return (
                     <button
                       type="button"
-                      className={`kbi-ocard__cta ${isEstShippingInFuture ? 'opacity-55 !bg-indigo-400/80 dark:!bg-indigo-900/60' : ''}`}
+                      className={`kbi-ocard__cta ${isEstShippingInFuture ? 'opacity-40 cursor-not-allowed !bg-neutral-300 dark:!bg-neutral-700 !text-neutral-500 dark:!text-neutral-400 border border-neutral-300 dark:border-neutral-700 shadow-none' : ''}`}
                       style={{
-                        backgroundColor: isEstShippingInFuture ? '#818cf8' : '#6366f1',
-                        opacity: isEstShippingInFuture ? 0.55 : 1,
-                        filter: isEstShippingInFuture ? 'saturate(0.75)' : undefined
+                        backgroundColor: isEstShippingInFuture ? undefined : '#6366f1',
+                        cursor: isEstShippingInFuture ? 'not-allowed' : 'pointer'
                       }}
-                      title={isEstShippingInFuture ? `Belum waktunya dikemas, request customer: ${order.estimatedShippingDate.replace(/-/g, '/')}` : undefined}
+                      title={isEstShippingInFuture ? `Belum waktunya dikemas, request customer: ${order.estimatedShippingDate?.replace(/-/g, '/')}` : undefined}
                       onClick={() => {
-                        if (order.estimatedShippingDate) {
-                          const shipDate = new Date(order.estimatedShippingDate.includes('T') ? order.estimatedShippingDate : order.estimatedShippingDate + 'T00:00:00');
-                          const today = new Date();
-                          today.setHours(0, 0, 0, 0);
-                          if (shipDate > today) {
-                            safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate.replace(/-/g, '/')}`);
-                            return;
-                          }
+                        if (isShippingDateFuture(order.estimatedShippingDate)) {
+                          safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate?.replace(/-/g, '/')}`);
+                          return;
                         }
                         if (order.perluKonfirmasiSebelumKirim) {
                           setConfirmingCustomerPreKemasOrder(order);
@@ -6019,14 +6048,9 @@ export const SalesTab: React.FC = () => {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (order.estimatedShippingDate) {
-                                    const shipDate = new Date(order.estimatedShippingDate.includes('T') ? order.estimatedShippingDate : order.estimatedShippingDate + 'T00:00:00');
-                                    const today = new Date();
-                                    today.setHours(0, 0, 0, 0);
-                                    if (shipDate > today) {
-                                      safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate.replace(/-/g, '/')}`);
-                                      return;
-                                    }
+                                  if (isShippingDateFuture(order.estimatedShippingDate)) {
+                                    safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate?.replace(/-/g, '/')}`);
+                                    return;
                                   }
                                   if (order.perluKonfirmasiSebelumKirim) {
                                     setConfirmingCustomerPreKemasOrder(order);
@@ -6034,10 +6058,10 @@ export const SalesTab: React.FC = () => {
                                     setConfirmingKemasOrder(order);
                                   }
                                 }}
-                                title={isEstShippingInFuture ? `Belum waktunya dikemas, request customer: ${order.estimatedShippingDate.replace(/-/g, '/')}` : undefined}
-                                className={`px-3.5 py-1.5 rounded-[7px] font-['Lexend'] font-semibold text-[12px] transition shadow-2xs cursor-pointer select-none ml-1 ${isEstShippingInFuture
-                                  ? 'bg-[#6366f1]/35 hover:bg-[#6366f1]/50 text-white/60 dark:bg-[#6366f1]/25 dark:text-white/50 border border-[#6366f1]/25'
-                                  : 'bg-[#6366f1] hover:bg-[#4f46e5] text-white'
+                                title={isEstShippingInFuture ? `Belum waktunya dikemas, request customer: ${order.estimatedShippingDate?.replace(/-/g, '/')}` : undefined}
+                                className={`px-3.5 py-1.5 rounded-[7px] font-['Lexend'] font-semibold text-[12px] transition shadow-2xs select-none ml-1 ${isEstShippingInFuture
+                                  ? 'bg-neutral-200 hover:bg-neutral-300 text-neutral-400 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-neutral-500 cursor-not-allowed border border-neutral-300 dark:border-neutral-700'
+                                  : 'bg-[#6366f1] hover:bg-[#4f46e5] text-white cursor-pointer'
                                   }`}
                               >
                                 Kemas
@@ -8298,6 +8322,11 @@ export const SalesTab: React.FC = () => {
                 type="button"
                 onClick={() => {
                   const ord = confirmingCustomerPreKemasOrder;
+                  if (ord && isShippingDateFuture(ord.estimatedShippingDate)) {
+                    safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${ord.estimatedShippingDate?.replace(/-/g, '/')}`);
+                    setConfirmingCustomerPreKemasOrder(null);
+                    return;
+                  }
                   setConfirmingCustomerPreKemasOrder(null);
                   setConfirmingKemasOrder(ord);
                 }}
