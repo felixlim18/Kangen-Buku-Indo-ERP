@@ -333,13 +333,36 @@ const QrCodeModal: React.FC<{
           <head>
             <title>Cetak QR Code Resi - ${order.orderCode}</title>
             <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 90vh; margin: 0; padding: 20px; text-align: center; }
-              .card { border: 2px dashed #000; border-radius: 12px; padding: 24px; max-width: 320px; width: 100%; box-sizing: border-box; }
-              .logo { font-size: 16px; font-weight: bold; margin-bottom: 6px; }
-              .title { font-size: 12px; color: #555; margin-bottom: 12px; letter-spacing: 0.5px; }
-              img { width: 220px; height: 220px; display: block; margin: 0 auto; }
-              .resi { font-size: 20px; font-weight: 800; font-family: monospace; letter-spacing: 1px; margin: 14px 0 6px; }
-              .meta { font-size: 12px; color: #333; margin-top: 4px; }
+              @page { size: auto; margin: 0mm; }
+              * { box-sizing: border-box; }
+              body { 
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+                display: flex; 
+                flex-direction: column; 
+                align-items: center; 
+                justify-content: flex-start; 
+                margin: 0; 
+                padding: 10px; 
+                text-align: center;
+                background: #fff;
+                color: #000;
+              }
+              .card { 
+                border: 1.5px dashed #000; 
+                border-radius: 8px; 
+                padding: 12px 14px; 
+                max-width: 210px; 
+                width: 100%; 
+                box-sizing: border-box;
+                page-break-inside: avoid;
+                break-inside: avoid;
+                margin: 0 auto;
+              }
+              .logo { font-size: 12px; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 2px; }
+              .title { font-size: 9px; color: #555; margin-bottom: 6px; letter-spacing: 0.3px; font-weight: 600; }
+              img { width: 130px; height: 130px; display: block; margin: 0 auto; }
+              .resi { font-size: 14px; font-weight: 800; font-family: monospace; letter-spacing: 0.5px; margin: 8px 0 4px; word-break: break-all; }
+              .meta { font-size: 10px; color: #333; margin-top: 2px; line-height: 1.25; }
             </style>
           </head>
           <body>
