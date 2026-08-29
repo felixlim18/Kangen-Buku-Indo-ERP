@@ -285,15 +285,109 @@ const NewOrderModalWrapper = ({ isOpen, onClose, isMobileScreen, sidebarHidden, 
   );
 };
 
+type DetectedLogisticsKey = '7-Eleven' | 'Hi-Life' | 'FamilyMart' | 'Shopee Xpress' | 'Post Office' | 'Unknown';
+
+const detectLogisticsFromResi = (resiStr: string): DetectedLogisticsKey => {
+  const clean = resiStr.trim().toUpperCase();
+  if (!clean) return 'Unknown';
+
+  // 1. Shopee Xpress: Diawali "TW" diikuti 13-15 digit angka
+  if (/^TW\d{13,15}$/i.test(clean)) {
+    return 'Shopee Xpress';
+  }
+
+  // 2. Post Office: Tepat 14 digit angka murni tanpa huruf
+  if (/^\d{14}$/.test(clean)) {
+    return 'Post Office';
+  }
+
+  // 3. 7-Eleven: Tepat 12 karakter. Diawali 1 huruf kapital diikuti 11 digit angka
+  if (/^[A-Z]\d{11}$/.test(clean)) {
+    return '7-Eleven';
+  }
+
+  // 4. FamilyMart: Tepat 11 digit angka murni tanpa huruf
+  if (/^\d{11}$/.test(clean)) {
+    return 'FamilyMart';
+  }
+
+  // 5. Hi-Life: 11 atau 12 karakter alfanumerik dengan huruf kapital di tengah-tengah angka (bukan di awal & bukan di akhir)
+  if (/^\d+[A-Z]+\d+$/.test(clean) && (clean.length === 11 || clean.length === 12)) {
+    return 'Hi-Life';
+  }
+
+  return 'Unknown';
+};
+
+const resolveLogisticsNameFromDataMaster = (
+  detectedKey: DetectedLogisticsKey,
+  availableLogistics: Array<{ id: string; name: string }>,
+  fallbackCurrent: string
+): string => {
+  if (detectedKey === 'Unknown') return fallbackCurrent || 'Lainnya';
+
+  const found = availableLogistics.find((l) => {
+    const name = (l.name || '').toLowerCase().trim();
+    if (detectedKey === '7-Eleven' && (name.includes('7-11') || name.includes('7-eleven') || name.includes('7 eleven') || name.includes('seven'))) {
+      return true;
+    }
+    if (detectedKey === 'FamilyMart' && (name.includes('family') || name.includes('familymart') || name.includes('fami') || name.includes('全家'))) {
+      return true;
+    }
+    if (detectedKey === 'Hi-Life' && (name.includes('hi-life') || name.includes('hilife') || name.includes('hi life') || name.includes('萊爾富'))) {
+      return true;
+    }
+    if (detectedKey === 'Shopee Xpress' && (name.includes('shopee') || name.includes('spx') || name.includes('xpress') || name.includes('express') || name.includes('蝦皮'))) {
+      return true;
+    }
+    if (detectedKey === 'Post Office' && (name.includes('post') || name.includes('pos') || name.includes('kantor pos') || name.includes('chunghwa') || name.includes('郵局'))) {
+      return true;
+    }
+    return name === detectedKey.toLowerCase();
+  });
+
+  return found ? found.name : detectedKey;
+};
+
 const QrCodeModal: React.FC<{
   order: SalesOrder;
   resi: string;
   onClose: () => void;
   sidebarHidden: boolean;
-}> = ({ order, resi, onClose, sidebarHidden }) => {
+  availableLogistics: Array<{ id: string; name: string }>;
+}> = ({ order, resi, onClose, sidebarHidden, availableLogistics }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // 1. Determine Category
+  const isMarketplace = order.buyerType === 'marketplace';
+  const isReseller = order.buyerType === 'reseller';
+  const categoryLabel = isMarketplace ? 'Marketplace' : isReseller ? 'Reseller' : 'Direct Order';
+
+  // 2. Identify Logistics from Resi
+  const detectedKey = detectLogisticsFromResi(resi);
+  const resolvedLogisticsName = resolveLogisticsNameFromDataMaster(
+    detectedKey,
+    availableLogistics,
+    order.pickupLogistics || ''
+  );
+
+  // For Marketplace: Kurir automatically from detected resi.
+  // For Reseller & Direct: Kurir from detected or user's selection matched with Data Master.
+  const displayLogistics = isMarketplace
+    ? (resolvedLogisticsName || order.pickupLogistics || 'Marketplace')
+    : (resolvedLogisticsName || order.pickupLogistics || 'Lainnya');
+
+  // 3. Determine Customer Display
+  // Marketplace: Nama Platform (e.g. Shopee / TikTok / order.platformChannel / order.platformOrder)
+  // Direct & Reseller: Nama Pembeli (order.customerName)
+  const displayCustomer = isMarketplace
+    ? (order.platformChannel || order.platformOrder || order.customerPlatformName || 'Shopee')
+    : (order.customerName || '-');
+
+  const customerFieldLabel = isMarketplace ? 'Platform' : 'Customer';
+
+  // 4. Generate Standard QR Code 2D (Level H)
   useEffect(() => {
     if (canvasRef.current && resi) {
       QRCode.toCanvas(
@@ -331,52 +425,83 @@ const QrCodeModal: React.FC<{
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Cetak QR Code Resi - ${order.orderCode}</title>
+            <title>QR Code Resi - ${order.orderCode}</title>
             <style>
-              @page { size: auto; margin: 0mm; }
-              * { box-sizing: border-box; }
+              @page { size: auto; margin: 5mm; }
+              * { box-sizing: border-box; margin: 0; padding: 0; }
               body { 
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-                display: flex; 
-                flex-direction: column; 
-                align-items: center; 
-                justify-content: flex-start; 
-                margin: 0; 
-                padding: 10px; 
-                text-align: center;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; 
                 background: #fff;
                 color: #000;
+                padding: 10px;
+                display: flex;
+                justify-content: center;
               }
               .card { 
                 border: 1.5px dashed #000; 
                 border-radius: 8px; 
-                padding: 12px 14px; 
-                max-width: 210px; 
-                width: 100%; 
+                padding: 12px 16px; 
+                width: 250px; 
+                text-align: center;
                 box-sizing: border-box;
                 page-break-inside: avoid;
                 break-inside: avoid;
                 margin: 0 auto;
               }
-              .logo { font-size: 12px; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 2px; }
-              .title { font-size: 9px; color: #555; margin-bottom: 6px; letter-spacing: 0.3px; font-weight: 600; }
-              img { width: 130px; height: 130px; display: block; margin: 0 auto; }
-              .resi { font-size: 14px; font-weight: 800; font-family: monospace; letter-spacing: 0.5px; margin: 8px 0 4px; word-break: break-all; }
-              .meta { font-size: 10px; color: #333; margin-top: 2px; line-height: 1.25; }
+              .qr-container { text-align: center; margin: 0 auto; }
+              img { width: 135px; height: 135px; display: block; margin: 0 auto; }
+              .resi { 
+                font-size: 13px; 
+                font-weight: 800; 
+                font-family: monospace; 
+                letter-spacing: 0.5px; 
+                margin: 6px 0 8px; 
+                word-break: break-all; 
+                text-align: center; 
+              }
+              .meta-section { 
+                border-top: 1px dashed #aaa; 
+                padding-top: 6px; 
+                width: 100%;
+                box-sizing: border-box;
+              }
+              .meta-svg {
+                width: 100%;
+                height: 62px;
+                display: block;
+                overflow: hidden;
+              }
             </style>
           </head>
           <body>
             <div class="card">
-              <div class="logo">KANGEN BUKU INDO</div>
-              <div class="title">LABEL QR CODE RESI PENGIRIMAN</div>
-              <img src="${dataUrl}" alt="QR Code Resi" />
-              <div class="resi">${resi}</div>
-              <div class="meta"><strong>Order:</strong> ${order.orderCode}</div>
-              <div class="meta"><strong>Customer:</strong> ${order.customerName || '-'}</div>
-              <div class="meta"><strong>Ekspedisi:</strong> ${order.pickupLogistics || '-'}</div>
+              <div class="qr-container">
+                <img src="${dataUrl}" alt="QR Code Resi" />
+                <div class="resi">${resi}</div>
+              </div>
+              <div class="meta-section">
+                <svg class="meta-svg" viewBox="0 0 210 62" xmlns="http://www.w3.org/2000/svg">
+                  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif" font-size="9.5">
+                    <text x="0" y="11" fill="#555" font-weight="600">Categories: <tspan font-weight="700" fill="#000">${categoryLabel}</tspan></text>
+                    <text x="0" y="27" fill="#555" font-weight="600">Order Number: <tspan font-weight="700" fill="#000">${order.orderCode}</tspan></text>
+                    <text x="0" y="43" fill="#555" font-weight="600">Customer Name: <tspan font-weight="700" fill="#000">${displayCustomer}</tspan></text>
+                    <text x="0" y="59" fill="#555" font-weight="600">Shipping: <tspan font-weight="700" fill="#000">${displayLogistics}</tspan></text>
+                  </g>
+                </svg>
+              </div>
             </div>
             <script>
               window.onload = function() {
+                try {
+                  var texts = document.querySelectorAll('.meta-svg text');
+                  texts.forEach(function(t) {
+                    var len = t.getComputedTextLength ? t.getComputedTextLength() : 0;
+                    if (len > 200) {
+                      t.setAttribute('textLength', '200');
+                      t.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+                    }
+                  });
+                } catch(e) {}
                 window.print();
                 setTimeout(function() { window.close(); }, 500);
               };
@@ -406,7 +531,18 @@ const QrCodeModal: React.FC<{
               <QrCode className="w-4 h-4" />
             </div>
             <div className="text-left">
-              <h3 className="text-sm font-bold text-neutral-900 dark:text-white leading-none">QR Code Nomor Resi</h3>
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-bold text-neutral-900 dark:text-white leading-none">QR Code Nomor Resi</h3>
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                  isMarketplace 
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400 border border-orange-200/60 dark:border-orange-800/40' 
+                    : isReseller 
+                      ? 'bg-purple-50 text-purple-600 dark:bg-purple-950/50 dark:text-purple-400 border border-purple-200/60 dark:border-purple-800/40' 
+                      : 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/40'
+                }`}>
+                  {categoryLabel}
+                </span>
+              </div>
               <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1 font-mono">{order.orderCode}</p>
             </div>
           </div>
@@ -425,7 +561,6 @@ const QrCodeModal: React.FC<{
           <div className="p-3 bg-white rounded-xl shadow-xs border border-neutral-200/80 flex items-center justify-center">
             <canvas ref={canvasRef} className="w-[200px] h-[200px] block" />
           </div>
-          <p className="text-[11px] text-neutral-400 mt-2">Scan QR Code 2D untuk membaca Nomor Resi</p>
         </div>
 
         {/* Order Details & Resi Copy Box */}
@@ -462,12 +597,14 @@ const QrCodeModal: React.FC<{
 
           <div className="grid grid-cols-2 gap-2 text-xs bg-neutral-50 dark:bg-neutral-800/40 p-2.5 rounded-xl border border-neutral-200/50 dark:border-neutral-800">
             <div>
-              <span className="text-[10.5px] text-neutral-400 block">Customer</span>
-              <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate block">{order.customerName || '-'}</span>
+              <span className="text-[10.5px] text-neutral-400 block">{customerFieldLabel}</span>
+              <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate block">{displayCustomer}</span>
             </div>
             <div>
               <span className="text-[10.5px] text-neutral-400 block">Kurir / Logistik</span>
-              <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate block">{order.pickupLogistics || '-'}</span>
+              <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate block text-indigo-600 dark:text-indigo-400 font-bold">
+                {displayLogistics}
+              </span>
             </div>
           </div>
         </div>
@@ -8747,6 +8884,7 @@ export const SalesTab: React.FC = () => {
             resi={resi}
             onClose={() => setQrCodeModalOrder(null)}
             sidebarHidden={sidebarHidden}
+            availableLogistics={resolvedLogistics}
           />
         );
       })()}
