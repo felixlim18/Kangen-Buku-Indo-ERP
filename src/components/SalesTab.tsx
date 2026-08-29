@@ -84,8 +84,10 @@ import {
   Pin,
   Package,
   GitFork,
-  Loader2
+  Loader2,
+  QrCode
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { PackingChecklist } from './PackingChecklist';
 
@@ -283,6 +285,193 @@ const NewOrderModalWrapper = ({ isOpen, onClose, isMobileScreen, sidebarHidden, 
   );
 };
 
+const QrCodeModal: React.FC<{
+  order: SalesOrder;
+  resi: string;
+  onClose: () => void;
+  sidebarHidden: boolean;
+}> = ({ order, resi, onClose, sidebarHidden }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (canvasRef.current && resi) {
+      QRCode.toCanvas(
+        canvasRef.current,
+        resi,
+        {
+          width: 220,
+          margin: 2,
+          errorCorrectionLevel: 'H',
+          color: {
+            dark: '#000000',
+            light: '#ffffff',
+          },
+        },
+        (error) => {
+          if (error) console.error('Error generating QR code:', error);
+        }
+      );
+    }
+  }, [resi]);
+
+  const handleCopyResi = () => {
+    if (!resi) return;
+    navigator.clipboard.writeText(resi);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handlePrint = () => {
+    if (!canvasRef.current) return;
+    const dataUrl = canvasRef.current.toDataURL('image/png');
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Cetak QR Code Resi - ${order.orderCode}</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 90vh; margin: 0; padding: 20px; text-align: center; }
+              .card { border: 2px dashed #000; border-radius: 12px; padding: 24px; max-width: 320px; width: 100%; box-sizing: border-box; }
+              .logo { font-size: 16px; font-weight: bold; margin-bottom: 6px; }
+              .title { font-size: 12px; color: #555; margin-bottom: 12px; letter-spacing: 0.5px; }
+              img { width: 220px; height: 220px; display: block; margin: 0 auto; }
+              .resi { font-size: 20px; font-weight: 800; font-family: monospace; letter-spacing: 1px; margin: 14px 0 6px; }
+              .meta { font-size: 12px; color: #333; margin-top: 4px; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="logo">KANGEN BUKU INDO</div>
+              <div class="title">LABEL QR CODE RESI PENGIRIMAN</div>
+              <img src="${dataUrl}" alt="QR Code Resi" />
+              <div class="resi">${resi}</div>
+              <div class="meta"><strong>Order:</strong> ${order.orderCode}</div>
+              <div class="meta"><strong>Customer:</strong> ${order.customerName || '-'}</div>
+              <div class="meta"><strong>Ekspedisi:</strong> ${order.pickupLogistics || '-'}</div>
+            </div>
+            <script>
+              window.onload = function() {
+                window.print();
+                setTimeout(function() { window.close(); }, 500);
+              };
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+  };
+
+  return (
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className={getModalOverlayClass(sidebarHidden, 'z-50')}
+    >
+      <div
+        className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[92%] p-5 space-y-4 animate-scale-up my-auto text-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-800">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <QrCode className="w-4 h-4" />
+            </div>
+            <div className="text-left">
+              <h3 className="text-sm font-bold text-neutral-900 dark:text-white leading-none">QR Code Nomor Resi</h3>
+              <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1 font-mono">{order.orderCode}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition flex items-center justify-center cursor-pointer"
+            aria-label="Tutup"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* QR Code Canvas */}
+        <div className="flex flex-col items-center justify-center p-3 bg-neutral-50 dark:bg-neutral-950/50 rounded-2xl border border-neutral-100 dark:border-neutral-800/80">
+          <div className="p-3 bg-white rounded-xl shadow-xs border border-neutral-200/80 flex items-center justify-center">
+            <canvas ref={canvasRef} className="w-[200px] h-[200px] block" />
+          </div>
+          <p className="text-[11px] text-neutral-400 mt-2">Scan QR Code 2D untuk membaca Nomor Resi</p>
+        </div>
+
+        {/* Order Details & Resi Copy Box */}
+        <div className="space-y-2 text-left">
+          <div className="bg-neutral-50 dark:bg-neutral-800/60 p-2.5 rounded-xl border border-neutral-200/70 dark:border-neutral-700/60 flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Nomor Resi</div>
+              <div className="font-mono text-xs font-bold text-neutral-900 dark:text-white truncate selection:bg-indigo-100">
+                {resi}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCopyResi}
+              className={`shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer select-none ${copied
+                ? 'bg-emerald-500 text-white shadow-xs'
+                : 'bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 text-neutral-700 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-600 shadow-2xs'
+                }`}
+              title="Salin Nomor Resi"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-white" />
+                  <span>Tersalin!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />
+                  <span>Salin</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs bg-neutral-50 dark:bg-neutral-800/40 p-2.5 rounded-xl border border-neutral-200/50 dark:border-neutral-800">
+            <div>
+              <span className="text-[10.5px] text-neutral-400 block">Customer</span>
+              <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate block">{order.customerName || '-'}</span>
+            </div>
+            <div>
+              <span className="text-[10.5px] text-neutral-400 block">Kurir / Logistik</span>
+              <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate block">{order.pickupLogistics || '-'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="flex-1 py-2 px-3 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer border border-indigo-200/60 dark:border-indigo-800/50"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Cetak QR</span>
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2 px-3 text-xs font-bold text-white bg-neutral-800 hover:bg-neutral-900 dark:bg-neutral-700 dark:hover:bg-neutral-600 rounded-xl transition cursor-pointer"
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const SalesTab: React.FC = () => {
   const { profile, user } = useAuth();
   const { branding, lineSettings } = useSettings();
@@ -361,6 +550,9 @@ export const SalesTab: React.FC = () => {
   const [refundConfirmOrder, setRefundConfirmOrder] = useState<SalesOrder | null>(null);
   const [isRefundSubmitting, setIsRefundSubmitting] = useState(false);
 
+  // QR Code 2D Resi Modal state
+  const [qrCodeModalOrder, setQrCodeModalOrder] = useState<SalesOrder | null>(null);
+
   // Esc key listeners for modals
   useModalEsc(isChecklistOpen, () => setIsChecklistOpen(false));
   useModalEsc(!!editingOrder, () => setEditingOrder(null));
@@ -371,6 +563,7 @@ export const SalesTab: React.FC = () => {
   useModalEsc(isManageConfigOpen, () => setIsManageConfigOpen(false));
   useModalEsc(!!splitOrderModalData, () => setSplitOrderModalData(null), isSplitSubmitting);
   useModalEsc(!!refundConfirmOrder, () => setRefundConfirmOrder(null), isRefundSubmitting);
+  useModalEsc(!!qrCodeModalOrder, () => setQrCodeModalOrder(null));
 
   const handleOpenSplitOrderModal = (order: SalesOrder) => {
     // Determine default items to move to child SO (items that are NOT ready/sufficient in stock)
@@ -631,6 +824,7 @@ export const SalesTab: React.FC = () => {
         setSelectedOrderForDelete(null);
         setIsProsesConfirmOpen(false);
         setSelectedOrderForProses(null);
+        setQrCodeModalOrder(null);
         stopScanning();
       }
     };
@@ -5411,7 +5605,27 @@ export const SalesTab: React.FC = () => {
                       onClick={() => handleEditOrderClick(order)}>
                       <Edit className="h-4 w-4" />
                     </button>
-                  ) : (
+                  ) : (order.status === 'packed' || order.status === 'shipped' || order.status === 'confirmed') ? (() => {
+                    const resi = (order.shipment?.shippingNumber || (order as any).shippingNumber || '').trim();
+                    const hasResi = !!resi;
+                    return (
+                      <button
+                        type="button"
+                        className={`kbi-ocard__mini ${!hasResi ? 'opacity-35 cursor-not-allowed bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500' : 'text-[#2b5a9e] dark:text-brand-400 hover:bg-[#eaf1fb] dark:hover:bg-neutral-800'}`}
+                        title={hasResi ? 'Lihat QR Code Resi' : 'Nomor resi belum tersedia'}
+                        aria-label={hasResi ? 'Lihat QR Code Resi' : 'Nomor resi belum tersedia'}
+                        onClick={() => {
+                          if (!hasResi) {
+                            safeAlert('Nomor resi belum tersedia untuk orderan ini.');
+                            return;
+                          }
+                          setQrCodeModalOrder(order);
+                        }}
+                      >
+                        <QrCode className="h-4 w-4" />
+                      </button>
+                    );
+                  })() : (
                     <button type="button" className="kbi-ocard__mini" title="Detail Orderan" aria-label="Detail orderan"
                       onClick={() => setViewingOrderDetail(order)}>
                       <Eye className="h-4 w-4" />
@@ -5925,7 +6139,30 @@ export const SalesTab: React.FC = () => {
                                   >
                                     <Edit className="h-3.5 w-3.5" />
                                   </button>
-                                ) : (
+                                ) : (order.status === 'packed' || order.status === 'shipped' || order.status === 'confirmed') ? (() => {
+                                  const resi = (order.shipment?.shippingNumber || (order as any).shippingNumber || '').trim();
+                                  const hasResi = !!resi;
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (!hasResi) {
+                                          safeAlert('Nomor resi belum tersedia untuk orderan ini.');
+                                          return;
+                                        }
+                                        setQrCodeModalOrder(order);
+                                      }}
+                                      className={`w-7 h-7 rounded-[7px] transition flex items-center justify-center ${!hasResi
+                                        ? 'opacity-35 cursor-not-allowed text-[#9ca3af] bg-[#f3f4f6] dark:bg-neutral-800/60'
+                                        : 'text-[#2b5a9e] dark:text-brand-400 hover:text-[#1e4275] hover:bg-[#eaf1fb] dark:hover:bg-neutral-800 cursor-pointer'
+                                        }`}
+                                      title={hasResi ? "Lihat QR Code Resi" : "Nomor resi belum tersedia"}
+                                    >
+                                      <QrCode className="h-3.5 w-3.5" />
+                                    </button>
+                                  );
+                                })() : (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -8477,6 +8714,20 @@ export const SalesTab: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ================= MODAL: 2D QR Code Nomor Resi ================= */}
+      {qrCodeModalOrder && (() => {
+        const resi = (qrCodeModalOrder.shipment?.shippingNumber || (qrCodeModalOrder as any).shippingNumber || '').trim();
+        return (
+          <QrCodeModal
+            order={qrCodeModalOrder}
+            resi={resi}
+            onClose={() => setQrCodeModalOrder(null)}
+            sidebarHidden={sidebarHidden}
+          />
+        );
+      })()}
+
       {/* ================= MODAL: Konfirmasi Perubahan Metode Bayar ================= */}
       {showPaymentChangeConfirmModal && (
         <div

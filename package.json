@@ -32,6 +32,7 @@
     "motion": "^12.23.24",
     "papaparse": "^5.5.4",
     "playwright": "^1.62.1",
+    "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.8.1",
