@@ -9,7 +9,7 @@ import { useAuth } from '../lib/auth-context';
 import { useSidebar } from '../lib/sidebar-context';
 import { ImagePreviewModal } from './ui/ImagePreviewModal';
 import { useModalEsc, MODAL_TIERS } from '../lib/use-modal-esc';
-import { getEffectiveOrderLogistics } from '../lib/sales-logistics-utils';
+import { getEffectiveOrderLogistics, sanitizeResiNumber } from '../lib/sales-logistics-utils';
 
 interface BulkProcessModalProps {
   isOpen: boolean;
@@ -146,7 +146,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
 
   const handleInputChange = (r: number, value: string) => {
     const newRows = [...rows];
-    newRows[r].resi = value.toUpperCase().replace(/\s/g, '');
+    newRows[r].resi = sanitizeResiNumber(value);
     if (newRows[r].status === 'error') newRows[r].status = 'idle';
     newRows[r].deskripsi = 'Menyimpan...';
     newRows[r].deskripsiType = 'warn';
@@ -196,7 +196,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
       const rowIndex = startRow + i;
       if (rowIndex < newRows.length && newRows[rowIndex].status !== 'success') {
         const cells = line.split('\t');
-        newRows[rowIndex].resi = (cells[0] || line).toUpperCase().replace(/\s/g, '');
+        newRows[rowIndex].resi = sanitizeResiNumber(cells[0] || line);
         newRows[rowIndex].status = 'idle';
         newRows[rowIndex].deskripsi = '';
         newRows[rowIndex].deskripsiType = '';

@@ -1,46 +1,60 @@
 import { SalesOrder } from '../types';
 
-export type DetectedLogisticsKey = '7-Eleven' | 'Hi-Life' | 'FamilyMart' | 'Shopee Xpress' | 'Post Office' | 'Unknown';
+export type DetectedLogisticsKey = '7-11' | 'FamilyMart' | 'OK Mart' | 'Shopee Express' | 'Post Office' | 'Unknown';
 
 /**
- * Detect logistics provider based on tracking number (resi) pattern
+ * Sanitize raw tracking number:
+ * Removes all whitespace (spaces, tabs, newlines), dashes/hyphens (-), dots (.), and underscores (_)
+ */
+export const sanitizeResiNumber = (resiStr?: string | null): string => {
+  if (!resiStr) return '';
+  return resiStr.replace(/[\s\-_.\t\r\n]+/g, '').trim().toUpperCase();
+};
+
+/**
+ * Detect logistics provider based on tracking number (resi) pattern.
+ * Strictly limited to the 5 options in Data Master:
+ * 1. 7-11 (7-Eleven)
+ * 2. Shopee Express (SPX)
+ * 3. FamilyMart
+ * 4. OK Mart
+ * 5. Post Office
  */
 export const detectLogisticsFromResi = (resiStr?: string | null): DetectedLogisticsKey => {
   if (!resiStr) return 'Unknown';
-  // Strip all whitespace, spaces, tabs, dashes, hyphens, and underscores
-  const clean = resiStr.replace(/[\s\-_]+/g, '').trim().toUpperCase();
+  const clean = sanitizeResiNumber(resiStr);
   if (!clean) return 'Unknown';
 
-  // 1. Shopee Xpress: Diawali "TW" diikuti 13-15 digit angka
-  if (/^TW\d{13,15}$/i.test(clean)) {
-    return 'Shopee Xpress';
+  // 1. Shopee Express: Diawali "TW" diikuti digit angka atau diawali "SPX"
+  if (/^TW\d{10,18}$/i.test(clean) || /^SPX[A-Z0-9]{8,20}$/i.test(clean)) {
+    return 'Shopee Express';
   }
 
-  // 2. Post Office: Tepat 14 digit angka murni tanpa huruf
-  if (/^\d{14}$/.test(clean)) {
+  // 2. Post Office: Tepat 14 digit angka murni tanpa huruf, atau diawali "PO" / "POST"
+  if (/^\d{14}$/.test(clean) || /^POST?\d{8,16}$/i.test(clean)) {
     return 'Post Office';
   }
 
-  // 3. 7-Eleven: Tepat 12 karakter. Diawali 1 huruf kapital diikuti 11 digit angka
+  // 3. 7-11 (7-Eleven): Tepat 12 karakter (1 huruf kapital diikuti 11 digit angka, contoh: E85208963980)
   if (/^[A-Z]\d{11}$/.test(clean)) {
-    return '7-Eleven';
+    return '7-11';
   }
 
-  // 4. FamilyMart: Tepat 11 digit angka murni tanpa huruf
-  if (/^\d{11}$/.test(clean)) {
+  // 4. FamilyMart: Tepat 11 digit angka murni tanpa huruf, atau diawali "FM"
+  if (/^\d{11}$/.test(clean) || /^FM\d{9,11}$/i.test(clean)) {
     return 'FamilyMart';
   }
 
-  // 5. Hi-Life: 11 atau 12 karakter alfanumerik dengan huruf kapital di tengah-tengah angka (bukan di awal & bukan di akhir)
-  if (/^\d+[A-Z]+\d+$/.test(clean) && (clean.length === 11 || clean.length === 12)) {
-    return 'Hi-Life';
+  // 5. OK Mart: Diawali "OK"
+  if (/^OK[A-Z0-9]{6,16}$/i.test(clean)) {
+    return 'OK Mart';
   }
 
   return 'Unknown';
 };
 
 /**
- * Resolve detected logistics name against Master Data Logistik
+ * Resolve detected logistics name against Master Data Logistik (7-11, shopee express, familymart, ok mart, Post office)
  */
 export const resolveLogisticsNameFromDataMaster = (
   detectedKey: DetectedLogisticsKey,
@@ -52,16 +66,16 @@ export const resolveLogisticsNameFromDataMaster = (
   if (availableLogistics && availableLogistics.length > 0) {
     const found = availableLogistics.find((l) => {
       const name = (l.name || '').toLowerCase().trim();
-      if (detectedKey === '7-Eleven' && (name.includes('7-11') || name.includes('7-eleven') || name.includes('7 eleven') || name.includes('seven'))) {
+      if (detectedKey === '7-11' && (name.includes('7-11') || name.includes('7-eleven') || name.includes('7 eleven') || name.includes('seven'))) {
+        return true;
+      }
+      if (detectedKey === 'Shopee Express' && (name.includes('shopee') || name.includes('spx') || name.includes('xpress') || name.includes('express') || name.includes('蝦皮'))) {
         return true;
       }
       if (detectedKey === 'FamilyMart' && (name.includes('family') || name.includes('familymart') || name.includes('fami') || name.includes('全家'))) {
         return true;
       }
-      if (detectedKey === 'Hi-Life' && (name.includes('hi-life') || name.includes('hilife') || name.includes('hi life') || name.includes('萊爾富'))) {
-        return true;
-      }
-      if (detectedKey === 'Shopee Xpress' && (name.includes('shopee') || name.includes('spx') || name.includes('xpress') || name.includes('express') || name.includes('蝦皮'))) {
+      if (detectedKey === 'OK Mart' && (name.includes('ok') || name.includes('ok mart') || name.includes('okmart') || name.includes('ok超商'))) {
         return true;
       }
       if (detectedKey === 'Post Office' && (name.includes('post') || name.includes('pos') || name.includes('kantor pos') || name.includes('chunghwa') || name.includes('郵局'))) {
@@ -73,15 +87,13 @@ export const resolveLogisticsNameFromDataMaster = (
     if (found) return found.name;
   }
 
-  // Map English key to Indonesian/Standard name if not matched in master
-  if (detectedKey === 'Post Office') return 'Kantor Pos';
   return detectedKey;
 };
 
 /**
  * Get effective logistics name for a Sales Order:
  * - If order.pickupLogistics is already populated, returns it.
- * - Otherwise, if resi exists, automatically detects and resolves the courier name.
+ * - Otherwise, if resi exists, automatically detects and resolves the courier name against Data Master.
  * - If no resi or unknown, returns fallback (empty string by default).
  */
 export const getEffectiveOrderLogistics = (
@@ -97,7 +109,8 @@ export const getEffectiveOrderLogistics = (
   }
 
   // 2. Extract tracking number / resi
-  const resi = (order.shipment?.shippingNumber || (order as any)?.shippingNumber || '').trim();
+  const rawResi = order.shipment?.shippingNumber || (order as any)?.shippingNumber || '';
+  const resi = sanitizeResiNumber(rawResi);
   if (!resi) return fallback;
 
   // 3. Auto-detect from resi

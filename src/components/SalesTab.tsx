@@ -11,7 +11,8 @@ import { SalesOrderDetailDrawer } from './sales/SalesOrderDetailDrawer';
 import {
   detectLogisticsFromResi,
   resolveLogisticsNameFromDataMaster,
-  getEffectiveOrderLogistics
+  getEffectiveOrderLogistics,
+  sanitizeResiNumber
 } from '../lib/sales-logistics-utils';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -1818,7 +1819,7 @@ export const SalesTab: React.FC = () => {
         e.stopPropagation();
         const triggerProsesConfirm = async () => {
           if (isProsesSubmitting) return;
-          const cleanResi = prosesResi.trim();
+          const cleanResi = sanitizeResiNumber(prosesResi);
           if (!cleanResi) {
             triggerShake('prosesResi');
             return;
@@ -6849,7 +6850,7 @@ export const SalesTab: React.FC = () => {
                     disabled={isProsesSubmitting}
                     onClick={async () => {
                       if (isProsesSubmitting) return;
-                      const cleanResi = prosesResi.trim();
+                      const cleanResi = sanitizeResiNumber(prosesResi);
                       setIsProsesSubmitting(true);
                       try {
                         const orderRef = doc(db, 'salesOrders', selectedOrderForProses.id);
@@ -6893,7 +6894,7 @@ export const SalesTab: React.FC = () => {
                         triggerShake('prosesSubmitBtn');
                         return;
                       }
-                      const cleanResi = prosesResi.trim();
+                      const cleanResi = sanitizeResiNumber(prosesResi);
                       if (!cleanResi) {
                         triggerShake('prosesResi');
                         return;
