@@ -8,7 +8,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../lib/auth-context';
 import { useSidebar } from '../lib/sidebar-context';
 import { ImagePreviewModal } from './ui/ImagePreviewModal';
-import { useModalEsc } from '../lib/use-modal-esc';
+import { useModalEsc, MODAL_TIERS } from '../lib/use-modal-esc';
 
 interface BulkProcessModalProps {
   isOpen: boolean;
@@ -324,18 +324,9 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      /* Overlay string left exactly as it was so desktop is untouched; only
-         kbi-modal-backdrop is added, which is what earns the mobile sheet
-         treatment. Deliberately NOT routed through getModalOverlayClass: this
-         overlay wants a darker scrim and roomier padding than the default, and
-         expressing those as `!`-prefixed overrides would break the sheet —
-         layer order reverses for !important, so a layered Tailwind `!p-4`
-         outranks the unlayered `padding: 0 !important` in mobile.css. */
-      className={`kbi-modal-backdrop fixed top-0 bottom-0 right-0 ${
-        sidebarHidden ? 'left-16' : 'left-16 sm:left-56'
-      } transition-all duration-300 ease-in-out bg-neutral-950/60 backdrop-blur-xs z-40 flex items-center justify-center p-4 sm:p-8 overflow-y-auto`}
+      className={`kbi-modal-backdrop fixed inset-0 transition-all duration-300 ease-in-out bg-neutral-950/70 backdrop-blur-xs ${MODAL_TIERS.DIALOG} flex items-center justify-center p-4 sm:p-8 overflow-y-auto`}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-white dark:bg-neutral-900 rounded-2xl w-[96%] max-w-[1400px] h-[92vh] shadow-2xl overflow-hidden flex flex-col my-auto" style={{ filter: 'drop-shadow(0 30px 80px rgba(6,14,30,0.55))' }}>
@@ -645,6 +636,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
         </div>,
         document.body
       )}
-    </div>
+    </div>,
+    document.body
   );
 };

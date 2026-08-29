@@ -1199,27 +1199,9 @@
      It portals to <body>, so no .kbi-main-prefixed rule can reach it. */
   .kbi-lightbox {
     left: 0 !important;
-    padding: 0 !important;
-    background: rgba(0, 0, 0, .92) !important;
-  }
-  .kbi-lightbox__frame {
-    max-width: 100% !important;
-    padding: 0 16px;
-  }
-  .kbi-lightbox__frame img { max-height: 70dvh !important; }
-  /* The desktop position (-top-10) sits off-screen once the frame is full-bleed. */
-  .kbi-lightbox__close {
-    position: fixed !important;
-    top: calc(env(safe-area-inset-top, 0px) + 12px) !important;
-    right: 12px !important;
-    left: auto !important;
-    width: 44px;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, .55) !important;
-    color: #fff !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
   }
 
   /* ── Fixed header: back · title · close ── */

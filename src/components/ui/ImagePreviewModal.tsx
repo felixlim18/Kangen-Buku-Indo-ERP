@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useSidebar } from '../../lib/sidebar-context';
-import { useModalEsc, getModalOverlayClass } from '../../lib/use-modal-esc';
+import { useModalEsc, MODAL_TIERS } from '../../lib/use-modal-esc';
 
 interface ImagePreviewModalProps {
   isOpen: boolean;
@@ -29,42 +29,58 @@ export function ImagePreviewModal({ isOpen, onClose, imageUrl, title }: ImagePre
 
   return createPortal(
     <div
-      /* Opted out of the sheet treatment (4th arg): a lightbox is a dark
-         viewer, not a card on a scrim, so the full-screen paper panel the
-         mobile stylesheet applies would be wrong here. It gets kbi-lightbox
-         instead and is styled on its own terms. */
-      className={`kbi-lightbox ${getModalOverlayClass(sidebarHidden, 'z-[9999]', '', false)}`}
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.75)' }}
+      className={`kbi-lightbox fixed inset-0 ${MODAL_TIERS.LIGHTBOX} bg-black/90 backdrop-blur-md flex flex-col justify-between p-3 sm:p-5 transition-opacity duration-200 ${show ? 'opacity-100' : 'opacity-0'} left-0 right-0 top-0 bottom-0`}
       onClick={onClose}
     >
+      {/* Top Header Bar with Title and 44px Touch Target Close Button */}
       <div
-        className={`kbi-lightbox__frame relative flex flex-col items-center justify-center max-w-4xl max-h-full transition-all duration-300 transform ${show ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}
-        onClick={e => e.stopPropagation()}
+        className="w-full flex items-center justify-between z-50 pt-[calc(env(safe-area-inset-top,0px)+8px)] px-1 sm:px-3 pb-2 flex-shrink-0"
+        onClick={(e) => e.stopPropagation()}
       >
+        <div className="text-white font-medium text-xs sm:text-sm truncate max-w-[70%] drop-shadow-md">
+          {title || 'Pratinjau Foto'}
+        </div>
         <button
+          type="button"
           onClick={onClose}
           aria-label="Tutup pratinjau"
-          className="kbi-lightbox__close absolute -top-10 right-0 sm:-right-10 sm:top-0 p-2 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-colors backdrop-blur-sm"
+          className="w-11 h-11 rounded-full bg-white/20 hover:bg-white/35 active:bg-white/50 text-white flex items-center justify-center backdrop-blur-md transition-all active:scale-95 cursor-pointer shadow-lg shrink-0 border border-white/20"
         >
           <X className="w-6 h-6" />
         </button>
-        
-        <div className="rounded-xl overflow-hidden shadow-2xl bg-black flex items-center justify-center relative">
-          <img 
-            src={imageUrl} 
-            alt={title || 'Preview'} 
-            className="max-w-full max-h-[75vh] object-contain rounded-xl"
+      </div>
+
+      {/* Centered Image Container - tapping the backdrop area closes the modal */}
+      <div
+        className="flex-1 flex items-center justify-center p-2 min-h-0 cursor-pointer overflow-hidden"
+        onClick={onClose}
+      >
+        <div
+          className={`relative max-w-4xl max-h-full flex items-center justify-center transition-transform duration-300 ${show ? 'scale-100' : 'scale-95'}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <img
+            src={imageUrl}
+            alt={title || 'Preview'}
+            className="max-w-full max-h-[72vh] sm:max-h-[76vh] object-contain rounded-2xl shadow-2xl bg-black/40"
             referrerPolicy="no-referrer"
           />
         </div>
-        
-        {title && (
-          <div className="mt-4 px-4 py-2 bg-neutral-900/90 backdrop-blur-md rounded-lg shadow-lg border border-white/10 max-w-full text-center">
-            <p className="text-white font-medium text-sm sm:text-base break-words">
-              {title}
-            </p>
-          </div>
-        )}
+      </div>
+
+      {/* Bottom Dismiss Bar */}
+      <div
+        className="w-full flex items-center justify-center pb-[calc(env(safe-area-inset-bottom,0px)+8px)] pt-2 flex-shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-5 py-2 rounded-full bg-white/15 hover:bg-white/25 active:bg-white/35 text-white text-xs font-semibold backdrop-blur-md transition-all active:scale-95 cursor-pointer border border-white/20 shadow-md flex items-center gap-1.5"
+        >
+          <X className="w-3.5 h-3.5" />
+          <span>Tutup Pratinjau</span>
+        </button>
       </div>
     </div>,
     document.body

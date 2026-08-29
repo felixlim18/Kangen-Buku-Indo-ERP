@@ -38,7 +38,10 @@ import { getCurrentKontrolStokForBook, getPhysicalOnHandStockForBook } from "../
 import { useAuth } from '../lib/auth-context';
 import { useSettings } from '../lib/use-settings';
 import { useSidebar } from '../lib/sidebar-context';
-import { useModalEsc, getModalOverlayClass } from '../lib/use-modal-esc';
+import { useModalEsc, getModalOverlayClass, MODAL_TIERS } from '../lib/use-modal-esc';
+import { SalesOrderDetailDrawer } from './sales/SalesOrderDetailDrawer';
+import { SalesOrderMobileCard } from './sales/SalesOrderMobileCard';
+import { SalesOrderMobileFilter } from './sales/SalesOrderMobileFilter';
 import {
   Plus,
   Search,
@@ -513,12 +516,12 @@ const QrCodeModal: React.FC<{
     }
   };
 
-  return (
+  return createPortal(
     <div
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className={getModalOverlayClass(sidebarHidden, 'z-50')}
+      className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
     >
       <div
         className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[92%] p-5 space-y-4 animate-scale-up my-auto text-center"
@@ -628,7 +631,8 @@ const QrCodeModal: React.FC<{
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -5196,8 +5200,8 @@ export const SalesTab: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. PIPELINE CARD */}
-      <div className="bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-[14px] p-4 sm:p-5 shadow-xs">
+      {/* 2. PIPELINE CARD (DESKTOP) */}
+      <div className="hidden md:block bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-[14px] p-4 sm:p-5 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3.5">
           <div className="flex items-baseline gap-2.5">
             <span className="font-['Inter'] text-[26px] font-bold tracking-tight text-[#0d1117] dark:text-white">
@@ -5477,8 +5481,8 @@ export const SalesTab: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. TOOLBAR */}
-      <div className="space-y-3">
+      {/* 3. TOOLBAR (DESKTOP) */}
+      <div className="hidden md:block space-y-3">
         <div className="flex items-center gap-2.5">
           <div className="relative flex-1 w-full flex items-center bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-[10px] px-3.5 h-11 md:h-auto md:py-2.5 focus-within:border-[#2b5a9e] focus-within:ring-2 focus-within:ring-[#2b5a9e]/10 transition">
             <Search className="w-[15px] h-[15px] text-[#9ca3af] shrink-0 mr-2.5" />
@@ -5603,11 +5607,56 @@ export const SalesTab: React.FC = () => {
         )}
       </div>
 
-      {/* 4a. MOBILE ORDER CARDS (<768px)
-           A record-per-card presentation of the exact same paginatedOrders list
-           the table below renders. Every control calls the identical handler —
-           this is a second view of the same data, not a second code path. */}
-      <div className="kbi-ocards md:hidden">
+      {/* 4a. MOBILE SEARCH & FILTER BAR (<768px) */}
+      <SalesOrderMobileFilter
+        activeFilterTab={activeFilterTab}
+        setActiveFilterTab={(tab) => {
+          setActiveFilterTab(tab);
+          setExpandedOrderId(null);
+          setCurrentPage(1);
+        }}
+        searchQuery={globalSearch}
+        setSearchQuery={setGlobalSearch}
+        allCount={dateFilteredOrders.length}
+        pendingCount={pendingOrders.length}
+        pendingSum={pendingSum}
+        packedCount={packedOrders.length}
+        packedSum={packedSum}
+        shippedCount={shippedOrders.length}
+        shippedSum={shippedSum}
+        completedCount={completedOrders.length}
+        completedSum={completedSum}
+        returnedCount={returnedOrders.length}
+        returnedSum={returnedSum}
+        cancelledCount={cancelledOrders.length}
+        cancelledSum={cancelledSum}
+        canViewAmount={canViewAmount}
+        globalStartDate={globalStartDate ? globalStartDate.toISOString().split('T')[0] : ''}
+        globalEndDate={globalEndDate ? globalEndDate.toISOString().split('T')[0] : ''}
+        globalDateLabel={globalDateLabel}
+        onDateChange={(start, end, label) => {
+          setGlobalStartDate(start ? new Date(start) : null);
+          setGlobalEndDate(end ? new Date(end) : null);
+          if (label) setGlobalDateLabel(label);
+        }}
+        isAdvancedActive={!!(appliedPlatform || appliedSumber || appliedCourier || appliedDetails)}
+        selectedChannel={platformFilterInput}
+        setSelectedChannel={(val) => {
+          setPlatformFilterInput(val);
+          setAppliedPlatform(val);
+        }}
+        selectedLogistics={courierInput}
+        setSelectedLogistics={(val) => {
+          setCourierInput(val);
+          setAppliedCourier(val);
+        }}
+        channelList={resolvedChannels}
+        logisticsList={resolvedLogistics}
+        onResetFilters={handleResetAdvancedFilters}
+      />
+
+      {/* 4b. MOBILE ORDER CARDS (<768px) */}
+      <div className="md:hidden space-y-3">
         {paginatedOrders.map((order, orderIdx) => {
           const orderQty = (order.items || []).reduce((acc, it) => acc + (it.qty || 0), 0);
           const orderDateMs = getOrderDateMs(order);
@@ -5616,309 +5665,93 @@ export const SalesTab: React.FC = () => {
             : 'N/A';
 
           const overdueDays = getOverdueDays(order);
-          const isOverdue = overdueDays >= 15;
-          const isCritical = overdueDays >= 21;
           const isReadyStock = checkIsReadyStock(order);
           const isPinnedOrder = !!order.isPinned;
-          const showReadyStockHighlight = !isPinnedOrder && isReadyStock;
-          const showOverdueHighlight = !isPinnedOrder && !showReadyStockHighlight && isOverdue;
-
-          let cardBgClass = '!bg-white dark:!bg-neutral-900 !border-[#E7E1D2] dark:!border-neutral-800';
-          if (order.isPinned) {
-            cardBgClass = '!bg-amber-50 dark:!bg-amber-900/10 !border-amber-200 dark:!border-amber-900/30';
-          } else if (showReadyStockHighlight) {
-            cardBgClass = '!bg-emerald-50 dark:!bg-emerald-900/10 !border-emerald-200 dark:!border-emerald-900/30';
-          } else if (showOverdueHighlight) {
-            cardBgClass = isCritical ? '!bg-red-50 dark:!bg-red-900/10 !border-red-200 dark:!border-red-900/30' : '!bg-orange-50 dark:!bg-orange-900/10 !border-orange-200 dark:!border-orange-900/30';
-          }
-
-          let pillColor = '#b45309';
-          let pillBg = '#fef3e2';
-          let pillLabel = 'Pending';
-          if (order.status === 'completed') { pillColor = '#0f7a52'; pillBg = '#e7f5ef'; pillLabel = 'Selesai'; }
-          else if (order.status === 'packed') { pillColor = '#6366f1'; pillBg = '#eef2ff'; pillLabel = 'Dikemas'; }
-          else if (order.status === 'shipped' || order.status === 'confirmed') { pillColor = '#1d6fa5'; pillBg = '#e8f2f9'; pillLabel = 'Dikirim'; }
-          else if (order.status === 'returned') { pillColor = '#a8323b'; pillBg = '#fbecec'; pillLabel = 'Return'; }
-          else if (order.status === 'cancelled') { pillColor = '#5b6472'; pillBg = '#f1f2f4'; pillLabel = 'Cancel'; }
-          else if (order.isDraft) { pillLabel = 'Draft'; }
-
-          const channelName = order.platformChannel || '-';
-          const channelObj = resolvedChannels.find(c => (c.name || '').toLowerCase() === channelName.toLowerCase());
-          const channelColor = getChannelColor(channelName, channelObj);
-
-          const isDraftLike = order.status === 'draft' || !order.status;
-          const canDelete = order.status !== 'packed' && order.status !== 'shipped' && order.status !== 'confirmed'
-            && order.status !== 'completed' && order.status !== 'cancelled' && order.status !== 'returned';
 
           return (
-            <article
+            <SalesOrderMobileCard
               key={`m-${order.id}-${orderIdx}`}
-              className={`kbi-ocard ${cardBgClass}`}
-              onClick={() => setViewingOrderDetail(order)}
-            >
-              {/* Status ribbon — the card's spine. */}
-              <span className="kbi-ocard__ribbon" style={{ backgroundColor: pillColor }} aria-hidden="true" />
-
-              <div className="kbi-ocard__top pb-1">
-                <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0 mr-2">
-                  <span className="font-bold text-neutral-900 dark:text-white text-[13px] leading-none truncate max-w-[100px]">{order.orderCode}</span>
-                  <span className="text-neutral-300 dark:text-neutral-600 leading-none text-xs">•</span>
-                  <span className="font-semibold text-[11.5px] truncate flex-1" style={{ color: channelColor }}>{channelName}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setExpandedOrderId(expandedOrderId === order.id ? null : order.id); }}
-                  className="kbi-ocard__status shrink-0"
-                  style={{ backgroundColor: pillBg, color: pillColor, minHeight: '24px', padding: '2px 6px' }}
-                  aria-expanded={expandedOrderId === order.id}
-                >
-                  <span className="kbi-ocard__statusdot" style={{ backgroundColor: pillColor }} />
-                  {pillLabel}
-                </button>
-              </div>
-
-              <div className="kbi-ocard__rule border-t border-neutral-200 dark:border-neutral-700/60 my-1" />
-
-              <div className="kbi-ocard__body pt-1">
-                {/* Baris 2: Nomor Order + Copy */}
-                {order.orderNumber && (
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-[12px] font-mono text-neutral-600 dark:text-neutral-400">{order.orderNumber}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (navigator.clipboard) {
-                          navigator.clipboard.writeText(order.orderNumber);
-                          alert('Nomor Order berhasil disalin!');
-                        }
-                      }}
-                      className="text-neutral-400 hover:text-brand-500 transition-colors p-1"
-                      title="Copy Nomor Order"
-                    >
-                      <Copy className="w-[12px] h-[12px]" />
-                    </button>
-                  </div>
-                )}
-
-                {/* Baris 3: Nama Pembeli */}
-                <div className="font-bold text-[#2b5a9e] dark:text-brand-400 text-[13px] mb-2 leading-none">
-                  {order.buyerType === 'marketplace' && order.customerPlatformName ? order.customerPlatformName : (order.customerName || channelName)}
-                </div>
-
-                {/* Baris 4: Date + Tags + COD */}
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2 text-[11px] leading-tight text-neutral-500 dark:text-neutral-400">
-                  <span className="font-medium">{formattedDate}</span>
-
-                  {showReadyStockHighlight && (
-                    <span className="inline-flex items-center gap-0.5 text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400 px-1 py-0.5 rounded-[4px] font-semibold"><Check className="h-3 w-3" />Stok siap</span>
-                  )}
-                  {showOverdueHighlight && (
-                    <span className="inline-flex items-center px-1 py-0.5 rounded-[4px] font-semibold" style={{ backgroundColor: isCritical ? '#fde3e1' : '#fef3e0', color: isCritical ? '#a8323b' : '#b45309' }}>{overdueDays} hari</span>
-                  )}
-                  {isPinnedOrder && (
-                    <span className="inline-flex items-center gap-0.5 text-amber-600 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-400 px-1 py-0.5 rounded-[4px] font-semibold"><Pin className="h-3 w-3 fill-current" />Disematkan</span>
-                  )}
-
-                  <span className="text-neutral-300 dark:text-neutral-600">•</span>
-                  <span className="font-semibold text-neutral-700 dark:text-neutral-300">
-                    {order.paymentMethod || 'COD'}
-                  </span>
-                  {order.pickupLogistics && (
-                    <>
-                      <span className="text-neutral-300 dark:text-neutral-600">•</span>
-                      <span className="font-semibold text-neutral-700 dark:text-neutral-300">
-                        {order.pickupLogistics}
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                {/* Baris 5: Qty + Diskon + Total */}
-                <div className="flex items-center justify-between mt-1 mb-0">
-                  <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-                    <span>Qty: <b className="text-neutral-700 dark:text-neutral-300">{orderQty}</b></span>
-                    {!!order.discount && (
-                      <>
-                        <span className="text-neutral-300 dark:text-neutral-600">•</span>
-                        <span>Diskon: <b className="text-rose-500">−{formatNTD(order.discount)}</b></span>
-                      </>
-                    )}
-                  </div>
-                  {canViewAmount && (
-                    <div className="font-black text-[#2b5a9e] dark:text-[#818cf8] text-[13px]">
-                      {formatNTD(order.totalPrice)}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="kbi-ocard__actions" onClick={(e) => e.stopPropagation()}>
-                <div className="kbi-ocard__icons">
-                  <button type="button" className="kbi-ocard__mini" title="Cetak Invoice" aria-label="Cetak invoice"
-                    onClick={() => setPrintInvoiceOrder(order)}>
-                    <Printer className="h-4 w-4" />
-                  </button>
-
-                  {isDraftLike && isStaffValue ? (
-                    <button type="button" className="kbi-ocard__mini" title="Edit Orderan" aria-label="Edit orderan"
-                      onClick={() => handleEditOrderClick(order)}>
-                      <Edit className="h-4 w-4" />
-                    </button>
-                  ) : (order.status === 'packed' || order.status === 'shipped' || order.status === 'confirmed') ? (() => {
-                    const resi = (order.shipment?.shippingNumber || (order as any).shippingNumber || '').trim();
-                    const hasResi = !!resi;
-                    return (
-                      <button
-                        type="button"
-                        className={`kbi-ocard__mini ${!hasResi ? 'opacity-35 cursor-not-allowed bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500' : 'text-[#2b5a9e] dark:text-brand-400 hover:bg-[#eaf1fb] dark:hover:bg-neutral-800'}`}
-                        title={hasResi ? 'Lihat QR Code Resi' : 'Nomor resi belum tersedia'}
-                        aria-label={hasResi ? 'Lihat QR Code Resi' : 'Nomor resi belum tersedia'}
-                        onClick={() => {
-                          if (!hasResi) {
-                            safeAlert('Nomor resi belum tersedia untuk orderan ini.');
-                            return;
-                          }
-                          setQrCodeModalOrder(order);
-                        }}
-                      >
-                        <QrCode className="h-4 w-4" />
-                      </button>
-                    );
-                  })() : (
-                    <button type="button" className="kbi-ocard__mini" title="Detail Orderan" aria-label="Detail orderan"
-                      onClick={() => setViewingOrderDetail(order)}>
-                      <Eye className="h-4 w-4" />
-                    </button>
-                  )}
-
-                  <button type="button"
-                    className={`kbi-ocard__mini ${order.isPinned ? 'is-pinned' : ''}`}
-                    title={order.isPinned ? 'Unpin Orderan' : 'Pin Orderan'}
-                    aria-label={order.isPinned ? 'Lepas sematan' : 'Sematkan orderan'}
-                    onClick={() => handleTogglePin(order)}>
-                    <Pin className={`h-4 w-4 ${order.isPinned ? 'fill-current' : ''}`} />
-                  </button>
-
-                  <button type="button" className="kbi-ocard__mini is-reco" title="Rekomendasi Buku" aria-label="Rekomendasi buku"
-                    onClick={() => {
-                      if (order.items && order.items.length > 0) {
-                        const bookIds = order.items.map(item => item.bookId);
-                        const categories = new Set<string>();
-                        order.items.forEach(item => {
-                          const b = books.find(bk => bk.id === item.bookId);
-                          if (b) {
-                            const catArray = Array.isArray(b.category) ? b.category : [b.category];
-                            catArray.forEach(c => categories.add(c));
-                          }
-                        });
-                        if (categories.size > 0) {
-                          setRecoOrderData({ bookIds, categories: Array.from(categories) });
-                        }
-                      }
-                    }}>
-                    <Lightbulb className="h-4 w-4" />
-                  </button>
-
-                  {isStaffValue && order.status && order.status !== 'draft' && (
-                    <button type="button" className="kbi-ocard__mini" title="Kembali ke Status Sebelumnya" aria-label="Kembali ke status sebelumnya"
-                      onClick={() => {
-                        let msg = '';
-                        let cb = () => { };
-                        if (order.status === 'packed') {
-                          msg = "Apakah kamu yakin ingin kembali ke status 'Pending'?";
-                          cb = () => handleRevertPackedToDraft(order);
-                        } else if (order.status === 'shipped') {
-                          msg = "Apakah kamu yakin ingin kembali ke status 'Dikemas'?";
-                          cb = () => handleRevertToPacked(order);
-                        } else if (order.status === 'completed' || order.status === 'returned') {
-                          msg = "Apakah kamu yakin ingin kembali ke status 'Dikirim'?";
-                          cb = () => handleRevertToShipped(order);
-                        } else if (order.status === 'cancelled') {
-                          const target = order.precedingStatus === 'returned' ? 'returned' : 'draft';
-                          const targetLabel = target === 'returned' ? 'Return' : 'Pending';
-                          msg = `Apakah kamu yakin ingin kembali ke status '${targetLabel}'?`;
-                          cb = () => handleRevertToPreceding(order);
-                        }
-                        if (msg) setRevertConfirmState({ message: msg, onConfirm: cb });
-                      }}>
-                      <RefreshCw className="h-4 w-4" />
-                    </button>
-                  )}
-
-                  {canDelete && (
-                    <button type="button" className="kbi-ocard__mini is-danger" title="Hapus Orderan" aria-label="Hapus orderan"
-                      onClick={() => handleDeleteOrder(order)}>
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-
-                {isDraftLike && isStaffValue ? (() => {
-                  const isEstShippingInFuture = isShippingDateFuture(order.estimatedShippingDate);
-                  return (
-                    <button
-                      type="button"
-                      className={`kbi-ocard__cta ${isEstShippingInFuture ? 'opacity-40 cursor-not-allowed !bg-neutral-300 dark:!bg-neutral-700 !text-neutral-500 dark:!text-neutral-400 border border-neutral-300 dark:border-neutral-700 shadow-none' : ''}`}
-                      style={{
-                        backgroundColor: isEstShippingInFuture ? undefined : '#6366f1',
-                        cursor: isEstShippingInFuture ? 'not-allowed' : 'pointer'
-                      }}
-                      title={isEstShippingInFuture ? `Belum waktunya dikemas, request customer: ${order.estimatedShippingDate?.replace(/-/g, '/')}` : undefined}
-                      onClick={() => {
-                        if (isShippingDateFuture(order.estimatedShippingDate)) {
-                          safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate?.replace(/-/g, '/')}`);
-                          return;
-                        }
-                        if (order.perluKonfirmasiSebelumKirim) {
-                          setConfirmingCustomerPreKemasOrder(order);
-                        } else {
-                          setConfirmingKemasOrder(order);
-                        }
-                      }}
-                    >
-                      Kemas
-                    </button>
-                  );
-                })() : order.status === 'packed' && isStaffValue ? (
-                  <button type="button" className="kbi-ocard__cta" style={{ backgroundColor: '#2b5a9e' }}
-                    onClick={() => {
-                      setSelectedOrderForProses(order);
-                      setProsesOrderNo('');
-                      setProsesResi(order.shipment?.shippingNumber || '');
-                      const d = new Date();
-                      setProsesDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-                      setIsProsesConfirmOpen(true);
-                    }}>Kirim</button>
-                ) : (order.status === 'shipped' || order.status === 'confirmed') && isStaffValue ? (
-                  <div className="kbi-ocard__ctagroup">
-                    <button type="button" className="kbi-ocard__cta" style={{ backgroundColor: '#0f7a52' }}
-                      onClick={() => { openSelesaiConfirm(order); }}>Selesai</button>
-                    <button type="button" className="kbi-ocard__cta kbi-ocard__cta--ghost"
-                      onClick={() => handleTransitionToReturned(order.id)}>Return</button>
-                  </div>
-                ) : order.status === 'returned' && isStaffValue ? (
-                  <button type="button" className="kbi-ocard__cta" style={{ backgroundColor: '#2b5a9e' }}
-                    onClick={() => { setSelectedReturnMode('stock'); setConfirmingDiambilOrder(order); }}>Diambil</button>
-                ) : (
-                  <button type="button" className="kbi-ocard__cta kbi-ocard__cta--neutral"
-                    onClick={() => setViewingOrderDetail(order)}>Detail</button>
-                )}
-              </div>
-
-              {expandedOrderId === order.id && (
-                <div className="kbi-ocard__stepper" onClick={(e) => e.stopPropagation()}>
-                  {renderStepper(order)}
-                </div>
-              )}
-            </article>
+              order={order}
+              books={books}
+              resolvedChannels={resolvedChannels}
+              isStaffValue={isStaffValue}
+              canViewAmount={canViewAmount}
+              isReadyStock={isReadyStock}
+              overdueDays={overdueDays}
+              isPinned={isPinnedOrder}
+              formattedDate={formattedDate}
+              orderQty={orderQty}
+              onOpenDetail={(ord) => setViewingOrderDetail(ord)}
+              onEditOrder={(ord) => handleEditOrderClick(ord)}
+              onPrintInvoice={(ord) => setPrintInvoiceOrder(ord)}
+              onTogglePin={(ord) => handleTogglePin(ord)}
+              onOpenRecommendations={(reco) => setRecoOrderData(reco)}
+              onOpenQrCode={(ord) => {
+                const resi = (ord.shipment?.shippingNumber || (ord as any).shippingNumber || '').trim();
+                if (!resi) {
+                  safeAlert('Nomor resi belum tersedia untuk orderan ini.');
+                  return;
+                }
+                setQrCodeModalOrder(ord);
+              }}
+              onDeleteOrder={(ord) => handleDeleteOrder(ord)}
+              onRevertStatus={(ord) => {
+                let msg = '';
+                let cb = () => {};
+                if (ord.status === 'packed') {
+                  msg = "Apakah kamu yakin ingin kembali ke status 'Pending'?";
+                  cb = () => handleRevertPackedToDraft(ord);
+                } else if (ord.status === 'shipped') {
+                  msg = "Apakah kamu yakin ingin kembali ke status 'Dikemas'?";
+                  cb = () => handleRevertToPacked(ord);
+                } else if (ord.status === 'completed' || ord.status === 'returned') {
+                  msg = "Apakah kamu yakin ingin kembali ke status 'Dikirim'?";
+                  cb = () => handleRevertToShipped(ord);
+                } else if (ord.status === 'cancelled') {
+                  const target = ord.precedingStatus === 'returned' ? 'returned' : 'draft';
+                  const targetLabel = target === 'returned' ? 'Return' : 'Pending';
+                  msg = `Apakah kamu yakin ingin kembali ke status '${targetLabel}'?`;
+                  cb = () => handleRevertToPreceding(ord);
+                }
+                if (msg) setRevertConfirmState({ message: msg, onConfirm: cb });
+              }}
+              onKemasClick={(ord) => {
+                if (isShippingDateFuture(ord.estimatedShippingDate)) {
+                  safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${ord.estimatedShippingDate?.replace(/-/g, '/')}`);
+                  return;
+                }
+                if (ord.perluKonfirmasiSebelumKirim) {
+                  setConfirmingCustomerPreKemasOrder(ord);
+                } else {
+                  setConfirmingKemasOrder(ord);
+                }
+              }}
+              onProsesKirimClick={(ord) => {
+                setSelectedOrderForProses(ord);
+                setProsesOrderNo('');
+                setProsesResi(ord.shipment?.shippingNumber || '');
+                const d = new Date();
+                setProsesDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                setIsProsesConfirmOpen(true);
+              }}
+              onSelesaiClick={(ord) => openSelesaiConfirm(ord)}
+              onReturnClick={(ordId) => handleTransitionToReturned(ordId)}
+              onDiambilClick={(ord) => {
+                setSelectedReturnMode('stock');
+                setConfirmingDiambilOrder(ord);
+              }}
+            />
           );
         })}
 
         {searchedOrders.length === 0 && (
-          <div className="kbi-ocard__empty">
-            <div className="kbi-ocard__emptyicon"><Search className="w-5 h-5" /></div>
-            <p>Tidak ada orderan yang cocok dengan filter ini.</p>
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-8 text-center space-y-2">
+            <div className="w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 mx-auto flex items-center justify-center">
+              <Search className="w-5 h-5" />
+            </div>
+            <p className="text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+              Tidak ada orderan yang cocok dengan filter ini.
+            </p>
           </div>
         )}
       </div>
@@ -6604,14 +6437,14 @@ export const SalesTab: React.FC = () => {
       </div>
 
       {/* Invoice Printer Window Overlay */}
-      {printInvoiceOrder && (
+      {printInvoiceOrder && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setPrintInvoiceOrder(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-50')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 text-neutral-800 dark:text-neutral-100 rounded-2xl border border-neutral-300 dark:border-neutral-800 shadow-2xl w-[94%] max-w-3xl overflow-hidden my-auto max-h-[90vh]">
             <div className="p-5 border-b border-neutral-150 dark:border-neutral-800 flex items-center justify-between no-print-section">
@@ -6684,71 +6517,94 @@ export const SalesTab: React.FC = () => {
                           <path d="M110,62 L110,85 C110,91 115,95 121,95 C127,95 132,91 132,85 L132,62" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
                           {/* I */}
                           <path d="M150,62 L150,95" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
-                          {/* N */}
-                          <path d="M162,95 L162,62 L182,95 L182,62" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
-                          {/* D */}
-                          <path d="M192,62 L192,95 L205,95 C215,95 222,87 222,78.5 C222,70 215,62 205,62 Z" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" fill="#ea7462" />
-                          {/* O */}
-                          <path d="M245,62 C236,62 230,70 230,78.5 C230,87 236,95 245,95 C254,95 260,87 260,78.5 C260,70 254,62 245,62 Z" stroke="#ea7462" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M10 80C10 40 40 30 70 30C100 30 130 40 130 80C100 70 70 70 10 80Z" fill="#ff7a59" stroke="#1d3f70" strokeWidth="6" strokeLinejoin="round" />
+                          <path d="M70 30V75" stroke="#1d3f70" strokeWidth="6" strokeLinecap="round" />
+                          {/* Hands cradling */}
+                          <path d="M20 70C20 90 45 105 70 105C95 105 120 90 120 70" stroke="#1d3f70" strokeWidth="8" strokeLinecap="round" />
+                          {/* Warm sparkle / star */}
+                          <path d="M70 5L73 15L83 18L73 21L70 31L67 21L57 18L67 15L70 5Z" fill="#f59e0b" />
+                        </g>
+
+                        {/* Right: Modern Typography */}
+                        <g transform="translate(145, 0)">
+                          {/* Main brand text: KANGEN BUKU */}
+                          <text x="0" y="58" fontFamily="system-ui, -apple-system, sans-serif" fontSize="42" fontWeight="900" fill="#1d3f70" letterSpacing="1">
+                            KANGEN <tspan fill="#ff7a59">BUKU</tspan>
+                          </text>
+                          {/* Subtitle / Tagline: INDONESIA */}
+                          <text x="3" y="90" fontFamily="system-ui, -apple-system, sans-serif" fontSize="18" fontWeight="700" fill="#67707d" letterSpacing="9">
+                            INDONESIA
+                          </text>
                         </g>
                       </svg>
                     )}
                   </div>
-                  <p className="text-xs text-neutral-500 mt-1">{branding.namaUsaha || "KangenBukuIndo"} · {branding.alamat || "E-Commerce Buku Indonesia Terpercaya di Taiwan"}</p>
+                  <p className="text-xs text-neutral-600 font-medium">Layanan Buku Indonesia di Taiwan</p>
+                  <p className="text-[11px] text-neutral-500 font-mono">Platform Order Resmi</p>
                 </div>
                 <div className="text-right">
-                  <h4 className="text-xl font-bold uppercase tracking-wide text-neutral-700">FAKTUR INVOICE</h4>
+                  <h2 className="text-2xl font-black tracking-tight text-neutral-900">FAKTUR PENJUALAN</h2>
                   <p className="text-sm font-numeric font-bold text-brand-600 mt-1">{printInvoiceOrder.orderCode}</p>
                   <p className="text-xs text-neutral-500 mt-1">Tgl: <strong className="font-bold text-neutral-900">{printInvoiceOrder.orderDate?.seconds ? new Date(printInvoiceOrder.orderDate.seconds * 1000).toLocaleDateString('zh-TW') : 'N/A'}</strong></p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-8 py-6 text-xs border-b border-neutral-150">
-                <div>
-                  <h5 className="font-bold text-neutral-500 capitalize tracking-widest text-[9px] mb-2">Tujuan Pengiriman:</h5>
+              <div className="grid grid-cols-2 gap-6 my-6 text-xs">
+                <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200">
+                  <p className="font-bold text-neutral-400 uppercase text-[10px] tracking-wider mb-1">Kepada Yth:</p>
                   <p className="text-sm font-bold text-neutral-900">{printInvoiceOrder.customerName}</p>
                   {printInvoiceOrder.phoneNumber && <p className="mt-1">Telp: {printInvoiceOrder.phoneNumber}</p>}
                 </div>
-                <div>
-                  <h5 className="font-bold text-neutral-500 capitalize tracking-widest text-[9px] mb-2">Kurir Pengiriman:</h5>
+                <div className="p-3 bg-neutral-50 rounded-lg border border-neutral-200">
+                  <p className="font-bold text-neutral-400 uppercase text-[10px] tracking-wider mb-1">Metode Pengiriman:</p>
                   <p className="font-bold text-neutral-800">{printInvoiceOrder.pickupLogistics}</p>
                   <p className="mt-1">Metode Bayar: <strong className="uppercase">{printInvoiceOrder.paymentMethod}</strong></p>
                   <p className="mt-1 text-neutral-600">Keterangan: {printInvoiceOrder.pickupDetails || '-'}</p>
                 </div>
               </div>
 
-              <table className="w-full text-left border-collapse my-6 text-xs">
+              {/* Items Table */}
+              <table className="w-full text-left text-xs mb-6 border-collapse">
                 <thead>
-                  <tr className="border-b-2 border-neutral-300 text-neutral-500 font-bold uppercase text-[9px]">
-                    <th className="py-2">Deskripsi Buku</th>
-                    <th className="py-2 text-right">Harga Satuan</th>
-                    <th className="py-2 text-center">Jumlah</th>
-                    <th className="py-2 text-right">Total (TWD)</th>
+                  <tr className="border-b-2 border-neutral-800">
+                    <th className="py-2 font-bold text-neutral-800">Item Produk</th>
+                    <th className="py-2 text-center font-bold text-neutral-800 w-16">Qty</th>
+                    {canViewAmount && (
+                      <>
+                        <th className="py-2 text-right font-bold text-neutral-800 w-24">Harga (NT$)</th>
+                        <th className="py-2 text-right font-bold text-neutral-800 w-24">Total (NT$)</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-150">
+                <tbody className="divide-y divide-neutral-200">
                   {printInvoiceOrder.items?.map((item, idx) => (
-                    <tr key={idx} className="text-neutral-800">
-                      <td className="py-3 font-semibold">{item.bookName}{item.isFree && " (Gratis)"}</td>
-                      <td className="py-3 text-right font-numeric">{formatNTD(item.unitPrice)}</td>
-                      <td className="py-3 text-center font-numeric">{item.qty} pcs</td>
-                      <td className="py-3 text-right font-numeric font-bold">{formatNTD(item.lineTotal)}</td>
+                    <tr key={idx}>
+                      <td className="py-2.5 font-medium">{item.bookName}</td>
+                      <td className="py-2.5 text-center font-numeric">{item.qty}</td>
+                      {canViewAmount && (
+                        <>
+                          <td className="py-2.5 text-right font-numeric">{formatNTD(item.unitPrice)}</td>
+                          <td className="py-2.5 text-right font-numeric font-bold">{formatNTD(item.lineTotal)}</td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
               </table>
 
+              {/* Totals */}
               {canViewAmount && (
-                <div className="w-1/2 ml-auto space-y-2 pt-4 border-t-2 border-neutral-200 text-xs text-right">
-                  <div className="flex justify-between font-medium">
-                    <span className="text-neutral-550">Subtotal:</span>
+                <div className="w-64 ml-auto text-xs space-y-1.5 pt-2">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-600">Subtotal:</span>
                     <span className="font-numeric">{formatNTD(printInvoiceOrder.subtotal)}</span>
                   </div>
                   <div className="flex justify-between font-medium text-rose-500">
                     <span>Diskon Platform:</span>
                     <span className="font-numeric">-{formatNTD(printInvoiceOrder.discount || 0)}</span>
                   </div>
-                  <div className="flex justify-between font-black text-sm text-neutral-900 border-t border-neutral-205 pt-2">
+                  <div className="flex justify-between font-black text-sm text-neutral-900 border-t border-neutral-200 pt-2">
                     <span>GRAND TOTAL (TWD):</span>
                     <span className="font-numeric text-brand-600">{formatNTD(printInvoiceOrder.totalPrice)}</span>
                   </div>
@@ -6760,7 +6616,8 @@ export const SalesTab: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 1. Lanjutkan Proses Pengiriman? "Proses" Confirmation Modal */}
@@ -6788,14 +6645,14 @@ export const SalesTab: React.FC = () => {
         }
         const hasWarning = isEarlyShipping || insufficientItemsList.length > 0;
 
-        return (
+        return createPortal(
           <div
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 handleCloseProsesModal();
               }
             }}
-            className={getModalOverlayClass(sidebarHidden, 'z-50')}
+            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
           >
             <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[92%] max-w-lg overflow-hidden animate-scaleIn my-auto">
               <div className="p-5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
@@ -7107,13 +6964,14 @@ export const SalesTab: React.FC = () => {
                 </div>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 
       {/* Camera Scanner Interstitial Layer Overlay */}
-      {isScanning && (
-        <div className={getModalOverlayClass(sidebarHidden, 'z-[100]')}>
+      {isScanning && createPortal(
+        <div className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}>
           <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[92%] max-w-md overflow-hidden p-5 space-y-4 animate-scaleIn my-auto">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-bold flex items-center gap-2 uppercase tracking-tight text-neutral-800 dark:text-neutral-100">
@@ -7201,7 +7059,8 @@ export const SalesTab: React.FC = () => {
               Tutup Kamera
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 2. Selesai Confirmation Overlay */}
@@ -7210,14 +7069,14 @@ export const SalesTab: React.FC = () => {
         const isTransfer = targetOrder?.paymentMethod === 'Transfer';
         const transferAlreadyPaid = targetOrder?.paymentStatus === 'paid' || (targetOrder?.amountPaid || 0) >= (targetOrder?.totalPrice || 0) - 5;
         const blockedByUnpaidTransfer = isTransfer && !transferAlreadyPaid;
-        return (
+        return createPortal(
           <div
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 setConfirmingSelesaiOrderId(null);
               }
             }}
-            className={getModalOverlayClass(sidebarHidden, 'z-50')}
+            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
           >
             <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto">
               <div className="flex items-center gap-2 text-emerald-600">
@@ -7282,19 +7141,20 @@ export const SalesTab: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 
       {/* 3. Return "Diambil" Confirmation Modal */}
-      {confirmingDiambilOrder && (
+      {confirmingDiambilOrder && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setConfirmingDiambilOrder(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-50')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-md overflow-hidden animate-scaleIn p-5 space-y-4 text-xs font-text my-auto">
             <h3 className="text-sm font-bold flex items-center gap-2 uppercase tracking-tight text-neutral-800 dark:text-neutral-100">
@@ -7364,7 +7224,8 @@ export const SalesTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Portalled to <body> for the same reason as the FAB above: `.kbi-main > *`
@@ -8081,7 +7942,7 @@ export const SalesTab: React.FC = () => {
               setCategoryChangeConfirm(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-[200]')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-md overflow-hidden animate-scaleIn p-6 space-y-4 my-auto">
             <div className="flex items-center gap-3">
@@ -8137,14 +7998,14 @@ export const SalesTab: React.FC = () => {
         , document.body)}
 
       {/* Revert Status Confirmation Overlay */}
-      {revertConfirmState && (
+      {revertConfirmState && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setRevertConfirmState(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-55')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto">
             <div className="flex items-center gap-2 text-brand-600 dark:text-brand-400">
@@ -8177,18 +8038,19 @@ export const SalesTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete Config Confirmation Overlay */}
-      {deleteConfigState && (
+      {deleteConfigState && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setDeleteConfigState(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-[60]')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-[90%] max-w-sm overflow-hidden animate-scaleIn p-5 space-y-4 my-auto">
             <div className="flex items-center gap-2 text-rose-650 dark:text-rose-400">
@@ -8234,12 +8096,13 @@ export const SalesTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Manage Sistem Konfigurasi Modal */}
       {/* Import Modal */}
-      {isImportModalOpen && (
+      {isImportModalOpen && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
@@ -8247,7 +8110,7 @@ export const SalesTab: React.FC = () => {
               setSelectedFile(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-[60]')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xl w-[92%] max-w-lg overflow-hidden my-auto">
             <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
@@ -8338,17 +8201,18 @@ export const SalesTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {isManageConfigOpen && (
+      {isManageConfigOpen && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setIsManageConfigOpen(false);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-50')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl overflow-hidden flex flex-col my-auto max-w-[92vw] max-h-[92vh]" style={{ width: '544px', height: '659px' }}>
             <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between flex-shrink-0">
@@ -8626,23 +8490,45 @@ export const SalesTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 5. SALES ORDER DETAIL MODAL */}
-      {viewingOrderDetail && !isTabletTier && (
+      {viewingOrderDetail && isMobileScreen && (
+        <SalesOrderDetailDrawer
+          order={viewingOrderDetail}
+          isOpen={!!viewingOrderDetail && isMobileScreen}
+          isSuspended={!!previewImage || !!recoOrderData}
+          onClose={() => setViewingOrderDetail(null)}
+          books={books}
+          isStaffValue={isStaffValue}
+          role={profile?.role}
+          onOpenSplitOrderModal={handleOpenSplitOrderModal}
+          onOpenRefundConfirm={(ord) => setRefundConfirmOrder(ord)}
+          onOpenSelesaiConfirm={(ord) => openSelesaiConfirm(ord)}
+          onTransitionToReturned={(orderId) => handleTransitionToReturned(orderId)}
+          onEditOrder={(ord) => handleEditOrderClick(ord)}
+          onPreviewImage={(img) => setPreviewImage(img)}
+          onOpenRecommendations={(reco) => setRecoOrderData(reco)}
+          onPrintInvoice={(ord) => setPrintInvoiceOrder(ord)}
+        />
+      )}
+
+      {viewingOrderDetail && !isMobileScreen && !isTabletTier && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setViewingOrderDetail(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-50')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="kbi-rincian-modal animate-scaleIn" onClick={(e) => e.stopPropagation()}>
             {renderOrderDetail(viewingOrderDetail)}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {isChecklistOpen && <PackingChecklist onClose={() => setIsChecklistOpen(false)} salesOrders={orders} books={books} />}
@@ -8675,14 +8561,14 @@ export const SalesTab: React.FC = () => {
       )}
 
       {/* ================= MODAL: Konfirmasi Customer Pre-Kemas ================= */}
-      {confirmingCustomerPreKemasOrder && (
+      {confirmingCustomerPreKemasOrder && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setConfirmingCustomerPreKemasOrder(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-50')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[90%] p-5 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
             <div className="h-12 w-12 rounded-2xl bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
@@ -8733,7 +8619,8 @@ export const SalesTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: Konfirmasi Kemas Orderan ================= */}
@@ -8748,14 +8635,14 @@ export const SalesTab: React.FC = () => {
         }
         const hasStockError = insufficientKemasItems.length > 0;
 
-        return (
+        return createPortal(
           <div
             onClick={(e) => {
               if (e.target === e.currentTarget && !isKemasSubmitting) {
                 setConfirmingKemasOrder(null);
               }
             }}
-            className={getModalOverlayClass(sidebarHidden, 'z-50')}
+            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
           >
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[90%] p-5 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
               <div className="h-12 w-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
@@ -8782,7 +8669,7 @@ export const SalesTab: React.FC = () => {
                       </li>
                     ))}
                   </ul>
-                  <p className="text-[10.5px] text-amber-600 dark:text-amber-400 pt-0.5">
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 pt-0.5">
                     Proses pengemasan tidak dapat dilanjutkan sebelum stok gudang tersedia.
                   </p>
                 </div>
@@ -8823,19 +8710,20 @@ export const SalesTab: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 
       {/* ================= MODAL: Konfirmasi Hapus Orderan ================= */}
-      {selectedOrderForDelete && (
+      {selectedOrderForDelete && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget && !isDeleteOrderSubmitting) {
               setSelectedOrderForDelete(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-50')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[90%] p-5 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
             <div className="h-12 w-12 rounded-2xl bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
@@ -8872,7 +8760,8 @@ export const SalesTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: 2D QR Code Nomor Resi ================= */}
@@ -8890,14 +8779,14 @@ export const SalesTab: React.FC = () => {
       })()}
 
       {/* ================= MODAL: Konfirmasi Perubahan Metode Bayar ================= */}
-      {showPaymentChangeConfirmModal && (
+      {showPaymentChangeConfirmModal && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleCancelPaymentMethodChange();
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-[100]')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[90%] p-5 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
             <div className="h-12 w-12 rounded-2xl bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
@@ -8930,7 +8819,8 @@ export const SalesTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ================= MODAL: Opsi Kirim / Split Order ================= */}
@@ -8941,14 +8831,14 @@ export const SalesTab: React.FC = () => {
         const keptTotal = keptItems.reduce((sum, i) => sum + i.lineTotal, 0);
         const splitTotal = splitItems.reduce((sum, i) => sum + i.lineTotal, 0);
 
-        return (
+        return createPortal(
           <div
             onClick={(e) => {
               if (e.target === e.currentTarget && !isSplitSubmitting) {
                 setSplitOrderModalData(null);
               }
             }}
-            className={getModalOverlayClass(sidebarHidden, 'z-50')}
+            className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
           >
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-lg w-[92%] p-6 space-y-5 animate-scale-up my-auto max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
@@ -9065,19 +8955,20 @@ export const SalesTab: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 
       {/* ================= MODAL: Marketplace Refund ================= */}
-      {refundConfirmOrder && (
+      {refundConfirmOrder && createPortal(
         <div
           onClick={(e) => {
             if (e.target === e.currentTarget && !isRefundSubmitting) {
               setRefundConfirmOrder(null);
             }
           }}
-          className={getModalOverlayClass(sidebarHidden, 'z-50')}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
         >
           <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-md w-[90%] p-6 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
             <div className="h-12 w-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
@@ -9124,7 +9015,8 @@ export const SalesTab: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Mobile: floating "new order" + overflow sheet ────────────────────

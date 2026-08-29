@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Check, Lightbulb } from 'lucide-react';
 import { Book, InventoryRecord } from '../types';
 import { useSidebar } from '../lib/sidebar-context';
-import { useModalEsc, getModalOverlayClass } from '../lib/use-modal-esc';
+import { useModalEsc, getModalOverlayClass, MODAL_TIERS } from '../lib/use-modal-esc';
 
 interface BookRecommendationsModalProps {
   isOpen: boolean;
@@ -172,19 +173,19 @@ export const BookRecommendationsModal: React.FC<BookRecommendationsModalProps> =
     );
   };
 
-  return (
+  return createPortal(
     <div 
-      className={getModalOverlayClass(sidebarHidden, 'z-[9999]')}
+      className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG)}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white rounded-xl overflow-hidden shadow-2xl w-[92%] max-w-xl animate-scaleIn flex flex-col max-h-[90vh] my-auto">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl overflow-hidden shadow-2xl w-[92%] max-w-xl animate-scaleIn flex flex-col max-h-[90vh] my-auto border border-neutral-200 dark:border-neutral-800" onClick={(e) => e.stopPropagation()}>
         <div className="bg-[#8fae87] p-4 flex items-start justify-between">
           <div>
             <h2 className="text-[20px] font-bold text-white font-lexend m-0">Rekomendasi Buku</h2>
           </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white p-1 rounded-lg transition-colors">
+          <button onClick={onClose} aria-label="Tutup rekomendasi" className="text-white/70 hover:text-white p-1 rounded-lg transition-colors cursor-pointer">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -193,8 +194,8 @@ export const BookRecommendationsModal: React.FC<BookRecommendationsModalProps> =
           {finalReadyStockList.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-2.5">
-                <span className="font-lexend text-[13px] font-semibold text-[#1f2937]">Ready Stok</span>
-                <span className="font-text text-[10.5px] font-semibold text-[#67707d] bg-[#f4f8fd] border border-[#dde6f4] px-2 py-0.5 rounded-full">
+                <span className="font-lexend text-[13px] font-semibold text-[#1f2937] dark:text-neutral-200">Ready Stok</span>
+                <span className="font-text text-[10.5px] font-semibold text-[#67707d] dark:text-neutral-400 bg-[#f4f8fd] dark:bg-neutral-800 border border-[#dde6f4] dark:border-neutral-700 px-2 py-0.5 rounded-full">
                   {finalReadyStockList.length} buku
                 </span>
               </div>
@@ -207,8 +208,8 @@ export const BookRecommendationsModal: React.FC<BookRecommendationsModalProps> =
           {bestSellers.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-2.5">
-                <span className="font-lexend text-[13px] font-semibold text-[#1f2937]">Buku Terlaris</span>
-                <span className="font-text text-[10.5px] font-semibold text-[#67707d] bg-[#f4f8fd] border border-[#dde6f4] px-2 py-0.5 rounded-full">
+                <span className="font-lexend text-[13px] font-semibold text-[#1f2937] dark:text-neutral-200">Buku Terlaris</span>
+                <span className="font-text text-[10.5px] font-semibold text-[#67707d] dark:text-neutral-400 bg-[#f4f8fd] dark:bg-neutral-800 border border-[#dde6f4] dark:border-neutral-700 px-2 py-0.5 rounded-full">
                   {bestSellers.length} buku
                 </span>
               </div>
@@ -225,6 +226,7 @@ export const BookRecommendationsModal: React.FC<BookRecommendationsModalProps> =
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

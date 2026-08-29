@@ -20,6 +20,13 @@ export function useModalEsc(isOpen: boolean, onClose: () => void, isLoading: boo
   }, [isOpen, id, isLoading]);
 }
 
+export const MODAL_TIERS = {
+  BASE: 'z-40',
+  DRAWER: 'z-[10000]',
+  DIALOG: 'z-[10020]',
+  LIGHTBOX: 'z-[10050]',
+} as const;
+
 /**
  * Builds the backdrop class for a dialog.
  *
@@ -38,7 +45,5 @@ export function getModalOverlayClass(
   extraClasses: string = '',
   sheet: boolean = true,
 ) {
-  return `${sheet ? 'kbi-modal-backdrop ' : ''}fixed top-0 bottom-0 right-0 ${
-    sidebarHidden ? 'left-16' : 'left-16 sm:left-56'
-  } transition-all duration-300 ease-in-out flex items-center justify-center p-3 sm:p-5 lg:p-7 bg-black/60 backdrop-blur-xs ${zIndexClass} overflow-y-auto ${extraClasses}`;
+  return `${sheet ? 'kbi-modal-backdrop ' : ''}fixed inset-0 transition-all duration-300 ease-in-out flex items-center justify-center p-3 sm:p-5 lg:p-7 bg-black/60 backdrop-blur-xs ${zIndexClass} overflow-y-auto ${extraClasses}`;
 }
