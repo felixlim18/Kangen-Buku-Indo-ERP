@@ -6,8 +6,6 @@ import { loadXLSX, loadExcelJS, loadJsPDF, loadHtml2Canvas } from '../lib/lazy-l
 import { ImagePreviewModal } from "./ui/ImagePreviewModal";
 import { BookRecommendationsModal } from './BookRecommendationsModal';
 import { TruncatedTooltip } from "./ui/TruncatedTooltip";
-import { SalesOrderMobileCard } from './sales/SalesOrderMobileCard';
-import { SalesOrderDetailDrawer } from './sales/SalesOrderDetailDrawer';
 import {
   detectLogisticsFromResi,
   resolveLogisticsNameFromDataMaster,
