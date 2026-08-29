@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { SalesOrder, Book } from '../../types';
 import { formatNTD } from '../../lib/decimal-utils';
+import { getEffectiveOrderLogistics } from '../../lib/sales-logistics-utils';
 
 interface SalesOrderDetailDrawerProps {
   order: SalesOrder | null;
@@ -31,6 +32,7 @@ interface SalesOrderDetailDrawerProps {
   isSuspended?: boolean;
   onClose: () => void;
   books: Book[];
+  availableLogistics?: Array<{ id?: string; name: string }>;
   isStaffValue: boolean;
   role?: string;
   onOpenSplitOrderModal?: (order: SalesOrder) => void;
@@ -49,6 +51,7 @@ export const SalesOrderDetailDrawer: React.FC<SalesOrderDetailDrawerProps> = ({
   isSuspended = false,
   onClose,
   books,
+  availableLogistics,
   isStaffValue,
   role,
   onOpenSplitOrderModal,
@@ -151,7 +154,7 @@ export const SalesOrderDetailDrawer: React.FC<SalesOrderDetailDrawerProps> = ({
   const customerNameFormatted = order.customerName?.trim() || '–';
   const socialAccountFormatted = order.customerPlatformName?.trim() || '–';
   const phoneFormatted = order.phoneNumber?.trim() || '–';
-  const logisticsFormatted = order.pickupLogistics?.trim() || '–';
+  const logisticsFormatted = getEffectiveOrderLogistics(order, availableLogistics, '–');
   const pickupDetailsFormatted = order.pickupDetails?.trim() || '–';
   const paymentMethodFormatted = order.paymentMethod?.trim() || '–';
   const platformOrderFormatted = order.platformOrder?.trim() || '–';

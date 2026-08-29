@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth-context';
 import { useSidebar } from '../lib/sidebar-context';
 import { ImagePreviewModal } from './ui/ImagePreviewModal';
 import { useModalEsc, MODAL_TIERS } from '../lib/use-modal-esc';
+import { getEffectiveOrderLogistics } from '../lib/sales-logistics-utils';
 
 interface BulkProcessModalProps {
   isOpen: boolean;
@@ -440,7 +441,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                                {/* Opsi Pengiriman */}
                                <div className="flex flex-col">
                                  <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Pengiriman</span>
-                                 <span className="text-[11.5px] text-neutral-800 font-medium truncate">{row.order.pickupLogistics || '-'}</span>
+                                 <span className="text-[11.5px] text-neutral-800 font-medium truncate">{getEffectiveOrderLogistics({ ...row.order, shipment: { ...row.order.shipment, shippingNumber: row.resi || row.order.shipment?.shippingNumber || '' } }, undefined, '-')}</span>
                                </div>
 
                                {/* Total Belanja */}

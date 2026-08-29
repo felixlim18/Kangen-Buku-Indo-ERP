@@ -6,6 +6,13 @@ import { loadXLSX, loadExcelJS, loadJsPDF, loadHtml2Canvas } from '../lib/lazy-l
 import { ImagePreviewModal } from "./ui/ImagePreviewModal";
 import { BookRecommendationsModal } from './BookRecommendationsModal';
 import { TruncatedTooltip } from "./ui/TruncatedTooltip";
+import { SalesOrderMobileCard } from './sales/SalesOrderMobileCard';
+import { SalesOrderDetailDrawer } from './sales/SalesOrderDetailDrawer';
+import {
+  detectLogisticsFromResi,
+  resolveLogisticsNameFromDataMaster,
+  getEffectiveOrderLogistics
+} from '../lib/sales-logistics-utils';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { DateRangePicker } from './ui/DateRangePicker';
@@ -316,69 +323,6 @@ const NewOrderModalWrapper = ({ isOpen, onClose, isMobileScreen, sidebarHidden, 
   );
 };
 
-type DetectedLogisticsKey = '7-Eleven' | 'Hi-Life' | 'FamilyMart' | 'Shopee Xpress' | 'Post Office' | 'Unknown';
-
-const detectLogisticsFromResi = (resiStr: string): DetectedLogisticsKey => {
-  const clean = resiStr.trim().toUpperCase();
-  if (!clean) return 'Unknown';
-
-  // 1. Shopee Xpress: Diawali "TW" diikuti 13-15 digit angka
-  if (/^TW\d{13,15}$/i.test(clean)) {
-    return 'Shopee Xpress';
-  }
-
-  // 2. Post Office: Tepat 14 digit angka murni tanpa huruf
-  if (/^\d{14}$/.test(clean)) {
-    return 'Post Office';
-  }
-
-  // 3. 7-Eleven: Tepat 12 karakter. Diawali 1 huruf kapital diikuti 11 digit angka
-  if (/^[A-Z]\d{11}$/.test(clean)) {
-    return '7-Eleven';
-  }
-
-  // 4. FamilyMart: Tepat 11 digit angka murni tanpa huruf
-  if (/^\d{11}$/.test(clean)) {
-    return 'FamilyMart';
-  }
-
-  // 5. Hi-Life: 11 atau 12 karakter alfanumerik dengan huruf kapital di tengah-tengah angka (bukan di awal & bukan di akhir)
-  if (/^\d+[A-Z]+\d+$/.test(clean) && (clean.length === 11 || clean.length === 12)) {
-    return 'Hi-Life';
-  }
-
-  return 'Unknown';
-};
-
-const resolveLogisticsNameFromDataMaster = (
-  detectedKey: DetectedLogisticsKey,
-  availableLogistics: Array<{ id: string; name: string }>,
-  fallbackCurrent: string
-): string => {
-  if (detectedKey === 'Unknown') return fallbackCurrent || 'Lainnya';
-
-  const found = availableLogistics.find((l) => {
-    const name = (l.name || '').toLowerCase().trim();
-    if (detectedKey === '7-Eleven' && (name.includes('7-11') || name.includes('7-eleven') || name.includes('7 eleven') || name.includes('seven'))) {
-      return true;
-    }
-    if (detectedKey === 'FamilyMart' && (name.includes('family') || name.includes('familymart') || name.includes('fami') || name.includes('全家'))) {
-      return true;
-    }
-    if (detectedKey === 'Hi-Life' && (name.includes('hi-life') || name.includes('hilife') || name.includes('hi life') || name.includes('萊爾富'))) {
-      return true;
-    }
-    if (detectedKey === 'Shopee Xpress' && (name.includes('shopee') || name.includes('spx') || name.includes('xpress') || name.includes('express') || name.includes('蝦皮'))) {
-      return true;
-    }
-    if (detectedKey === 'Post Office' && (name.includes('post') || name.includes('pos') || name.includes('kantor pos') || name.includes('chunghwa') || name.includes('郵局'))) {
-      return true;
-    }
-    return name === detectedKey.toLowerCase();
-  });
-
-  return found ? found.name : detectedKey;
-};
 
 const QrCodeModal: React.FC<{
   order: SalesOrder;
@@ -4460,7 +4404,7 @@ export const SalesTab: React.FC = () => {
     const socialAccountFormatted = rawSocial ? rawSocial : '–';
 
     const phoneFormatted = o.phoneNumber?.trim() || '–';
-    const logisticsFormatted = o.pickupLogistics?.trim() || '–';
+    const logisticsFormatted = getEffectiveOrderLogistics(o, resolvedLogistics, '–');
     const pickupDetailsFormatted = o.pickupDetails?.trim() || '–';
     const paymentMethodFormatted = o.paymentMethod?.trim() || '–';
 
@@ -5702,6 +5646,7 @@ export const SalesTab: React.FC = () => {
               order={order}
               books={books}
               resolvedChannels={resolvedChannels}
+              availableLogistics={resolvedLogistics}
               isStaffValue={isStaffValue}
               canViewAmount={canViewAmount}
               isReadyStock={isReadyStock}
@@ -6073,7 +6018,7 @@ export const SalesTab: React.FC = () => {
                             {order.paymentMethod || 'COD'}
                           </span>
                           <span className="truncate max-w-[130px]">
-                            {order.buyerType === 'marketplace' || order.orderType?.toLowerCase() === 'marketplace' ? '-' : (order.pickupLogistics || '-')}
+                            {getEffectiveOrderLogistics(order, resolvedLogistics, '-')}
                           </span>
                         </div>
                         {order.orderNumber && (
@@ -8554,6 +8499,7 @@ export const SalesTab: React.FC = () => {
           isSuspended={!!previewImage || !!recoOrderData}
           onClose={() => setViewingOrderDetail(null)}
           books={books}
+          availableLogistics={resolvedLogistics}
           isStaffValue={isStaffValue}
           role={profile?.role}
           onOpenSplitOrderModal={handleOpenSplitOrderModal}

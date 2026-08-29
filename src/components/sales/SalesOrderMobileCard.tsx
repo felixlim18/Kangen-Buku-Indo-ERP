@@ -18,11 +18,13 @@ import {
 } from 'lucide-react';
 import { SalesOrder, Book } from '../../types';
 import { formatNTD } from '../../lib/decimal-utils';
+import { getEffectiveOrderLogistics } from '../../lib/sales-logistics-utils';
 
 interface SalesOrderMobileCardProps {
   order: SalesOrder;
   books: Book[];
   resolvedChannels: { name: string; color?: string }[];
+  availableLogistics?: Array<{ id?: string; name: string }>;
   isStaffValue: boolean;
   canViewAmount: boolean;
   isReadyStock: boolean;
@@ -50,6 +52,7 @@ export const SalesOrderMobileCard: React.FC<SalesOrderMobileCardProps> = React.m
   order,
   books,
   resolvedChannels,
+  availableLogistics,
   isStaffValue,
   canViewAmount,
   isReadyStock,
@@ -72,7 +75,9 @@ export const SalesOrderMobileCard: React.FC<SalesOrderMobileCardProps> = React.m
   onDiambilClick,
 }) => {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<'order-code' | 'order-number' | null>(null);
+
+  const effectiveLogistics = getEffectiveOrderLogistics(order, availableLogistics);
 
   const isOverdue = overdueDays >= 15;
   const isCritical = overdueDays >= 21;
@@ -288,11 +293,11 @@ export const SalesOrderMobileCard: React.FC<SalesOrderMobileCardProps> = React.m
               {order.paymentMethod || 'COD'}
             </span>
 
-            {order.pickupLogistics && (
+            {effectiveLogistics && (
               <>
                 <span className="text-neutral-300 dark:text-neutral-700">•</span>
                 <span className="font-semibold text-neutral-700 dark:text-neutral-300">
-                  {order.pickupLogistics}
+                  {effectiveLogistics}
                 </span>
               </>
             )}
