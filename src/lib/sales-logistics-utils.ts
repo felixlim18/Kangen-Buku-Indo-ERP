@@ -7,7 +7,8 @@ export type DetectedLogisticsKey = '7-Eleven' | 'Hi-Life' | 'FamilyMart' | 'Shop
  */
 export const detectLogisticsFromResi = (resiStr?: string | null): DetectedLogisticsKey => {
   if (!resiStr) return 'Unknown';
-  const clean = resiStr.trim().toUpperCase();
+  // Strip all whitespace, spaces, tabs, dashes, hyphens, and underscores
+  const clean = resiStr.replace(/[\s\-_]+/g, '').trim().toUpperCase();
   if (!clean) return 'Unknown';
 
   // 1. Shopee Xpress: Diawali "TW" diikuti 13-15 digit angka
