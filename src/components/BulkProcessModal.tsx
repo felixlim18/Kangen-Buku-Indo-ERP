@@ -807,23 +807,21 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div 
-        className={`bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[92vh] transition-all duration-300 w-full ${
-          sidebarHidden ? 'max-w-[97vw]' : 'max-w-[94vw]'
-        }`}
+        className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh] transition-all duration-300 w-[90vw] max-w-[1440px]"
       >
         {/* Header */}
-        <div className="relative flex items-center justify-between px-7 py-4 bg-gradient-to-r from-[#173a6b] to-[#2b5a9e] text-white flex-none overflow-hidden shadow-sm">
-          <div className="flex items-center gap-3.5 z-10">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20 shadow-inner">
-              <Send className="w-5 h-5 text-white" />
+        <div className="relative flex items-center justify-between px-6 py-3.5 bg-gradient-to-r from-[#173a6b] to-[#2b5a9e] text-white flex-none overflow-hidden shadow-sm">
+          <div className="flex items-center gap-3 z-10">
+            <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center border border-white/20 shadow-inner">
+              <Send className="w-4 h-4 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-['IBM_Plex_Mono'] text-[11px] uppercase tracking-[1.2px] text-white/70">
+              <div className="flex items-center gap-1.5">
+                <span className="font-['IBM_Plex_Mono'] text-[10.5px] uppercase tracking-[1.2px] text-white/70">
                   Pemrosesan Batch
                 </span>
               </div>
-              <h2 className="font-['Space_Grotesk'] text-[18px] font-bold tracking-[-0.3px] text-white leading-tight">
+              <h2 className="font-['Space_Grotesk'] text-[16.5px] font-bold tracking-[-0.3px] text-white leading-tight">
                 Proses Massal Pesanan Dikemas
               </h2>
             </div>
@@ -905,7 +903,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                 {/* Sticky Header: Perfectly matches row columns */}
                 <div 
                   className="sticky top-0 z-20 grid gap-0 bg-[#f1f6fc] border-b border-[#dde4f0] shadow-xs"
-                  style={{ gridTemplateColumns: '44px 180px 220px 160px 220px 60px minmax(140px, 1fr) 75px' }}
+                  style={{ gridTemplateColumns: '48px 190px 300px 170px minmax(280px, 1fr) 80px minmax(120px, 200px) 100px' }}
                 >
                   {/* Master Checkbox */}
                   <div className="flex items-center justify-center p-2.5 border-r border-[#dde4f0]">
@@ -958,7 +956,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           className={`grid gap-0 border-b border-[#dde4f0] transition-colors items-stretch
                             ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : isSelected ? 'bg-[#edf4fc]' : i % 2 !== 0 ? 'bg-[#f8fafc]' : 'bg-white'}
                           `}
-                          style={{ gridTemplateColumns: '44px 180px 220px 160px 220px 60px minmax(140px, 1fr) 75px' }}
+                          style={{ gridTemplateColumns: '48px 190px 300px 170px minmax(280px, 1fr) 80px minmax(120px, 200px) 100px' }}
                         >
                           {/* Checkbox */}
                           <div className="flex items-center justify-center p-2 border-r border-[#dde4f0]">
@@ -1105,7 +1103,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                             {row.order.items?.map((item, idx) => {
                               const coverUrl = item.bookCover || books?.find(b => b.id === item.bookId)?.cover;
                               return (
-                                <div key={idx} className={`grid grid-cols-[1fr_60px] flex-1 ${idx !== 0 ? 'border-t border-[#dde4f0]' : ''}`}>
+                                <div key={idx} className={`grid grid-cols-[1fr_80px] flex-1 ${idx !== 0 ? 'border-t border-[#dde4f0]' : ''}`}>
                                   {/* Nama Barang */}
                                   <div className="flex items-center gap-2.5 px-3 py-2 min-w-0 flex-1">
                                     <div 
@@ -1152,8 +1150,11 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           </div>
 
                           {/* Note Dari Customer */}
-                          <div className="flex flex-col justify-center px-3.5 py-2 font-['Inter'] text-[12px] leading-[1.35] text-[#374151] border-r border-[#dde4f0] h-full">
-                            <div className={`font-medium ${row.customerNote === '-' ? 'text-[#9ca3af]' : 'text-[#1f2937]'}`}>
+                          <div className="flex flex-col justify-center px-3.5 py-2 font-['Inter'] text-[12px] leading-[1.35] text-[#374151] border-r border-[#dde4f0] h-full min-w-0">
+                            <div 
+                              className={`font-medium line-clamp-2 break-words ${row.customerNote === '-' ? 'text-[#9ca3af]' : 'text-[#1f2937]'}`}
+                              title={row.customerNote !== '-' ? row.customerNote : undefined}
+                            >
                               {row.customerNote}
                             </div>
                             {row.deskripsi && (
