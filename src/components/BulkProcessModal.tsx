@@ -74,6 +74,28 @@ function isNotYetDue(isoStr: string) {
 }
 
 /**
+ * Resolve display and sorting platform cleanly:
+ * Handles orders where platformOrder is '-' or missing but platformChannel has the marketplace name (e.g. Shopee).
+ */
+const getResolvedPlatform = (order?: Partial<SalesOrder> | null): string => {
+  if (!order) return '-';
+  const p = (order.platformOrder || '').trim();
+  const c = (order.platformChannel || '').trim();
+  if (p && p !== '-' && p.toLowerCase() !== 'null' && p.toLowerCase() !== 'undefined') return p;
+  if (c && c !== '-' && c.toLowerCase() !== 'null' && c.toLowerCase() !== 'undefined') return c;
+  return '-';
+};
+
+const getResolvedChannel = (order?: Partial<SalesOrder> | null): string => {
+  if (!order) return '';
+  const p = (order.platformOrder || '').trim();
+  const c = (order.platformChannel || '').trim();
+  if (!p || p === '-') return '';
+  if (c && c !== '-' && c.toLowerCase() !== p.toLowerCase()) return c;
+  return '';
+};
+
+/**
  * Default platform order score:
  * 1. '-'
  * 2. Shopee
@@ -86,8 +108,8 @@ function isNotYetDue(isoStr: string) {
 const getDefaultPlatformScore = (platform?: string): number => {
   const p = (platform || '').trim().toLowerCase();
   if (!p || p === '-') return 1;
-  if (p === 'shopee') return 2;
-  if (p === 'iopenmall') return 3;
+  if (p.includes('shopee')) return 2;
+  if (p.includes('iopenmall')) return 3;
   if (p.includes('7-eleven') || p.includes('7-11') || p === 'seven') return 4;
   if (p.includes('family')) return 5;
   if (p.includes('post') || p.includes('pos')) return 6;
@@ -95,7 +117,7 @@ const getDefaultPlatformScore = (platform?: string): number => {
 };
 
 /**
- * Detect courier type from tracking number and fallback logistics:
+ * Detect courier type from tracking number and fallback logistics
  */
 const detectCourierType = (resiRaw?: string | null, order?: SalesOrder): 'spx' | '7-11' | 'familymart' | 'hilife' | 'post' | 'unknown' => {
   const clean = sanitizeResiNumber(resiRaw);
@@ -157,38 +179,39 @@ const detectCourierType = (resiRaw?: string | null, order?: SalesOrder): 'spx' |
  * 6) Resi Lainnya / Unknown -> 600
  * 7) Tanpa Nomor Resi (Kosong) -> 1000 + default platform score
  */
-const getShippingPriorityScore = (resi: string, platform?: string, order?: SalesOrder): number => {
+const getShippingPriorityScore = (resi: string, order?: SalesOrder): number => {
   const cleanResi = sanitizeResiNumber(resi);
-  const p = (platform || '').trim().toLowerCase();
+  const resolvedPlatform = getResolvedPlatform(order);
+  const p = resolvedPlatform.trim().toLowerCase();
 
   if (!cleanResi) {
-    return 1000 + getDefaultPlatformScore(platform);
+    return 1000 + getDefaultPlatformScore(resolvedPlatform);
   }
 
   const courier = detectCourierType(cleanResi, order);
 
   // 1) Shopee Xpress (Shopee)
-  if (courier === 'spx' && p === 'shopee') {
+  if (courier === 'spx' && p.includes('shopee')) {
     return 100;
   }
 
   // 2) 7-Eleven
   if (courier === '7-11') {
-    if (p === 'shopee') return 200;
-    if (p === 'iopenmall') return 210;
+    if (p.includes('shopee')) return 200;
+    if (p.includes('iopenmall')) return 210;
     return 220;
   }
 
   // 3) Family Mart
   if (courier === 'familymart') {
-    if (p === 'shopee') return 300;
+    if (p.includes('shopee')) return 300;
     if (p.includes('family')) return 310;
     return 320;
   }
 
   // 4) Hi-Life
   if (courier === 'hilife') {
-    if (p === 'shopee') return 400;
+    if (p.includes('shopee')) return 400;
     return 410;
   }
 
@@ -309,11 +332,13 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
       if (hasRankA && !hasRankB) return -1;
       if (!hasRankA && hasRankB) return 1;
 
-      // Default platform order for new/unranked orders
-      const scoreA = getDefaultPlatformScore(a.platformOrder);
-      const scoreB = getDefaultPlatformScore(b.platformOrder);
+      // Default platform order for new/unranked orders using resolved platform
+      const platA = getResolvedPlatform(a);
+      const platB = getResolvedPlatform(b);
+      const scoreA = getDefaultPlatformScore(platA);
+      const scoreB = getDefaultPlatformScore(platB);
       if (scoreA !== scoreB) return scoreA - scoreB;
-      return (a.platformOrder || '').localeCompare(b.platformOrder || '');
+      return platA.localeCompare(platB);
     });
 
     const initialRows: RowData[] = sortedOrders.map(order => ({
@@ -361,10 +386,12 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                 if (hasA && hasB) return fsRankMap.get(a.orderId)! - fsRankMap.get(b.orderId)!;
                 if (hasA && !hasB) return -1;
                 if (!hasA && hasB) return 1;
-                const scA = getDefaultPlatformScore(a.order.platformOrder);
-                const scB = getDefaultPlatformScore(b.order.platformOrder);
+                const platA = getResolvedPlatform(a.order);
+                const platB = getResolvedPlatform(b.order);
+                const scA = getDefaultPlatformScore(platA);
+                const scB = getDefaultPlatformScore(platB);
                 if (scA !== scB) return scA - scB;
-                return (a.order.platformOrder || '').localeCompare(b.order.platformOrder || '');
+                return platA.localeCompare(platB);
               });
               return reSorted;
             });
@@ -467,8 +494,8 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   // Action: "Urutkan Pengiriman"
   const handleSortShipping = () => {
     const sorted = [...rows].sort((a, b) => {
-      const scoreA = getShippingPriorityScore(a.resi, a.order.platformOrder, a.order);
-      const scoreB = getShippingPriorityScore(b.resi, b.order.platformOrder, b.order);
+      const scoreA = getShippingPriorityScore(a.resi, a.order);
+      const scoreB = getShippingPriorityScore(b.resi, b.order);
       return scoreA - scoreB;
     });
 
@@ -778,14 +805,14 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   const processableCount = rows.filter(r => selectedIds.has(r.orderId) && r.resi.trim() && r.status !== 'success').length;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div 
         className={`bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[92vh] transition-all duration-300 w-full ${
-          sidebarHidden ? 'max-w-[96vw]' : 'max-w-[90vw]'
+          sidebarHidden ? 'max-w-[97vw]' : 'max-w-[94vw]'
         }`}
       >
         {/* Header */}
-        <div className="relative flex items-center justify-between px-7 py-4.5 bg-gradient-to-r from-[#173a6b] to-[#2b5a9e] text-white flex-none overflow-hidden">
+        <div className="relative flex items-center justify-between px-7 py-4 bg-gradient-to-r from-[#173a6b] to-[#2b5a9e] text-white flex-none overflow-hidden shadow-sm">
           <div className="flex items-center gap-3.5 z-10">
             <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20 shadow-inner">
               <Send className="w-5 h-5 text-white" />
@@ -796,7 +823,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                   Pemrosesan Batch
                 </span>
               </div>
-              <h2 className="font-['Space_Grotesk'] text-[19px] font-bold tracking-[-0.3px] text-white leading-tight">
+              <h2 className="font-['Space_Grotesk'] text-[18px] font-bold tracking-[-0.3px] text-white leading-tight">
                 Proses Massal Pesanan Dikemas
               </h2>
             </div>
@@ -831,9 +858,9 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-5 pb-3 flex flex-col flex-1 min-h-0">
+        <div className="p-4 md:p-5 pb-3 flex flex-col flex-1 min-h-0">
           {summary && (
-            <div className="flex flex-wrap gap-4 px-4 py-3 bg-[#f3f7fc] border border-[#e5edf9] rounded-lg text-[12.5px] mb-3 items-center">
+            <div className="flex flex-wrap gap-4 px-4 py-2.5 bg-[#f3f7fc] border border-[#e5edf9] rounded-lg text-[12.5px] mb-3 items-center flex-none">
               {summary.success > 0 && <span className="text-[#12876b] font-medium inline-flex items-center gap-1">✓ <span className="font-['IBM_Plex_Mono'] font-bold">{summary.success}</span> order berhasil diproses</span>}
               {summary.warn > 0 && <span className="text-[#a9711f] font-medium inline-flex items-center gap-1">⚠ <span className="font-['IBM_Plex_Mono'] font-bold">{summary.warn}</span> belum waktunya dikirim</span>}
               {summary.fail > 0 && <span className="text-[#b8433a] font-medium inline-flex items-center gap-1">✕ <span className="font-['IBM_Plex_Mono'] font-bold">{summary.fail}</span> gagal diproses</span>}
@@ -858,7 +885,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
               <button
                 type="button"
                 onClick={handleSortShipping}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#173a6b] hover:bg-[#0f274a] text-white text-[12.5px] font-['Space_Grotesk'] font-semibold rounded-lg shadow-sm transition-all duration-200 cursor-pointer active:scale-95"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#173a6b] hover:bg-[#0f274a] text-white text-[12.5px] font-['Space_Grotesk'] font-semibold rounded-lg shadow-xs transition-all duration-200 cursor-pointer active:scale-95"
                 title="Urutkan pesanan berdasarkan Nomor Resi dan Platform Order"
               >
                 <ArrowUpDown className="w-3.5 h-3.5" />
@@ -867,18 +894,18 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
             </div>
           </div>
 
-          {/* Single Scroll Container for Table: Header and Body lockstep scroll together */}
-          <div className="border border-[#dde4f0] rounded-lg overflow-hidden bg-white flex flex-col flex-1 min-h-0">
+          {/* Table Container: Unified Scroll Container with lockstep sticky header */}
+          <div className="border border-[#dde4f0] rounded-xl overflow-hidden bg-white flex flex-col flex-1 min-h-[260px] shadow-xs">
             <div 
-              className="flex-1 overflow-auto relative" 
+              className="flex-1 overflow-auto relative min-h-0" 
               ref={gridRef}
               onPaste={handlePaste}
             >
-              <div className="min-w-[1220px]">
-                {/* Sticky Header: moves horizontally with body, sticks vertically */}
-                <div className="sticky top-0 z-20 grid grid-cols-[44px_1.2fr_1.5fr_1fr_2.5fr_60px_1.5fr_70px] gap-0 bg-[#f1f6fc] border-b border-[#dde4f0] shadow-sm">
+              <div className="min-w-[1150px]">
+                {/* Sticky Header: Perfectly matches row columns */}
+                <div className="sticky top-0 z-20 grid grid-cols-[48px_160px_190px_135px_minmax(260px,2.2fr)_65px_minmax(150px,1.2fr)_75px] gap-0 bg-[#f1f6fc] border-b border-[#dde4f0] shadow-xs">
                   {/* Master Checkbox */}
-                  <div className="p-2.5 flex items-center justify-center">
+                  <div className="flex items-center justify-center p-2.5 border-r border-[#dde4f0]">
                     <input
                       type="checkbox"
                       ref={masterCheckboxRef}
@@ -888,29 +915,46 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                       title="Pilih Semua / Batalkan Semua"
                     />
                   </div>
-                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Nomor Order</span>
-                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Nomor Resi</span>
-                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Platform Order</span>
-                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Nama Barang</span>
-                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center border-l border-[#dde4f0]">Qty</span>
-                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Note Customer</span>
-                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center border-l border-[#dde4f0]">Aksi</span>
+                  <span className="font-['Space_Grotesk'] text-[10.5px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-3.5 border-r border-[#dde4f0] whitespace-nowrap">
+                    Nomor Order
+                  </span>
+                  <span className="font-['Space_Grotesk'] text-[10.5px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-3.5 border-r border-[#dde4f0] whitespace-nowrap">
+                    Nomor Resi
+                  </span>
+                  <span className="font-['Space_Grotesk'] text-[10.5px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-3.5 border-r border-[#dde4f0] whitespace-nowrap">
+                    Platform Order
+                  </span>
+                  <span className="font-['Space_Grotesk'] text-[10.5px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-3.5 border-r border-[#dde4f0] whitespace-nowrap">
+                    Nama Barang
+                  </span>
+                  <span className="font-['Space_Grotesk'] text-[10.5px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center border-r border-[#dde4f0] whitespace-nowrap">
+                    Qty
+                  </span>
+                  <span className="font-['Space_Grotesk'] text-[10.5px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-3.5 border-r border-[#dde4f0] whitespace-nowrap">
+                    Note Customer
+                  </span>
+                  <span className="font-['Space_Grotesk'] text-[10.5px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center whitespace-nowrap">
+                    Aksi
+                  </span>
                 </div>
 
                 {/* Table Body Rows */}
                 {rows.length === 0 ? (
-                  <div className="p-8 text-center text-[#525c6d] font-['Inter'] text-sm">
+                  <div className="p-12 text-center text-[#525c6d] font-['Inter'] text-sm">
                     Tidak ada orderan berstatus Dikemas saat ini.
                   </div>
                 ) : (
                   rows.map((row, i) => {
                     const isSelected = selectedIds.has(row.orderId);
+                    const resolvedPlat = getResolvedPlatform(row.order);
+                    const resolvedChan = getResolvedChannel(row.order);
+
                     return (
                       <React.Fragment key={row.orderId || i}>
-                        <div className={`grid grid-cols-[44px_1.2fr_1.5fr_1fr_2.5fr_60px_1.5fr_70px] gap-0 border-b border-[#dde4f0] transition-colors items-stretch
+                        <div className={`grid grid-cols-[48px_160px_190px_135px_minmax(260px,2.2fr)_65px_minmax(150px,1.2fr)_75px] gap-0 border-b border-[#dde4f0] transition-colors items-stretch
                           ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : isSelected ? 'bg-[#edf4fc]' : i % 2 !== 0 ? 'bg-[#f8fafc]' : 'bg-white'}
                         `}>
-                          {/* Row Checkbox */}
+                          {/* Checkbox */}
                           <div className="flex items-center justify-center p-2 border-r border-[#dde4f0]">
                             <input
                               type="checkbox"
@@ -924,18 +968,19 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           </div>
 
                           {/* Nomor Order */}
-                          <div className="flex items-center px-4 py-2 border-r border-[#dde4f0] relative h-full">
-                            <div className="flex flex-col justify-center">
-                              <span className="font-['IBM_Plex_Mono'] text-[13.5px] font-semibold text-[#173a6b]">
-                                {row.orderNo}
-                              </span>
-                            </div>
-                            <div 
-                              className="ml-auto text-neutral-400 hover:text-brand-500 cursor-pointer"
+                          <div className="flex items-center justify-between px-3.5 py-2 border-r border-[#dde4f0] relative h-full">
+                            <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#173a6b] truncate" title={row.orderNo}>
+                              {row.orderNo}
+                            </span>
+                            <button
+                              type="button"
                               onClick={() => setActiveTooltip(activeTooltip === row.orderId ? null : row.orderId)}
+                              className="p-1 text-neutral-400 hover:text-[#2b5a9e] hover:bg-blue-50 rounded-md transition-colors shrink-0 ml-1.5 cursor-pointer"
+                              title="Lihat Detail Pesanan"
                             >
-                              <Eye className="w-4.5 h-4.5" />
-                            </div>
+                              <Eye className="w-4 h-4" />
+                            </button>
+
                             {activeTooltip === row.orderId && (
                               <div className="absolute top-[60%] mt-2 left-4 w-[320px] bg-white shadow-[0_12px_48px_rgba(0,0,0,0.12)] border border-[#e5e7eb] rounded-xl p-4 z-50 text-left cursor-default flex flex-col" onClick={e => e.stopPropagation()}>
                                 <div className="flex justify-between items-center mb-3">
@@ -1022,11 +1067,11 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                             )}
                           </div>
 
-                          {/* No Resi (Editable input with keyboard navigation) */}
-                          <div className="border-r border-[#dde4f0] h-full flex items-center">
+                          {/* Nomor Resi (Styled input box with clear outline) */}
+                          <div className="px-3 py-2 border-r border-[#dde4f0] h-full flex items-center">
                             <input 
                               type="text" 
-                              className="w-full h-full border-none bg-transparent px-4 py-2 font-['IBM_Plex_Mono'] text-[13.5px] tracking-[0.2px] text-[#101826] text-left focus:outline-2 focus:-outline-offset-2 focus:outline-[#2b5a9e] focus:bg-white placeholder:font-['Inter'] placeholder:text-[#98a1b0] disabled:text-[#525c6d]"
+                              className="w-full h-9 px-3 bg-white border border-[#cdd7e5] hover:border-[#2b5a9e]/60 focus:border-[#2b5a9e] focus:ring-2 focus:ring-[#2b5a9e]/15 rounded-lg font-['IBM_Plex_Mono'] text-[13px] tracking-[0.2px] text-[#101826] placeholder:font-['Inter'] placeholder:text-[#98a1b0] placeholder:text-[11.5px] transition-all outline-none disabled:bg-gray-100 disabled:text-gray-400 shadow-2xs"
                               value={row.resi}
                               placeholder="Ketik / Paste No Resi"
                               disabled={row.status === 'success'}
@@ -1037,28 +1082,28 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                             />
                           </div>
 
-                          {/* Platform Order */}
-                          <div className="flex flex-col justify-center px-4 py-2 border-r border-[#dde4f0] h-full">
-                            <span className="font-['Inter'] text-[12.5px] font-medium text-neutral-800">
-                              {row.order.platformOrder || '-'}
+                          {/* Platform Order (Resolved clean platform & channel) */}
+                          <div className="flex flex-col justify-center px-3.5 py-2 border-r border-[#dde4f0] h-full">
+                            <span className="font-['Space_Grotesk'] text-[12.5px] font-bold text-neutral-800 tracking-tight leading-tight">
+                              {resolvedPlat}
                             </span>
-                            {row.order.platformChannel && (
-                              <span className="font-['Inter'] text-[10px] text-neutral-500 mt-0.5">
-                                {row.order.platformChannel}
+                            {resolvedChan && (
+                              <span className="font-['Inter'] text-[10.5px] text-neutral-500 mt-0.5 font-medium leading-tight">
+                                {resolvedChan}
                               </span>
                             )}
                           </div>
 
-                          {/* Nama Barang & QTY */}
+                          {/* Nama Barang & QTY (Subgrid matched to 65px qty) */}
                           <div className="col-span-2 flex flex-col h-full border-r border-[#dde4f0]">
                             {row.order.items?.map((item, idx) => {
                               const coverUrl = item.bookCover || books?.find(b => b.id === item.bookId)?.cover;
                               return (
-                                <div key={idx} className={`grid grid-cols-[1fr_60px] flex-1 ${idx !== 0 ? 'border-t border-[#dde4f0]' : ''}`}>
+                                <div key={idx} className={`grid grid-cols-[1fr_65px] flex-1 ${idx !== 0 ? 'border-t border-[#dde4f0]' : ''}`}>
                                   {/* Nama Barang */}
                                   <div className="flex items-center gap-3 px-3 py-2">
                                     <div 
-                                      className="relative rounded shrink-0 overflow-visible border border-neutral-200 cursor-pointer bg-neutral-100"
+                                      className="relative rounded shrink-0 overflow-visible border border-neutral-200 cursor-pointer bg-neutral-100 shadow-2xs"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (coverUrl) setPreviewImage(coverUrl);
@@ -1080,7 +1125,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                                     <span className="text-[12.5px] font-medium text-neutral-800 line-clamp-2 leading-[1.3]">{item.bookName || '-'}</span>
                                   </div>
                                   {/* Qty */}
-                                  <div className="flex items-center justify-center font-bold text-[13.5px] text-neutral-900 border-l border-[#dde4f0]">
+                                  <div className="flex items-center justify-center font-bold font-numeric text-[13px] text-neutral-900 border-l border-[#dde4f0]">
                                     {item.qty} <span className="text-[10px] ml-0.5 font-normal text-neutral-500">pcs</span>
                                   </div>
                                 </div>
@@ -1089,8 +1134,8 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           </div>
 
                           {/* Note Dari Customer */}
-                          <div className="flex flex-col justify-center px-4 py-2 font-['Inter'] text-[12.5px] leading-[1.35] text-[#374151] border-r border-[#dde4f0] h-full">
-                            <div className={`font-medium ${row.customerNote === '-' ? 'text-[#9ca3af] italic' : 'text-[#1f2937]'}`}>
+                          <div className="flex flex-col justify-center px-3.5 py-2 font-['Inter'] text-[12px] leading-[1.35] text-[#374151] border-r border-[#dde4f0] h-full">
+                            <div className={`font-medium ${row.customerNote === '-' ? 'text-[#9ca3af]' : 'text-[#1f2937]'}`}>
                               {row.customerNote}
                             </div>
                             {row.deskripsi && (
@@ -1115,21 +1160,21 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           </div>
 
                           {/* Aksi */}
-                          <div className="px-2 py-2 flex items-center justify-center gap-2 h-full">
+                          <div className="px-2 py-2 flex items-center justify-center gap-1.5 h-full">
                             <button
                               onClick={() => handleRowRevert(i)}
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded transition"
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                               title="Kembalikan ke status Confirmed"
                             >
-                              <Undo2 className="w-4.5 h-4.5" />
+                              <Undo2 className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleRowProcess(i)}
                               disabled={row.status === 'success' || !row.resi.trim()}
-                              className="p-1.5 text-brand-600 hover:bg-brand-50 rounded transition disabled:opacity-30 disabled:cursor-not-allowed"
+                              className="p-1.5 text-[#2b5a9e] hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                               title="Proses Kirim (Baris ini)"
                             >
-                              <Send className="w-4.5 h-4.5" />
+                              <Send className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
@@ -1143,7 +1188,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-2.5 px-6 py-4 border-t border-[#dde4f0] bg-[#e9edf5]">
+        <div className="flex items-center justify-between gap-2.5 px-6 py-3.5 border-t border-[#dde4f0] bg-[#e9edf5] flex-none">
           <span className="font-['IBM_Plex_Mono'] text-[11.5px] text-[#525c6d]">
             {filledCount} / {rows.length} resi terisi
             <span className="ml-2.5 text-[#2b5a9e] font-semibold">
