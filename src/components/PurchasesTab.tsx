@@ -65,6 +65,9 @@ import { Eye, Pencil, ChevronLeft, Edit2, LayoutGrid, PackageCheck, Package, X, 
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 import { FileSpreadsheet, Download, Upload, CheckCircle2, BookOpen, Copy, Loader2, AlertTriangle, RefreshCw, RotateCcw, Scan, Truck, ChevronRight, AlertCircle, MessageSquareWarning, MoreHorizontal, Settings } from 'lucide-react';
+import { PurchaseOrderMobileFilter } from './purchases/PurchaseOrderMobileFilter';
+import { PurchaseOrderMobileCard } from './purchases/PurchaseOrderMobileCard';
+import { PurchaseDetailDrawer } from './purchases/PurchaseDetailDrawer';
 
 const PriceMismatchBadge = ({ item, idx, pricingTiers, currentFXRate, selectedPlatform, catalogBook, onReviewAction }: any) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -951,9 +954,45 @@ export const PurchasesTab = () => {
   const [isNewPoOpen, setIsNewPoOpen] = useState(false);
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
   const [isClosePoModalOpen, setIsClosePoModalOpen] = useState(false);
+  const [viewingDetailPo, setViewingDetailPo] = useState<any>(null);
+  const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<string>('');
   
   const [selectedPo, setSelectedPo] = useState<any>(null);
   const [closingPo, setClosingPo] = useState<any>(null);
+  
+  const handleOpenClosePoModal = (po: any) => {
+    setClosingPo(po);
+    const items = po.items && po.items.length > 0 ? po.items : [{
+      bookId: po.bookId,
+      bookName: po.bookName,
+      qty: po.qty,
+      qtyReceived: po.qtyReceived || 0
+    }];
+    const noteText = (() => {
+      if (items.length === 1) {
+        const it = items[0];
+        const rec = it.qtyReceived || 0;
+        const cancelled = (it.qty || 1) - rec;
+        return `${it.bookName} Diterima ${rec}, Sisanya ${cancelled} dibatalkan`;
+      } else {
+        const parts: string[] = [];
+        items.forEach((it: any) => {
+          const rec = it.qtyReceived || 0;
+          const cancelled = (it.qty || 1) - rec;
+          if (rec > 0) {
+            parts.push(`${it.bookName} Diterima ${rec}`);
+          }
+          if (cancelled > 0) {
+            parts.push(`${it.bookName} sebanyak ${cancelled} dibatalkan`);
+          }
+        });
+        return parts.join(", ");
+      }
+    })();
+    setClosePoNote(noteText);
+    setClosePoOption('refund');
+    setIsClosePoModalOpen(true);
+  };
   
   const [receiveItemsState, setReceiveItemsState] = useState<any[]>([]);
   const [receiveKodeEkspedisi, setReceiveKodeEkspedisi] = useState('');
@@ -1407,7 +1446,10 @@ export const PurchasesTab = () => {
   };
 
   // Filter master PO lists
-  const dateFilteredPOs = purchaseOrders.filter(matchesDate);
+  const dateFilteredPOs = purchaseOrders.filter(matchesDate).filter(po => {
+    if (!selectedPlatformFilter || selectedPlatformFilter === 'all' || selectedPlatformFilter === '') return true;
+    return po.supplierId === selectedPlatformFilter;
+  });
 
   const statusFilteredPOs = dateFilteredPOs.filter(po => {
     if (poStatusFilter === 'Semua') return true;
@@ -2431,8 +2473,8 @@ export const PurchasesTab = () => {
   };
 
   // Handle Editing an existing PO
-  const handleEditPO = (po: any, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleEditPO = (po: any, e?: React.MouseEvent) => {
+    e?.stopPropagation?.();
     setIsPoViewOnly(false);
     setEditingPoId(po.id);
     setPoDate(parsePoDateToString(po.purchaseDate || po.createdAt || po.date));
@@ -2513,8 +2555,8 @@ export const PurchasesTab = () => {
   };
 
   // Handle Viewing an existing PO (Read-Only)
-  const handleViewPO = (po: any, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleViewPO = (po: any, e?: React.MouseEvent) => {
+    e?.stopPropagation?.();
     setIsPoViewOnly(true);
     setEditingPoId(po.id);
     setSelectedPo(po); // Ensure receiptLogs can be resolved if needed
@@ -4599,276 +4641,317 @@ export const PurchasesTab = () => {
               : cancelledPOs.length;
 
             return (
-              <div className="bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-[14px] p-4 sm:p-5 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3.5">
-                  <div className="flex items-baseline gap-2.5">
-                    <span className="font-['Inter'] text-[26px] font-bold tracking-tight text-[#0d1117] dark:text-white">
-                      {activeBigCount}
-                    </span>
-                    <span className="text-[12.5px] text-[#9ca3af]">
-                      {poStatusFilter === 'Semua' ? (
-                        <>semua PO{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSumNTD)}</b> menunggu</>}</>
-                      ) : poStatusFilter === 'Menunggu' ? (
-                        <>PO Menunggu{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSumNTD)}</b></>}</>
-                      ) : poStatusFilter === 'Sebagian' ? (
-                        <>PO Sebagian{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(partialSumNTD)}</b></>}</>
-                      ) : poStatusFilter === 'Diterima' ? (
-                        <>PO Diterima{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(receivedSumNTD)}</b></>}</>
-                      ) : (
-                        <>PO Cancel{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(cancelledSumNTD)}</b></>}</>
-                      )}
-                    </span>
-                  </div>
+              <>
+                <div className="hidden md:block bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-[14px] p-4 sm:p-5 shadow-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3.5">
+                    <div className="flex items-baseline gap-2.5">
+                      <span className="font-['Inter'] text-[26px] font-bold tracking-tight text-[#0d1117] dark:text-white">
+                        {activeBigCount}
+                      </span>
+                      <span className="text-[12.5px] text-[#9ca3af]">
+                        {poStatusFilter === 'Semua' ? (
+                          <>semua PO{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSumNTD)}</b> menunggu</>}</>
+                        ) : poStatusFilter === 'Menunggu' ? (
+                          <>PO Menunggu{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(pendingSumNTD)}</b></>}</>
+                        ) : poStatusFilter === 'Sebagian' ? (
+                          <>PO Sebagian{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(partialSumNTD)}</b></>}</>
+                        ) : poStatusFilter === 'Diterima' ? (
+                          <>PO Diterima{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(receivedSumNTD)}</b></>}</>
+                        ) : (
+                          <>PO Cancel{canViewAmount && <> · <b className="font-['Inter'] font-semibold text-[#0d1117] dark:text-neutral-200">{formatNTD(cancelledSumNTD)}</b></>}</>
+                        )}
+                      </span>
+                    </div>
 
-                  <div className="hidden md:flex items-center gap-2">
-                    <DateRangePicker 
-                      startDate={startDate}
-                      endDate={endDate}
-                      presetLabel={poPresetLabel}
-                      onChange={(start, end, label) => {
-                        setStartDate(start);
-                        setEndDate(end);
-                        if (label) setPoPresetLabel(label);
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* FLOW BAR */}
-                <div className="flex h-[7px] rounded-full overflow-hidden bg-[#f3f4f6] dark:bg-neutral-800 mb-4 gap-0.5">
-                  {[
-                    { key: 'Menunggu', count: pendingPOs.length, color: '#A6791E', label: 'Menunggu' },
-                    { key: 'Sebagian', count: partialPOs.length, color: '#48607F', label: 'Sebagian' },
-                    { key: 'Diterima', count: receivedPOs.length, color: '#4C6B4F', label: 'Diterima' },
-                    { key: 'Cancel', count: cancelledPOs.length, color: '#A34A32', label: 'Cancel' },
-                  ].map((seg) => {
-                    if (seg.count === 0) return null;
-                    const isFocused = poStatusFilter === 'Semua' || poStatusFilter === seg.key;
-                    return (
-                      <div
-                        key={seg.key}
-                        title={`${seg.label}: ${seg.count}`}
-                        style={{
-                          flexGrow: seg.count,
-                          backgroundColor: seg.color,
-                          opacity: isFocused ? 1 : 0.28,
+                    <div className="hidden md:flex items-center gap-2">
+                      <DateRangePicker 
+                        startDate={startDate}
+                        endDate={endDate}
+                        presetLabel={poPresetLabel}
+                        onChange={(start, end, label) => {
+                          setStartDate(start);
+                          setEndDate(end);
+                          if (label) setPoPresetLabel(label);
                         }}
-                        className="rounded-full min-w-[3px] transition-all duration-300"
                       />
-                    );
-                  })}
+                    </div>
+                  </div>
+
+                  {/* FLOW BAR */}
+                  <div className="flex h-[7px] rounded-full overflow-hidden bg-[#f3f4f6] dark:bg-neutral-800 mb-4 gap-0.5">
+                    {[
+                      { key: 'Menunggu', count: pendingPOs.length, color: '#A6791E', label: 'Menunggu' },
+                      { key: 'Sebagian', count: partialPOs.length, color: '#48607F', label: 'Sebagian' },
+                      { key: 'Diterima', count: receivedPOs.length, color: '#4C6B4F', label: 'Diterima' },
+                      { key: 'Cancel', count: cancelledPOs.length, color: '#A34A32', label: 'Cancel' },
+                    ].map((seg) => {
+                      if (seg.count === 0) return null;
+                      const isFocused = poStatusFilter === 'Semua' || poStatusFilter === seg.key;
+                      return (
+                        <div
+                          key={seg.key}
+                          title={`${seg.label}: ${seg.count}`}
+                          style={{
+                            flexGrow: seg.count,
+                            backgroundColor: seg.color,
+                            opacity: isFocused ? 1 : 0.28,
+                          }}
+                          className="rounded-full min-w-[3px] transition-all duration-300"
+                        />
+                      );
+                    })}
+                  </div>
+
+                  {/* STATUS FILTER CHIPS GRID */}
+                  <div className="kbi-sostat flex overflow-x-auto snap-x hide-scrollbar gap-2.5 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-5 sm:overflow-visible sm:pb-0 mb-3">
+                    {/* Semua */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPoStatusFilter('Semua');
+                        setExpandedPoId(null);
+                        setCurrentPage(1);
+                      }}
+                      className={`bg-white dark:bg-neutral-900 border rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none shrink-0 ${
+                        poStatusFilter === 'Semua'
+                          ? 'border-[#0d1117] dark:border-white bg-[#f5f6f7] dark:bg-neutral-800'
+                          : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                      }`}
+                    >
+                      {poStatusFilter === 'Semua' && (
+                        <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#0d1117] dark:bg-white" />
+                      )}
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#0d1117] dark:bg-white shrink-0" />
+                        <span className={`text-[10px] font-semibold ${poStatusFilter === 'Semua' ? 'text-[#0d1117] dark:text-white' : 'text-[#6b7280]'}`}>
+                          Semua
+                        </span>
+                      </div>
+                      <div className={`font-['Inter'] font-bold text-[16px] leading-none ${poStatusFilter === 'Semua' ? 'text-[#0d1117] dark:text-white' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+                        {dateFilteredPOs.length}
+                      </div>
+                      <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
+                        seluruh periode
+                      </div>
+                    </button>
+
+                    {/* Menunggu */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPoStatusFilter(poStatusFilter === 'Menunggu' ? 'Semua' : 'Menunggu');
+                        setExpandedPoId(null);
+                        setCurrentPage(1);
+                      }}
+                      className={`bg-white dark:bg-neutral-900 border rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none shrink-0 ${
+                        poStatusFilter === 'Menunggu'
+                          ? 'border-[#A6791E] bg-[#F8EFD9]/80 dark:bg-amber-955/30'
+                          : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                      }`}
+                    >
+                      {poStatusFilter === 'Menunggu' && (
+                        <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#A6791E]" />
+                      )}
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#A6791E] shrink-0" />
+                        <span className={`text-[10px] font-semibold ${poStatusFilter === 'Menunggu' ? 'text-[#A6791E]' : 'text-[#6b7280]'}`}>
+                          Menunggu
+                        </span>
+                      </div>
+                      <div className={`font-['Inter'] font-bold text-[16px] leading-none ${poStatusFilter === 'Menunggu' ? 'text-[#A6791E]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+                        {pendingPOs.length}
+                      </div>
+                      <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
+                        {canViewAmount ? (pendingPOs.length > 0 ? `${formatNTD(pendingSumNTD)}` : '—') : ''}
+                      </div>
+                    </button>
+
+                    {/* Sebagian */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPoStatusFilter(poStatusFilter === 'Sebagian' ? 'Semua' : 'Sebagian');
+                        setExpandedPoId(null);
+                        setCurrentPage(1);
+                      }}
+                      className={`bg-white dark:bg-neutral-900 border rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none shrink-0 ${
+                        poStatusFilter === 'Sebagian'
+                          ? 'border-[#48607F] bg-[#E8EDF3]/80 dark:bg-slate-955/30'
+                          : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                      }`}
+                    >
+                      {poStatusFilter === 'Sebagian' && (
+                        <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#48607F]" />
+                      )}
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#48607F] shrink-0" />
+                        <span className={`text-[10px] font-semibold ${poStatusFilter === 'Sebagian' ? 'text-[#48607F]' : 'text-[#6b7280]'}`}>
+                          Sebagian
+                        </span>
+                      </div>
+                      <div className={`font-['Inter'] font-bold text-[16px] leading-none ${poStatusFilter === 'Sebagian' ? 'text-[#48607F]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+                        {partialPOs.length}
+                      </div>
+                      <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
+                        {canViewAmount ? (partialPOs.length > 0 ? `${formatNTD(partialSumNTD)}` : '—') : ''}
+                      </div>
+                    </button>
+
+                    {/* Diterima */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPoStatusFilter(poStatusFilter === 'Diterima' ? 'Semua' : 'Diterima');
+                        setExpandedPoId(null);
+                        setCurrentPage(1);
+                      }}
+                      className={`bg-white dark:bg-neutral-900 border rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none shrink-0 ${
+                        poStatusFilter === 'Diterima'
+                          ? 'border-[#4C6B4F] bg-[#E9F0E9]/80 dark:bg-emerald-955/30'
+                          : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                      }`}
+                    >
+                      {poStatusFilter === 'Diterima' && (
+                        <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#4C6B4F]" />
+                      )}
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#4C6B4F] shrink-0" />
+                        <span className={`text-[10px] font-semibold ${poStatusFilter === 'Diterima' ? 'text-[#4C6B4F]' : 'text-[#6b7280]'}`}>
+                          Diterima
+                        </span>
+                      </div>
+                      <div className={`font-['Inter'] font-bold text-[16px] leading-none ${poStatusFilter === 'Diterima' ? 'text-[#4C6B4F]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+                        {receivedPOs.length}
+                      </div>
+                      <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
+                        {canViewAmount ? (receivedPOs.length > 0 ? `${formatNTD(receivedSumNTD)}` : '—') : ''}
+                      </div>
+                    </button>
+
+                    {/* Cancel */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPoStatusFilter(poStatusFilter === 'Cancel' ? 'Semua' : 'Cancel');
+                        setExpandedPoId(null);
+                        setCurrentPage(1);
+                      }}
+                      className={`bg-white dark:bg-neutral-900 border rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none shrink-0 ${
+                        poStatusFilter === 'Cancel'
+                          ? 'border-[#A34A32] bg-[#F5E5DF]/80 dark:bg-rose-955/30'
+                          : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                      }`}
+                    >
+                      {poStatusFilter === 'Cancel' && (
+                        <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#A34A32]" />
+                      )}
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#A34A32] shrink-0" />
+                        <span className={`text-[10px] font-semibold ${poStatusFilter === 'Cancel' ? 'text-[#A34A32]' : 'text-[#6b7280]'}`}>
+                          Cancel
+                        </span>
+                      </div>
+                      <div className={`font-['Inter'] font-bold text-[16px] leading-none ${poStatusFilter === 'Cancel' ? 'text-[#A34A32]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
+                        {cancelledPOs.length}
+                      </div>
+                      <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
+                        {canViewAmount ? (cancelledPOs.length > 0 ? `${formatNTD(cancelledSumNTD)}` : '—') : ''}
+                      </div>
+                    </button>
+                  </div>
                 </div>
 
-                {/* STATUS FILTER CHIPS GRID */}
-                <div className="kbi-sostat flex overflow-x-auto snap-x hide-scrollbar gap-2.5 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-5 sm:overflow-visible sm:pb-0 mb-3">
-                  {/* Semua */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPoStatusFilter('Semua');
-                      setExpandedPoId(null);
-                      setCurrentPage(1);
-                    }}
-                    className={`bg-white dark:bg-neutral-900 border rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none shrink-0 ${
-                      poStatusFilter === 'Semua'
-                        ? 'border-[#0d1117] dark:border-white bg-[#f5f6f7] dark:bg-neutral-800'
-                        : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
-                    }`}
-                  >
-                    {poStatusFilter === 'Semua' && (
-                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#0d1117] dark:bg-white" />
-                    )}
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#0d1117] dark:bg-white shrink-0" />
-                      <span className={`text-[10px] font-semibold ${poStatusFilter === 'Semua' ? 'text-[#0d1117] dark:text-white' : 'text-[#6b7280]'}`}>
-                        Semua
-                      </span>
+                {/* 3. TOOLBAR (Search & Filter - Desktop) */}
+                <div className="hidden md:block space-y-3 mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="relative flex-1 w-full flex items-center bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-[10px] px-3.5 h-11 md:h-auto md:py-2.5 focus-within:border-[#2b5a9e] focus-within:ring-2 focus-within:ring-[#2b5a9e]/10 transition">
+                      <Search className="w-[15px] h-[15px] text-[#9ca3af] shrink-0 mr-2.5" />
+                      <input
+                        type="text"
+                        placeholder="Cari No. PO, Nomor Pembelian, atau Nama Buku..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-transparent border-none outline-none font-['Lexend'] text-[13.5px] text-[#0d1117] dark:text-white placeholder-[#9ca3af]"
+                      />
                     </div>
-                    <div className={`font-['Inter'] font-bold text-[16px] leading-none ${poStatusFilter === 'Semua' ? 'text-[#0d1117] dark:text-white' : 'text-[#0d1117] dark:text-neutral-100'}`}>
-                      {dateFilteredPOs.length}
-                    </div>
-                    <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-                      seluruh periode
-                    </div>
-                  </button>
 
-                  {/* Menunggu */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPoStatusFilter(poStatusFilter === 'Menunggu' ? 'Semua' : 'Menunggu');
-                      setExpandedPoId(null);
-                      setCurrentPage(1);
-                    }}
-                    className={`bg-white dark:bg-neutral-900 border rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none shrink-0 ${
-                      poStatusFilter === 'Menunggu'
-                        ? 'border-[#A6791E] bg-[#F8EFD9]/80 dark:bg-amber-955/30'
-                        : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
-                    }`}
-                  >
-                    {poStatusFilter === 'Menunggu' && (
-                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#A6791E]" />
-                    )}
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#A6791E] shrink-0" />
-                      <span className={`text-[10px] font-semibold ${poStatusFilter === 'Menunggu' ? 'text-[#A6791E]' : 'text-[#6b7280]'}`}>
-                        Menunggu
-                      </span>
-                    </div>
-                    <div className={`font-['Inter'] font-bold text-[16px] leading-none ${poStatusFilter === 'Menunggu' ? 'text-[#A6791E]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
-                      {pendingPOs.length}
-                    </div>
-                    <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-                      {canViewAmount ? (pendingPOs.length > 0 ? `${formatNTD(pendingSumNTD)}` : '—') : ''}
-                    </div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsFilterDrawerOpen(!isFilterDrawerOpen)}
+                      aria-label="Filter"
+                      className={`inline-flex items-center justify-center md:justify-start gap-1.5 w-11 h-11 md:w-auto md:h-auto px-0 py-0 md:px-3.5 md:py-2.5 border rounded-[8px] font-['Lexend'] font-semibold text-[13px] transition cursor-pointer select-none shrink-0 ${
+                        isFilterDrawerOpen
+                          ? 'bg-[#eef3fa] border-[#2b5a9e] text-[#2b5a9e]'
+                          : 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800 text-[#3d4451] dark:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-700'
+                      }`}
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline">Filter</span>
+                      <ChevronDown className={`hidden md:block w-3.5 h-3.5 transition-transform duration-150 ${isFilterDrawerOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
 
-                  {/* Sebagian */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPoStatusFilter(poStatusFilter === 'Sebagian' ? 'Semua' : 'Sebagian');
-                      setExpandedPoId(null);
-                      setCurrentPage(1);
-                    }}
-                    className={`bg-white dark:bg-neutral-900 border rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none shrink-0 ${
-                      poStatusFilter === 'Sebagian'
-                        ? 'border-[#48607F] bg-[#E8EDF3]/80 dark:bg-slate-955/30'
-                        : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
-                    }`}
-                  >
-                    {poStatusFilter === 'Sebagian' && (
-                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#48607F]" />
-                    )}
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#48607F] shrink-0" />
-                      <span className={`text-[10px] font-semibold ${poStatusFilter === 'Sebagian' ? 'text-[#48607F]' : 'text-[#6b7280]'}`}>
-                        Sebagian
-                      </span>
+                  {/* Expandable Advanced Filter Drawer (Desktop) */}
+                  {isFilterDrawerOpen && (
+                    <div className="bg-neutral-50 dark:bg-neutral-950 p-5 rounded-xl border border-neutral-200 dark:border-neutral-800 grid grid-cols-1 gap-4 animate-fadeIn">
+                      <div className="col-span-full space-y-1">
+                        <label className="text-[10px] font-bold capitalize text-neutral-500 tracking-wider">Periode PO</label>
+                        <DateRangePicker 
+                          startDate={startDate}
+                          endDate={endDate}
+                          presetLabel={poPresetLabel}
+                          onChange={(start, end, label) => {
+                            setStartDate(start);
+                            setEndDate(end);
+                            if (label) setPoPresetLabel(label);
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className={`font-['Inter'] font-bold text-[16px] leading-none ${poStatusFilter === 'Sebagian' ? 'text-[#48607F]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
-                      {partialPOs.length}
-                    </div>
-                    <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-                      {canViewAmount ? (partialPOs.length > 0 ? `${formatNTD(partialSumNTD)}` : '—') : ''}
-                    </div>
-                  </button>
-
-                  {/* Diterima */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPoStatusFilter(poStatusFilter === 'Diterima' ? 'Semua' : 'Diterima');
-                      setExpandedPoId(null);
-                      setCurrentPage(1);
-                    }}
-                    className={`bg-white dark:bg-neutral-900 border rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none shrink-0 ${
-                      poStatusFilter === 'Diterima'
-                        ? 'border-[#4C6B4F] bg-[#E9F0E9]/80 dark:bg-emerald-955/30'
-                        : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
-                    }`}
-                  >
-                    {poStatusFilter === 'Diterima' && (
-                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#4C6B4F]" />
-                    )}
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#4C6B4F] shrink-0" />
-                      <span className={`text-[10px] font-semibold ${poStatusFilter === 'Diterima' ? 'text-[#4C6B4F]' : 'text-[#6b7280]'}`}>
-                        Diterima
-                      </span>
-                    </div>
-                    <div className={`font-['Inter'] font-bold text-[16px] leading-none ${poStatusFilter === 'Diterima' ? 'text-[#4C6B4F]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
-                      {receivedPOs.length}
-                    </div>
-                    <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-                      {canViewAmount ? (receivedPOs.length > 0 ? `${formatNTD(receivedSumNTD)}` : '—') : ''}
-                    </div>
-                  </button>
-
-                  {/* Cancel */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPoStatusFilter(poStatusFilter === 'Cancel' ? 'Semua' : 'Cancel');
-                      setExpandedPoId(null);
-                      setCurrentPage(1);
-                    }}
-                    className={`bg-white dark:bg-neutral-900 border rounded-[8px] p-2 text-left transition duration-150 relative overflow-hidden cursor-pointer select-none shrink-0 ${
-                      poStatusFilter === 'Cancel'
-                        ? 'border-[#A34A32] bg-[#F5E5DF]/80 dark:bg-rose-955/30'
-                        : 'border-[#E7E1D2] dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
-                    }`}
-                  >
-                    {poStatusFilter === 'Cancel' && (
-                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#A34A32]" />
-                    )}
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#A34A32] shrink-0" />
-                      <span className={`text-[10px] font-semibold ${poStatusFilter === 'Cancel' ? 'text-[#A34A32]' : 'text-[#6b7280]'}`}>
-                        Cancel
-                      </span>
-                    </div>
-                    <div className={`font-['Inter'] font-bold text-[16px] leading-none ${poStatusFilter === 'Cancel' ? 'text-[#A34A32]' : 'text-[#0d1117] dark:text-neutral-100'}`}>
-                      {cancelledPOs.length}
-                    </div>
-                    <div className="font-['Inter'] text-[10.5px] text-[#9ca3af] mt-1 truncate">
-                      {canViewAmount ? (cancelledPOs.length > 0 ? `${formatNTD(cancelledSumNTD)}` : '—') : ''}
-                    </div>
-                  </button>
+                  )}
                 </div>
-              </div>
+
+                {/* 4a. MOBILE SEARCH & FILTER BAR (<768px) */}
+                <PurchaseOrderMobileFilter
+                  activeFilterTab={poStatusFilter}
+                  setActiveFilterTab={(tab) => {
+                    setPoStatusFilter(tab);
+                    setExpandedPoId(null);
+                    setCurrentPage(1);
+                  }}
+                  searchQuery={searchQuery}
+                  setSearchQuery={setSearchQuery}
+                  allCount={dateFilteredPOs.length}
+                  pendingCount={pendingPOs.length}
+                  pendingSum={pendingSumNTD}
+                  partialCount={partialPOs.length}
+                  partialSum={partialSumNTD}
+                  receivedCount={receivedPOs.length}
+                  receivedSum={receivedSumNTD}
+                  cancelledCount={cancelledPOs.length}
+                  cancelledSum={cancelledSumNTD}
+                  canViewAmount={canViewAmount}
+                  startDate={startDate}
+                  endDate={endDate}
+                  datePresetLabel={poPresetLabel}
+                  onDateChange={(start, end, label) => {
+                    setStartDate(start);
+                    setEndDate(end);
+                    if (label) setPoPresetLabel(label);
+                  }}
+                  selectedPlatform={selectedPlatformFilter}
+                  setSelectedPlatform={setSelectedPlatformFilter}
+                  platforms={platforms}
+                  onResetFilters={() => {
+                    setSelectedPlatformFilter('');
+                    setStartDate(null);
+                    setEndDate(null);
+                    setPoPresetLabel('Semua');
+                  }}
+                />
+              </>
             );
           })()}
-
-          {/* 3. TOOLBAR (Search & Filter) */}
-          <div className="space-y-3 mb-4">
-            <div className="flex items-center gap-2.5">
-              <div className="relative flex-1 w-full flex items-center bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-[10px] px-3.5 h-11 md:h-auto md:py-2.5 focus-within:border-[#2b5a9e] focus-within:ring-2 focus-within:ring-[#2b5a9e]/10 transition">
-                <Search className="w-[15px] h-[15px] text-[#9ca3af] shrink-0 mr-2.5" />
-                <input
-                  type="text"
-                  placeholder="Cari No. PO, Nomor Pembelian, atau Nama Buku..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-transparent border-none outline-none font-['Lexend'] text-[13.5px] text-[#0d1117] dark:text-white placeholder-[#9ca3af]"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsFilterDrawerOpen(!isFilterDrawerOpen)}
-                aria-label="Filter"
-                className={`inline-flex items-center justify-center md:justify-start gap-1.5 w-11 h-11 md:w-auto md:h-auto px-0 py-0 md:px-3.5 md:py-2.5 border rounded-[8px] font-['Lexend'] font-semibold text-[13px] transition cursor-pointer select-none shrink-0 ${
-                  isFilterDrawerOpen
-                    ? 'bg-[#eef3fa] border-[#2b5a9e] text-[#2b5a9e]'
-                    : 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800 text-[#3d4451] dark:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-700'
-                }`}
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Filter</span>
-                <ChevronDown className={`hidden md:block w-3.5 h-3.5 transition-transform duration-150 ${isFilterDrawerOpen ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
-
-            {/* Expandable Advanced Filter Drawer */}
-            {isFilterDrawerOpen && (
-              <div className="bg-neutral-50 dark:bg-neutral-950 p-5 rounded-xl border border-neutral-200 dark:border-neutral-800 grid grid-cols-1 gap-4 animate-fadeIn">
-                <div className="col-span-full space-y-1">
-                  <label className="text-[10px] font-bold capitalize text-neutral-500 tracking-wider">Periode PO</label>
-                  <DateRangePicker 
-                    startDate={startDate}
-                    endDate={endDate}
-                    presetLabel={poPresetLabel}
-                    onChange={(start, end, label) => {
-                      setStartDate(start);
-                      setEndDate(end);
-                      if (label) setPoPresetLabel(label);
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* Cards container */}
           <div className="hidden md:flex flex-col space-y-4">
@@ -5551,262 +5634,42 @@ export const PurchasesTab = () => {
             })}
           </div>
 
-          {/* Mobile Cards (<768px) */}
-          <div className="kbi-ocards md:hidden">
+          {/* 4b. MOBILE PURCHASE ORDER CARDS (<768px) */}
+          <div className="md:hidden space-y-3">
             {paginatedPOs.map((po, poIdx) => {
               const poPlatform = platforms.find(p => p.id === po.supplierId);
-              const platformName = poPlatform?.name || po.supplierName || '-';
-              const itemsToRender = po.items && po.items.length > 0 ? po.items : [{
-                bookId: po.bookId,
-                bookName: po.bookName,
-                qty: po.qty,
-                pricePlatformTotal: po.purchasePriceIDR || po.purchasePriceNTD / 100,
-                priceNTDTotal: po.purchasePriceNTD,
-                pricePerItem: po.pricePerUnitNTD,
-              }];
-
-              const orderQty = itemsToRender.reduce((acc: number, it: any) => acc + (it.qty || 1), 0);
-              const orderDateMs = po.purchaseDate?.seconds ? po.purchaseDate.seconds * 1000 : null;
-              const formattedDate = orderDateMs
-                ? new Date(orderDateMs).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
-                : 'N/A';
-              
-              const receivedDateMs = po.shippedAt?.seconds ? po.shippedAt.seconds * 1000 : null;
-              const formattedReceivedDate = receivedDateMs 
-                ? new Date(receivedDateMs).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
-                : '-';
-
-              let cardBgClass = '!bg-white dark:!bg-neutral-900 !border-[#E7E1D2] dark:!border-neutral-800';
-
-              let pillColor = '#A6791E';
-              let pillBg = '#F8EFD9';
-              let pillLabel = 'Pending';
-              if (po.status === 'received') { pillColor = '#4C6B4F'; pillBg = '#E9F0E9'; pillLabel = 'Diterima'; }
-              else if (po.status === 'partial') { pillColor = '#48607F'; pillBg = '#E8EDF3'; pillLabel = 'Sebagian'; }
-              else if (po.status === 'cancelled') { pillColor = '#A34A32'; pillBg = '#F5E5DF'; pillLabel = 'Cancel'; }
-
-              const totalIDR = itemsToRender.reduce((sum: number, item: any) => sum + (item.pricePlatformTotal || 0), 0);
-              const totalNTD = itemsToRender.reduce((sum: number, item: any) => sum + (item.priceNTDTotal || 0), 0);
-              const currency = poPlatform?.currency || (totalIDR > 0 ? 'IDR' : (totalNTD > 0 ? 'USD' : 'NTD'));
-
               return (
-                <article
+                <PurchaseOrderMobileCard
                   key={`m-po-${po.id}-${poIdx}`}
-                  className={`kbi-ocard ${cardBgClass}`}
-                  onClick={() => {
-                    setIsPoViewOnly(false);
-                    setEditingPoId(po.id);
-                    setPoDate(po.purchaseDate?.seconds ? formatToHTMLDate(new Date(po.purchaseDate.seconds * 1000)) : '');
-                    setPlatformId(po.supplierId || '');
-                    setSupplierOrderNumber(po.supplierOrderNumber || '');
-                    setSupplierTrackingNumber(po.supplierTrackingNumber || '');
-                    const remappedItems = itemsToRender.map((it: any) => ({
-                      bookId: it.bookId,
-                      bookName: it.bookName,
-                      qtyStr: (it.qty || 1).toString(),
-                      pricePlatformStr: it.pricePlatformTotal ? it.pricePlatformTotal.toString() : '',
-                      priceNTDStr: it.priceNTDTotal ? it.priceNTDTotal.toString() : '',
-                      isCancelled: !!it.isCancelled
-                    }));
-                    setAddedItems(remappedItems);
-                    setPoDiscount(po.discount || 0);
-                    setActualReceiptTotal(po.actualReceiptTotal || '');
-                    setIsNewPoOpen(true);
+                  po={po}
+                  platform={poPlatform}
+                  isStaffValue={isStaffValue}
+                  canViewAmount={canViewAmount}
+                  onOpenDetail={(targetPo) => setViewingDetailPo(targetPo)}
+                  onEditPO={(targetPo) => handleEditPO(targetPo)}
+                  onReceivePO={(targetPo) => handleOpenReceiveGoods(targetPo)}
+                  onRevertStatus={(targetPo) => {
+                    setRevertConfirmState({
+                      message: `Apakah Anda benar-benar ingin mengembalikan status pembelian ${targetPo.purchaseCode?.replace(/^#?P(?!O)/, 'PO').replace(/^#/, '')} dari "${targetPo.status?.toUpperCase()}" ke "PENDING"? Semua penyesuaian stok dan arus kas akan dibalik/diatur ulang.`,
+                      onConfirm: () => handleRevertPOStatus(targetPo)
+                    });
                   }}
-                >
-                  <span className="kbi-ocard__ribbon" style={{ backgroundColor: pillColor }} aria-hidden="true" />
-                  
-                  <div className="kbi-ocard__top pb-1 !items-center">
-                    <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0 mr-2">
-                      <span className="font-bold text-neutral-900 dark:text-white text-[13px] leading-none truncate max-w-[120px]">{po.purchaseCode || po.id}</span>
-                      <span className="text-neutral-300 dark:text-neutral-600 leading-none text-xs flex items-center">•</span>
-                      <span className="font-semibold text-[11.5px] truncate flex-1 text-[#6b7280] leading-none flex items-center">{platformName}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setExpandedPoId(expandedPoId === po.id ? null : po.id); }}
-                      className="kbi-ocard__status shrink-0"
-                      style={{ backgroundColor: pillBg, color: pillColor, minHeight: '24px', padding: '2px 6px' }}
-                    >
-                      <span className="kbi-ocard__statusdot" style={{ backgroundColor: pillColor }} />
-                      {pillLabel}
-                    </button>
-                  </div>
-
-                  <div className="kbi-ocard__rule border-t border-neutral-200 dark:border-neutral-700/60 my-1" />
-
-                  <div className="kbi-ocard__body pt-1">
-                    {po.supplierOrderNumber && (
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <span className="text-[12px] font-mono text-neutral-600 dark:text-neutral-400">Order: {po.supplierOrderNumber}</span>
-                        <button 
-                          type="button" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (navigator.clipboard) {
-                              navigator.clipboard.writeText(po.supplierOrderNumber);
-                              alert('Nomor Order berhasil disalin!');
-                            }
-                          }}
-                          className="text-neutral-400 hover:text-[#A6791E] transition-colors p-1"
-                          title="Copy Nomor Order"
-                        >
-                          <Copy className="w-[12px] h-[12px]" />
-                        </button>
-                      </div>
-                    )}
-                    
-                    {po.supplierTrackingNumber && (
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <span className="text-[12px] font-mono text-orange-600 dark:text-orange-400">Resi: {po.supplierTrackingNumber}</span>
-                        <button 
-                          type="button" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (navigator.clipboard) {
-                              navigator.clipboard.writeText(po.supplierTrackingNumber);
-                              alert('Nomor Resi berhasil disalin!');
-                            }
-                          }}
-                          className="text-neutral-400 hover:text-orange-500 transition-colors p-1"
-                          title="Copy Nomor Resi"
-                        >
-                          <Copy className="w-[12px] h-[12px]" />
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-2 text-[11px] leading-tight text-neutral-500 dark:text-neutral-400">
-                      <span className="font-medium">Beli: {formattedDate}</span>
-                      <span className="text-neutral-300 dark:text-neutral-700">•</span>
-                      <span className="font-medium">Terima: {formattedReceivedDate}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-dashed border-neutral-200 dark:border-neutral-700">
-                      <div className="flex flex-col">
-                        <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-bold">Qty</span>
-                        <span className="font-numeric font-bold text-[14px] text-neutral-700 dark:text-neutral-300">{orderQty} <span className="text-[10px] font-normal">pcs</span></span>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-bold">Total</span>
-                        <span className="font-numeric font-bold text-[15px] text-[#0d1117] dark:text-white">
-                          {currency === 'IDR' ? formatIDR(totalIDR) : currency === 'NTD' ? formatNTD(totalNTD) : `${totalIDR} USD`}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons for Mobile View */}
-                    {isStaffValue && (
-                      <div className="flex items-center justify-end gap-2 mt-3 pt-3 pb-2 border-t border-solid border-neutral-100 dark:border-neutral-800">
-                        {/* Primary Transition Action */}
-                        {hasPerm('purchases.receive') && po.status !== 'received' && po.status !== 'cancelled' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenReceiveGoods(po);
-                            }}
-                            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-[12px] text-[12px] font-bold text-white transition duration-150 ${
-                              po.status === 'partial'
-                                ? 'bg-[#48607F] hover:bg-[#3d526d] active:bg-[#34465d]'
-                                : 'bg-[#A6791E] hover:bg-[#8f681a] active:bg-[#785716]'
-                            }`}
-                          >
-                            <Check className="w-4 h-4" strokeWidth={3} />
-                            {po.status === 'partial' ? 'Lanjut Terima' : 'Terima'}
-                          </button>
-                        )}
-
-                        {/* Compact Icon Action Group */}
-                        <div className="flex items-center gap-0 bg-transparent border border-[#E7E1D2] dark:border-neutral-700/60 rounded-[12px] p-0.5 overflow-hidden">
-                          {/* Edit or View Details */}
-                          {((po.qtyReceived || 0) > 0 || po.status === 'received' || po.status === 'partial') ? (
-                            <button
-                              onClick={(e) => handleViewPO(po, e)}
-                              className="w-[34px] h-[30px] flex items-center justify-center text-neutral-500 hover:text-blue-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition"
-                              title="Lihat Detail Pembelian"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={(e) => handleEditPO(po, e)}
-                              className="w-[34px] h-[30px] flex items-center justify-center text-[#706B5E] hover:text-[#0d1117] dark:text-neutral-400 dark:hover:text-white transition"
-                              title="Edit Pembelian"
-                            >
-                              <Pencil className="w-[14px] h-[14px]" />
-                            </button>
-                          )}
-
-                          {/* Revert Action */}
-                          {po.status && po.status !== 'pending' && (
-                            <>
-                              <div className="w-[1px] h-4 bg-[#E7E1D2] dark:bg-neutral-700/60 mx-0.5" />
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setRevertConfirmState({
-                                    message: `Apakah Anda benar-benar ingin mengembalikan status pembelian ${po.purchaseCode?.replace(/^#?P(?!O)/, 'PO').replace(/^#/, '')} dari "${po.status.toUpperCase()}" ke "PENDING"? Semua penyesuaian stok dan arus kas akan dibalik/diatur ulang.`,
-                                    onConfirm: () => handleRevertPOStatus(po)
-                                  });
-                                }}
-                                className="w-[34px] h-[30px] flex items-center justify-center text-indigo-500 hover:text-indigo-600 transition"
-                                title="Kembali ke Status Sebelumnya"
-                              >
-                                <RefreshCw className="w-[14px] h-[14px]" />
-                              </button>
-                            </>
-                          )}
-
-                          {/* Delete Action (only if no received items) */}
-                          {!((po.qtyReceived || 0) > 0 || po.status === 'received' || po.status === 'partial') && (
-                            <>
-                              <div className="w-[1px] h-4 bg-[#E7E1D2] dark:bg-neutral-700/60 mx-0.5" />
-                              <div className="relative flex items-center justify-center">
-                                {deleteConfirmPoId === po.id ? (
-                                  <div className="flex items-center gap-1 px-1">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        setDeleteConfirmPoId(null);
-                                      }}
-                                      className="px-1 py-0.5 text-[8px] font-bold text-neutral-600 bg-neutral-200 rounded transition"
-                                    >
-                                      Batal
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => handleDeletePurchase(e, po.id)}
-                                      className="px-1 py-0.5 text-[8px] font-bold text-white bg-red-500 rounded transition"
-                                    >
-                                      Yakin?
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button 
-                                    type="button" 
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setDeleteConfirmPoId(po.id);
-                                    }} 
-                                    className="w-[34px] h-[30px] flex items-center justify-center text-[#706B5E] hover:text-red-500 transition"
-                                    title="Hapus Pembelian"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </article>
+                  onDeletePO={(targetPo) => setDeleteConfirmPoId(targetPo.id)}
+                  onClosePO={(targetPo) => handleOpenClosePoModal(targetPo)}
+                />
               );
             })}
+
+            {filteredPOs.length === 0 && (
+              <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-8 text-center space-y-2">
+                <div className="w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 mx-auto flex items-center justify-center">
+                  <Search className="w-5 h-5" />
+                </div>
+                <p className="text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+                  Tidak ada data pembelian yang cocok dengan filter ini.
+                </p>
+              </div>
+            )}
           </div>
 
             {paginatedPOs.length === 0 && (
@@ -9281,6 +9144,37 @@ export const PurchasesTab = () => {
           </div>
         </div>,
         document.body,
+      )}
+
+      {/* 5. Mobile Purchase Detail Drawer */}
+      {viewingDetailPo && isMobileScreen && (
+        <PurchaseDetailDrawer
+          po={viewingDetailPo}
+          isOpen={!!viewingDetailPo && isMobileScreen}
+          onClose={() => setViewingDetailPo(null)}
+          books={books}
+          platform={platforms.find(p => p.id === viewingDetailPo.supplierId)}
+          isStaffValue={isStaffValue}
+          canViewAmount={canViewAmount}
+          onEditPO={(targetPo) => {
+            setViewingDetailPo(null);
+            handleEditPO(targetPo);
+          }}
+          onReceivePO={(targetPo) => {
+            setViewingDetailPo(null);
+            handleOpenReceiveGoods(targetPo);
+          }}
+          onRevertStatus={(targetPo) => {
+            setRevertConfirmState({
+              message: `Apakah Anda benar-benar ingin mengembalikan status pembelian ${targetPo.purchaseCode?.replace(/^#?P(?!O)/, 'PO').replace(/^#/, '')} dari "${targetPo.status?.toUpperCase()}" ke "PENDING"? Semua penyesuaian stok dan arus kas akan dibalik/diatur ulang.`,
+              onConfirm: () => handleRevertPOStatus(targetPo)
+            });
+          }}
+          onClosePO={(targetPo) => {
+            setViewingDetailPo(null);
+            handleOpenClosePoModal(targetPo);
+          }}
+        />
       )}
     </div>
   );
