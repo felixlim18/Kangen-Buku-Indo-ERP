@@ -125,6 +125,11 @@ input[type="number"] {
   40%, 80% { transform: translateX(6px); }
 }
 
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media print {
   /* Hide unrelated containers when printing invoices */
   body * {

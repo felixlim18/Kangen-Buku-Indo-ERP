@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Eye, Undo2, Send, Copy, ExternalLink } from 'lucide-react';
+import { X, Eye, Undo2, Send, Copy, ExternalLink, Save, Loader2, Check } from 'lucide-react';
 import { SalesOrder } from '../types';
 import { confirmSalesOrderTransaction } from '../lib/db-helpers';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
@@ -94,14 +94,20 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   
   const [rows, setRows] = useState<RowData[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSavingAll, setIsSavingAll] = useState(false);
+  const [processProgress, setProcessProgress] = useState<{ current: number; total: number } | null>(null);
   const [summary, setSummary] = useState<{ success: number; warn: number; fail: number } | null>(null);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [hoverPreview, setHoverPreview] = useState<{ url: string, x: number, y: number, width: number, align?: 'center' | 'right' } | null>(null);
   const [expandedItems, setExpandedItems] = useState<{ [key: string]: boolean }>({});
-  const timeoutRefs = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
-  useModalEsc(isOpen, onClose, isProcessing);
+  // Per-order promise chain to prevent race conditions during rapid typing
+  const saveQueueRef = useRef<{ [orderId: string]: Promise<void> }>({});
+  // Track the latest resi value per order for the queue to pick up
+  const latestResiRef = useRef<{ [orderId: string]: string }>({});
+
+  useModalEsc(isOpen, onClose, isProcessing || isSavingAll);
   
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -144,6 +150,44 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Fire-and-forget instant autosave with per-order promise chaining (no delay)
+  const instantSaveResi = useCallback((orderId: string, resiValue: string) => {
+    latestResiRef.current[orderId] = resiValue;
+
+    const prevPromise = saveQueueRef.current[orderId] || Promise.resolve();
+    saveQueueRef.current[orderId] = prevPromise.then(async () => {
+      // Always write the latest value (coalesces rapid writes)
+      const latestResi = latestResiRef.current[orderId];
+      try {
+        const orderRef = doc(db, 'salesOrders', orderId);
+        await updateDoc(orderRef, {
+          'shipment.shippingNumber': latestResi,
+          updatedAt: Timestamp.now()
+        });
+        setRows(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(x => x.orderId === orderId);
+          if (idx !== -1 && next[idx].deskripsi === 'Menyimpan...') {
+            next[idx].deskripsi = 'Tersimpan';
+            next[idx].deskripsiType = 'ok';
+          }
+          return next;
+        });
+      } catch (err) {
+        console.error('Failed to auto-save resi', err);
+        setRows(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(x => x.orderId === orderId);
+          if (idx !== -1) {
+            next[idx].deskripsi = 'Gagal menyimpan';
+            next[idx].deskripsiType = '';
+          }
+          return next;
+        });
+      }
+    });
+  }, []);
+
   const handleInputChange = (r: number, value: string) => {
     const newRows = [...rows];
     newRows[r].resi = sanitizeResiNumber(value);
@@ -152,30 +196,8 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     newRows[r].deskripsiType = 'warn';
     setRows(newRows);
 
-    const orderId = newRows[r].orderId;
-    if (timeoutRefs.current[orderId]) {
-      clearTimeout(timeoutRefs.current[orderId]);
-    }
-    timeoutRefs.current[orderId] = setTimeout(async () => {
-      try {
-        const orderRef = doc(db, 'salesOrders', orderId);
-        await updateDoc(orderRef, {
-          'shipment.shippingNumber': newRows[r].resi,
-          updatedAt: Timestamp.now()
-        });
-        setRows(prev => {
-          const next = [...prev];
-          const idx = next.findIndex(x => x.orderId === orderId);
-          if (idx !== -1) {
-             next[idx].deskripsi = 'Tersimpan';
-             next[idx].deskripsiType = 'ok';
-          }
-          return next;
-        });
-      } catch (err) {
-        console.error('Failed to auto-save resi', err);
-      }
-    }, 1000);
+    // Fire-and-forget instant save
+    instantSaveResi(newRows[r].orderId, newRows[r].resi);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
@@ -191,19 +213,27 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     const lines = clipboard.replace(/\r/g, '').split('\n').filter(l => l.length > 0);
     
     const newRows = [...rows];
+    const toSave: { orderId: string; resi: string }[] = [];
 
     lines.forEach((line, i) => {
       const rowIndex = startRow + i;
       if (rowIndex < newRows.length && newRows[rowIndex].status !== 'success') {
         const cells = line.split('\t');
-        newRows[rowIndex].resi = sanitizeResiNumber(cells[0] || line);
+        const sanitized = sanitizeResiNumber(cells[0] || line);
+        newRows[rowIndex].resi = sanitized;
         newRows[rowIndex].status = 'idle';
-        newRows[rowIndex].deskripsi = '';
-        newRows[rowIndex].deskripsiType = '';
+        newRows[rowIndex].deskripsi = 'Menyimpan...';
+        newRows[rowIndex].deskripsiType = 'warn';
+        if (sanitized.trim()) {
+          toSave.push({ orderId: newRows[rowIndex].orderId, resi: sanitized });
+        }
       }
     });
 
     setRows(newRows);
+
+    // Instant save all pasted rows
+    toSave.forEach(({ orderId, resi }) => instantSaveResi(orderId, resi));
   };
 
   const handleRowProcess = async (rowIndex: number) => {
@@ -255,30 +285,104 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     }
   };
 
+  // "Simpan" button: save all resi values to Firestore (status stays 'packed')
+  const handleSaveAll = async () => {
+    setIsSavingAll(true);
+    const rowsToSave = rows.filter(r => r.resi.trim() && r.status !== 'success');
+    setProcessProgress({ current: 0, total: rowsToSave.length });
+
+    let saved = 0;
+    const promises = rowsToSave.map(async (row) => {
+      try {
+        // Mark saving
+        setRows(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(x => x.orderId === row.orderId);
+          if (idx !== -1) {
+            next[idx].deskripsi = 'Menyimpan...';
+            next[idx].deskripsiType = 'warn';
+          }
+          return next;
+        });
+
+        const orderRef = doc(db, 'salesOrders', row.orderId);
+        await updateDoc(orderRef, {
+          'shipment.shippingNumber': row.resi,
+          updatedAt: Timestamp.now()
+        });
+
+        saved++;
+        setProcessProgress(p => p ? { ...p, current: saved } : null);
+
+        setRows(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(x => x.orderId === row.orderId);
+          if (idx !== -1) {
+            next[idx].deskripsi = 'Tersimpan';
+            next[idx].deskripsiType = 'ok';
+          }
+          return next;
+        });
+      } catch (err) {
+        console.error('Failed to save resi for', row.orderId, err);
+        setRows(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(x => x.orderId === row.orderId);
+          if (idx !== -1) {
+            next[idx].deskripsi = 'Gagal menyimpan';
+            next[idx].deskripsiType = '';
+          }
+          return next;
+        });
+      }
+    });
+
+    await Promise.all(promises);
+    setIsSavingAll(false);
+    setTimeout(() => setProcessProgress(null), 1500);
+  };
+
+  // "Proses" button: save resi + process shipment (status -> 'shipped'), non-blocking per-row
   const handleProcess = async () => {
     setIsProcessing(true);
     let successCount = 0;
     let errorCount = 0;
     let notYetDueCount = 0;
 
-    const newRows = [...rows];
     const sourceOrders = salesOrders && salesOrders.length > 0 ? salesOrders : menungguOrders;
+    const rowsToProcess = rows.filter(r => r.orderNo.trim() && r.resi.trim() && r.status !== 'success');
+    setProcessProgress({ current: 0, total: rowsToProcess.length });
+    let processed = 0;
 
-    for (let i = 0; i < newRows.length; i++) {
-      const row = newRows[i];
-      const orderNo = row.orderNo.trim();
-      const resi = row.resi.trim();
-      
-      if (!orderNo || !resi || row.status === 'success') continue;
-
-      const order = sourceOrders.find(o => o.id === row.orderId || o.orderNumber === orderNo || o.orderCode === orderNo);
+    for (const row of rowsToProcess) {
+      const order = sourceOrders.find(o => o.id === row.orderId || o.orderNumber === row.orderNo || o.orderCode === row.orderNo);
 
       if (!order) {
-        row.status = 'error';
-        row.deskripsi = 'Order tidak ditemukan';
+        setRows(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(x => x.orderId === row.orderId);
+          if (idx !== -1) {
+            next[idx].status = 'error';
+            next[idx].deskripsi = 'Order tidak ditemukan';
+          }
+          return next;
+        });
         errorCount++;
+        processed++;
+        setProcessProgress(p => p ? { ...p, current: processed } : null);
         continue;
       }
+
+      // Mark as processing
+      setRows(prev => {
+        const next = [...prev];
+        const idx = next.findIndex(x => x.orderId === row.orderId);
+        if (idx !== -1) {
+          next[idx].deskripsi = 'Memproses...';
+          next[idx].deskripsiType = 'warn';
+        }
+        return next;
+      });
 
       try {
         await confirmSalesOrderTransaction(order.id, user?.uid || 'anonymous');
@@ -291,34 +395,50 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
           orderNumber: finalOrderNo,
           shipment: {
             orderNumber: finalOrderNo,
-            shippingNumber: resi,
+            shippingNumber: row.resi,
             shippingDate: Timestamp.fromDate(new Date()),
             arrangedAt: Timestamp.now()
           },
           updatedAt: Timestamp.now()
         });
 
-        row.status = 'success';
         successCount++;
 
-        if (order.estimatedShippingDate && isNotYetDue(order.estimatedShippingDate)) {
-          row.deskripsi = `Belum Waktunya Dikirim, Diminta Kirim Tanggal ${formatIndoDate(order.estimatedShippingDate)}`;
-          row.deskripsiType = 'warn';
-          notYetDueCount++;
-        } else {
-          row.deskripsi = 'Siap Diproses';
-          row.deskripsiType = 'ok';
-        }
+        const isWarning = order.estimatedShippingDate && isNotYetDue(order.estimatedShippingDate);
+        if (isWarning) notYetDueCount++;
+
+        setRows(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(x => x.orderId === row.orderId);
+          if (idx !== -1) {
+            next[idx].status = 'success';
+            next[idx].deskripsi = isWarning
+              ? `Belum Waktunya Dikirim, Diminta Kirim Tanggal ${formatIndoDate(order.estimatedShippingDate!)}`
+              : 'Berhasil dikirim';
+            next[idx].deskripsiType = isWarning ? 'warn' : 'ok';
+          }
+          return next;
+        });
       } catch (err: any) {
-        row.status = 'error';
-        row.deskripsi = err.message || 'Gagal memproses (Cek stok)';
         errorCount++;
+        setRows(prev => {
+          const next = [...prev];
+          const idx = next.findIndex(x => x.orderId === row.orderId);
+          if (idx !== -1) {
+            next[idx].status = 'error';
+            next[idx].deskripsi = err.message || 'Gagal memproses (Cek stok)';
+          }
+          return next;
+        });
       }
+
+      processed++;
+      setProcessProgress(p => p ? { ...p, current: processed } : null);
     }
 
-    setRows(newRows);
     setSummary({ success: successCount, warn: notYetDueCount, fail: errorCount });
     setIsProcessing(false);
+    setTimeout(() => setProcessProgress(null), 1500);
   };
 
   const filledCount = rows.filter(r => r.resi.trim()).length;
@@ -351,6 +471,18 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
               <span key={i} className="block bg-white/80 w-[2px]" style={{ height: `${[40, 60, 100, 75][Math.floor(Math.random() * 4)]}%` }}></span>
             ))}
           </div>
+          {/* Smooth progress bar */}
+          {processProgress && (
+            <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-300 via-cyan-300 to-emerald-300 rounded-full"
+                style={{
+                  width: processProgress.total > 0 ? `${(processProgress.current / processProgress.total) * 100}%` : '0%',
+                  transition: 'width 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Body */}
@@ -561,8 +693,23 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           {row.customerNote}
                         </div>
                         {row.deskripsi && (
-                          <div className={`text-[10.5px] font-semibold mt-1 inline-flex items-center gap-1 ${row.deskripsiType === 'ok' ? 'text-[#12876b]' : row.deskripsiType === 'warn' ? 'text-[#a9711f]' : 'text-[#b8433a]'}`}>
-                            {row.deskripsiType === 'ok' ? '✓ ' : row.deskripsiType === 'warn' ? '⚠ ' : '✕ '}
+                          <div
+                            className={`text-[10.5px] font-semibold mt-1 inline-flex items-center gap-1.5 transition-all duration-300 ease-out ${
+                              row.deskripsiType === 'ok' ? 'text-[#12876b]' : row.deskripsiType === 'warn' ? 'text-[#a9711f]' : 'text-[#b8433a]'
+                            }`}
+                            style={{ animation: 'fadeSlideIn 0.25s ease-out' }}
+                          >
+                            {row.deskripsiType === 'warn' && row.deskripsi === 'Menyimpan...' ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : row.deskripsiType === 'warn' && row.deskripsi === 'Memproses...' ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : row.deskripsiType === 'ok' ? (
+                              <Check className="w-3 h-3" />
+                            ) : row.deskripsiType === 'warn' ? (
+                              <span>⚠</span>
+                            ) : (
+                              <span>✕</span>
+                            )}
                             {row.deskripsi}
                           </div>
                         )}
@@ -598,17 +745,43 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-2.5 px-6 py-4 border-t border-[#dde4f0] bg-[#e9edf5]">
-          <span className="font-['IBM_Plex_Mono'] text-[11.5px] text-[#525c6d]">{filledCount} / {rows.length} resi terisi</span>
+          <span className="font-['IBM_Plex_Mono'] text-[11.5px] text-[#525c6d]">
+            {filledCount} / {rows.length} resi terisi
+            {processProgress && (
+              <span className="ml-2 text-[#2b5a9e] font-semibold">
+                ({processProgress.current}/{processProgress.total})
+              </span>
+            )}
+          </span>
           <div className="flex gap-2.5">
-            <button onClick={onClose} className="bg-white hover:bg-[#f3f7fc] text-[#525c6d] border border-[#dde4f0] font-['Space_Grotesk'] font-semibold text-[13px] px-4.5 py-2 rounded-lg transition-colors cursor-pointer">
-              Batal
+            <button
+              onClick={onClose}
+              disabled={isProcessing}
+              className="bg-white hover:bg-[#f3f7fc] text-[#525c6d] border border-[#dde4f0] font-['Space_Grotesk'] font-semibold text-[13px] px-4.5 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
+            >
+              Tutup
+            </button>
+            <button
+              onClick={handleSaveAll}
+              disabled={isSavingAll || isProcessing || filledCount === 0}
+              className="bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 font-['Space_Grotesk'] font-bold text-[13px] tracking-[0.2px] px-4.5 py-2 rounded-lg transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+            >
+              {isSavingAll ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Menyimpan...</>
+              ) : (
+                <><Save className="w-3.5 h-3.5" /> Simpan</>
+              )}
             </button>
             <button 
               onClick={handleProcess} 
-              disabled={isProcessing || rows.length === 0} 
-              className="bg-[#2b5a9e] hover:bg-[#173a6b] text-white border-none font-['Space_Grotesk'] font-bold text-[13px] tracking-[0.2px] px-5.5 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isProcessing || isSavingAll || rows.length === 0} 
+              className="bg-[#2b5a9e] hover:bg-[#173a6b] text-white border-none font-['Space_Grotesk'] font-bold text-[13px] tracking-[0.2px] px-5.5 py-2 rounded-lg transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
             >
-              {isProcessing ? 'Memproses...' : 'Proses'}
+              {isProcessing ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Memproses...</>
+              ) : (
+                <><Send className="w-3.5 h-3.5" /> Proses</>
+              )}
             </button>
           </div>
         </div>
