@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Eye, Undo2, Send, Copy, ExternalLink, Save, Loader2, Check } from 'lucide-react';
+import { X, Eye, Undo2, Send, Copy, Save, Loader2, Check, ArrowUpDown } from 'lucide-react';
 import { SalesOrder } from '../types';
 import { confirmSalesOrderTransaction } from '../lib/db-helpers';
-import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../lib/auth-context';
 import { useSidebar } from '../lib/sidebar-context';
 import { ImagePreviewModal } from './ui/ImagePreviewModal';
-import { useModalEsc, MODAL_TIERS } from '../lib/use-modal-esc';
+import { useModalEsc } from '../lib/use-modal-esc';
 import { getEffectiveOrderLogistics, sanitizeResiNumber } from '../lib/sales-logistics-utils';
 
 interface BulkProcessModalProps {
@@ -73,6 +73,135 @@ function isNotYetDue(isoStr: string) {
   return requested.getTime() > today.getTime();
 }
 
+/**
+ * Default platform order score:
+ * 1. '-'
+ * 2. Shopee
+ * 3. IopenMall
+ * 4. 7-Eleven
+ * 5. Family Mart
+ * 6. Post Office
+ * 999. Others
+ */
+const getDefaultPlatformScore = (platform?: string): number => {
+  const p = (platform || '').trim().toLowerCase();
+  if (!p || p === '-') return 1;
+  if (p === 'shopee') return 2;
+  if (p === 'iopenmall') return 3;
+  if (p.includes('7-eleven') || p.includes('7-11') || p === 'seven') return 4;
+  if (p.includes('family')) return 5;
+  if (p.includes('post') || p.includes('pos')) return 6;
+  return 999;
+};
+
+/**
+ * Detect courier type from tracking number and fallback logistics:
+ */
+const detectCourierType = (resiRaw?: string | null, order?: SalesOrder): 'spx' | '7-11' | 'familymart' | 'hilife' | 'post' | 'unknown' => {
+  const clean = sanitizeResiNumber(resiRaw);
+  if (!clean) return 'unknown';
+
+  // 1. Shopee Express: Diawali "TW" atau "SPX"
+  if (/^TW/i.test(clean) || /^SPX/i.test(clean)) {
+    return 'spx';
+  }
+
+  // 2. Post Office: 14 digit angka murni atau diawali "PO" / "POST"
+  if (/^\d{14}$/.test(clean) || /^POST?/i.test(clean)) {
+    return 'post';
+  }
+
+  // 3. 7-Eleven: 1 huruf diikuti 11 digit angka (contoh: E85208963980, E0606...)
+  if (/^[A-Z]\d{11}$/i.test(clean)) {
+    return '7-11';
+  }
+
+  // 4. Hi-Life: diawali "6MSC" atau digit diikuti huruf kapital
+  if (/^6MSC/i.test(clean) || (/^\d/.test(clean) && /[A-Z]/i.test(clean))) {
+    return 'hilife';
+  }
+
+  // 5. FamilyMart: 11 digit angka murni, diawali FM, atau murni digit angka
+  if (/^\d{11}$/.test(clean) || /^\d+$/.test(clean) || /^FM/i.test(clean)) {
+    return 'familymart';
+  }
+
+  // Fallback to order logistics if available
+  const logistics = (order?.pickupLogistics || '').toLowerCase();
+  if (logistics.includes('shopee') || logistics.includes('spx')) return 'spx';
+  if (logistics.includes('7-11') || logistics.includes('7-eleven') || logistics.includes('seven')) return '7-11';
+  if (logistics.includes('family')) return 'familymart';
+  if (logistics.includes('hi-life') || logistics.includes('hilife')) return 'hilife';
+  if (logistics.includes('post') || logistics.includes('pos')) return 'post';
+
+  return 'unknown';
+};
+
+/**
+ * Score calculation for "Urutkan Pengiriman":
+ * 1) Nomor Resi Shopee Xpress (Platform: Shopee) -> 100
+ * 2) Nomor Resi 7-Eleven:
+ *    - Platform: Shopee -> 200
+ *    - Platform: IopenMall -> 210
+ *    - Platform: Lainnya -> 220
+ * 3) Nomor Resi Family Mart:
+ *    - Platform: Shopee -> 300
+ *    - Platform: Family Mart -> 310
+ *    - Platform: Lainnya -> 320
+ * 4) Nomor Resi Hi-Life:
+ *    - Platform: Shopee -> 400
+ *    - Platform: Lainnya -> 410
+ * 5) Nomor Resi Post Office:
+ *    - Platform: Post Office -> 500
+ *    - Platform: Lainnya -> 510
+ * 6) Resi Lainnya / Unknown -> 600
+ * 7) Tanpa Nomor Resi (Kosong) -> 1000 + default platform score
+ */
+const getShippingPriorityScore = (resi: string, platform?: string, order?: SalesOrder): number => {
+  const cleanResi = sanitizeResiNumber(resi);
+  const p = (platform || '').trim().toLowerCase();
+
+  if (!cleanResi) {
+    return 1000 + getDefaultPlatformScore(platform);
+  }
+
+  const courier = detectCourierType(cleanResi, order);
+
+  // 1) Shopee Xpress (Shopee)
+  if (courier === 'spx' && p === 'shopee') {
+    return 100;
+  }
+
+  // 2) 7-Eleven
+  if (courier === '7-11') {
+    if (p === 'shopee') return 200;
+    if (p === 'iopenmall') return 210;
+    return 220;
+  }
+
+  // 3) Family Mart
+  if (courier === 'familymart') {
+    if (p === 'shopee') return 300;
+    if (p.includes('family')) return 310;
+    return 320;
+  }
+
+  // 4) Hi-Life
+  if (courier === 'hilife') {
+    if (p === 'shopee') return 400;
+    return 410;
+  }
+
+  // 5) Post Office
+  if (courier === 'post') {
+    if (p.includes('post') || p.includes('pos')) return 500;
+    return 510;
+  }
+
+  // 6) Resi Lainnya yang memiliki resi tetapi tidak cocok kriteria spesifik
+  return 600;
+};
+
 export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   isOpen,
   onClose,
@@ -93,6 +222,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   };
   
   const [rows, setRows] = useState<RowData[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
   const [processProgress, setProcessProgress] = useState<{ current: number; total: number } | null>(null);
@@ -100,7 +230,9 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [hoverPreview, setHoverPreview] = useState<{ url: string, x: number, y: number, width: number, align?: 'center' | 'right' } | null>(null);
-  const [expandedItems, setExpandedItems] = useState<{ [key: string]: boolean }>({});
+
+  // Master checkbox element ref for indeterminate state
+  const masterCheckboxRef = useRef<HTMLInputElement>(null);
 
   // Per-order promise chain to prevent race conditions during rapid typing
   const saveQueueRef = useRef<{ [orderId: string]: Promise<void> }>({});
@@ -111,52 +243,249 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   
   const gridRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      // Filter orders with status 'packed' (Dikemas)
-      const allOrders = salesOrders && salesOrders.length > 0 ? salesOrders : menungguOrders;
-      const dikemasOrders = (allOrders || []).filter(o => o.status === 'packed');
-      
-      const platformOrderMap: { [key: string]: number } = {
-        'shopee': 1,
-        'iopenmall': 2,
-        'post office': 3,
-        'familymart': 4,
-        '7-eleven': 5,
-      };
+  const getStorageKey = useCallback(() => {
+    const uid = user?.email || user?.uid || 'default';
+    return `kbi_bulk_pack_prefs_${uid}`;
+  }, [user]);
 
-      dikemasOrders.sort((a, b) => {
-        const pA = (a.platformOrder || '').toLowerCase();
-        const pB = (b.platformOrder || '').toLowerCase();
-        const scoreA = platformOrderMap[pA] || 999;
-        const scoreB = platformOrderMap[pB] || 999;
-        if (scoreA !== scoreB) return scoreA - scoreB;
-        return pA.localeCompare(pB);
-      });
-      
-      setRows(dikemasOrders.map(order => ({
-        orderId: order.id,
-        orderNo: order.orderNumber || order.orderCode || '',
-        resi: order.shipment?.shippingNumber || '',
-        customerNote: order.customerNote?.trim() || '-',
-        status: 'idle',
-        deskripsi: '',
-        deskripsiType: '',
-        order: order
-      })));
-      setSummary(null);
+  const savePreferencesToLocalStorage = useCallback((orderIds: string[], checkedIds: string[]) => {
+    try {
+      localStorage.setItem(getStorageKey(), JSON.stringify({ orderIds, checkedIds }));
+    } catch (err) {
+      // Ignore quota errors
     }
-  }, [isOpen, salesOrders, menungguOrders]);
+  }, [getStorageKey]);
+
+  const getPreferencesFromLocalStorage = useCallback((): { orderIds?: string[]; checkedIds?: string[] } | null => {
+    try {
+      const raw = localStorage.getItem(getStorageKey());
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }, [getStorageKey]);
+
+  const savePreferencesToFirestore = useCallback(async (orderIds: string[], checkedIds: string[]) => {
+    const userDocId = user?.email || user?.uid;
+    if (!userDocId) return;
+    try {
+      const prefRef = doc(db, 'userPreferences', userDocId);
+      await setDoc(prefRef, {
+        bulkPackSort: {
+          orderIds,
+          checkedIds,
+          updatedAt: Timestamp.now()
+        }
+      }, { merge: true });
+    } catch (err) {
+      console.warn('Could not save user preferences to Firestore:', err);
+    }
+  }, [user]);
+
+  // Load and sort initial data when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const allOrders = salesOrders && salesOrders.length > 0 ? salesOrders : menungguOrders;
+    const dikemasOrders = (allOrders || []).filter(o => o.status === 'packed');
+
+    // 1. Read instant local cache if available
+    const localPrefs = getPreferencesFromLocalStorage();
+    const savedOrderIds = localPrefs?.orderIds || [];
+    const savedCheckedIds = new Set(localPrefs?.checkedIds || []);
+
+    const orderRankMap = new Map<string, number>();
+    savedOrderIds.forEach((id, idx) => orderRankMap.set(id, idx));
+
+    // Sort: if previously saved in custom order, keep position; otherwise sort by default platform
+    const sortedOrders = [...dikemasOrders].sort((a, b) => {
+      const hasRankA = orderRankMap.has(a.id);
+      const hasRankB = orderRankMap.has(b.id);
+
+      if (hasRankA && hasRankB) {
+        return orderRankMap.get(a.id)! - orderRankMap.get(b.id)!;
+      }
+      if (hasRankA && !hasRankB) return -1;
+      if (!hasRankA && hasRankB) return 1;
+
+      // Default platform order for new/unranked orders
+      const scoreA = getDefaultPlatformScore(a.platformOrder);
+      const scoreB = getDefaultPlatformScore(b.platformOrder);
+      if (scoreA !== scoreB) return scoreA - scoreB;
+      return (a.platformOrder || '').localeCompare(b.platformOrder || '');
+    });
+
+    const initialRows: RowData[] = sortedOrders.map(order => ({
+      orderId: order.id,
+      orderNo: order.orderNumber || order.orderCode || '',
+      resi: order.shipment?.shippingNumber || '',
+      customerNote: order.customerNote?.trim() || '-',
+      status: 'idle',
+      deskripsi: '',
+      deskripsiType: '',
+      order: order
+    }));
+
+    setRows(initialRows);
+
+    // Retain valid checkboxes from stored selection
+    const validChecked = new Set<string>();
+    initialRows.forEach(r => {
+      if (savedCheckedIds.has(r.orderId)) {
+        validChecked.add(r.orderId);
+      }
+    });
+    setSelectedIds(validChecked);
+    setSummary(null);
+
+    // 2. Background sync with Firestore for multi-device preference persistence
+    const userDocId = user?.email || user?.uid;
+    if (userDocId) {
+      getDoc(doc(db, 'userPreferences', userDocId)).then(snap => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const firestoreOrderIds: string[] = data?.bulkPackSort?.orderIds || [];
+          const firestoreCheckedIds: string[] = data?.bulkPackSort?.checkedIds || [];
+
+          if (firestoreOrderIds.length > 0) {
+            savePreferencesToLocalStorage(firestoreOrderIds, firestoreCheckedIds);
+
+            const fsRankMap = new Map<string, number>();
+            firestoreOrderIds.forEach((id, idx) => fsRankMap.set(id, idx));
+
+            setRows(prevRows => {
+              const reSorted = [...prevRows].sort((a, b) => {
+                const hasA = fsRankMap.has(a.orderId);
+                const hasB = fsRankMap.has(b.orderId);
+                if (hasA && hasB) return fsRankMap.get(a.orderId)! - fsRankMap.get(b.orderId)!;
+                if (hasA && !hasB) return -1;
+                if (!hasA && hasB) return 1;
+                const scA = getDefaultPlatformScore(a.order.platformOrder);
+                const scB = getDefaultPlatformScore(b.order.platformOrder);
+                if (scA !== scB) return scA - scB;
+                return (a.order.platformOrder || '').localeCompare(b.order.platformOrder || '');
+              });
+              return reSorted;
+            });
+
+            const fsCheckedSet = new Set(firestoreCheckedIds);
+            setSelectedIds(prev => {
+              const next = new Set<string>();
+              dikemasOrders.forEach(o => {
+                if (fsCheckedSet.has(o.id)) next.add(o.id);
+              });
+              return next;
+            });
+          }
+        }
+      }).catch(err => {
+        console.warn('Could not load userPreferences from Firestore:', err);
+      });
+    }
+  }, [isOpen, salesOrders, menungguOrders, user, getPreferencesFromLocalStorage, savePreferencesToLocalStorage]);
+
+  // Master checkbox indeterminate sync
+  useEffect(() => {
+    if (masterCheckboxRef.current) {
+      const nonSuccessRows = rows.filter(r => r.status !== 'success');
+      const selectedCount = nonSuccessRows.filter(r => selectedIds.has(r.orderId)).length;
+      const isAll = nonSuccessRows.length > 0 && selectedCount === nonSuccessRows.length;
+      const isSome = selectedCount > 0 && !isAll;
+      masterCheckboxRef.current.indeterminate = isSome;
+    }
+  }, [rows, selectedIds]);
 
   if (!isOpen) return null;
 
+  // Toggle individual row checkbox
+  const toggleSelect = (orderId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      const currentOrderIds = rows.map(r => r.orderId);
+      const checkedArray = Array.from(next);
+      savePreferencesToLocalStorage(currentOrderIds, checkedArray);
+      savePreferencesToFirestore(currentOrderIds, checkedArray);
+      return next;
+    });
+  };
+
+  // Master checkbox: select all / deselect all
+  const toggleSelectAll = () => {
+    const nonSuccessRows = rows.filter(r => r.status !== 'success');
+    const allSelected = nonSuccessRows.length > 0 && nonSuccessRows.every(r => selectedIds.has(r.orderId));
+
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        nonSuccessRows.forEach(r => next.delete(r.orderId));
+      } else {
+        nonSuccessRows.forEach(r => next.add(r.orderId));
+      }
+      const currentOrderIds = rows.map(r => r.orderId);
+      const checkedArray = Array.from(next);
+      savePreferencesToLocalStorage(currentOrderIds, checkedArray);
+      savePreferencesToFirestore(currentOrderIds, checkedArray);
+      return next;
+    });
+  };
+
+  // Keyboard navigation for checkboxes (Arrow Up/Down and Enter)
+  const handleCheckboxKeyDown = (e: React.KeyboardEvent, index: number, orderId: string) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = document.querySelector<HTMLInputElement>(`input[data-checkbox-index="${index + 1}"]`);
+      next?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = document.querySelector<HTMLInputElement>(`input[data-checkbox-index="${index - 1}"]`);
+      prev?.focus();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      toggleSelect(orderId);
+    }
+  };
+
+  // Keyboard navigation for resi inputs (Arrow Up/Down)
+  const handleResiKeyDown = (e: React.KeyboardEvent, index: number) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = document.querySelector<HTMLInputElement>(`input[data-resi-index="${index + 1}"]`);
+      next?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = document.querySelector<HTMLInputElement>(`input[data-resi-index="${index - 1}"]`);
+      prev?.focus();
+    }
+  };
+
+  // Action: "Urutkan Pengiriman"
+  const handleSortShipping = () => {
+    const sorted = [...rows].sort((a, b) => {
+      const scoreA = getShippingPriorityScore(a.resi, a.order.platformOrder, a.order);
+      const scoreB = getShippingPriorityScore(b.resi, b.order.platformOrder, b.order);
+      return scoreA - scoreB;
+    });
+
+    setRows(sorted);
+
+    const orderIds = sorted.map(r => r.orderId);
+    const checkedIds = Array.from(selectedIds);
+    savePreferencesToLocalStorage(orderIds, checkedIds);
+    savePreferencesToFirestore(orderIds, checkedIds);
+  };
+
   // Fire-and-forget instant autosave with per-order promise chaining (no delay)
-  const instantSaveResi = useCallback((orderId: string, resiValue: string) => {
+  const instantSaveResi = (orderId: string, resiValue: string) => {
     latestResiRef.current[orderId] = resiValue;
 
     const prevPromise = saveQueueRef.current[orderId] || Promise.resolve();
     saveQueueRef.current[orderId] = prevPromise.then(async () => {
-      // Always write the latest value (coalesces rapid writes)
       const latestResi = latestResiRef.current[orderId];
       try {
         const orderRef = doc(db, 'salesOrders', orderId);
@@ -186,7 +515,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
         });
       }
     });
-  }, []);
+  };
 
   const handleInputChange = (r: number, value: string) => {
     const newRows = [...rows];
@@ -294,7 +623,6 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     let saved = 0;
     const promises = rowsToSave.map(async (row) => {
       try {
-        // Mark saving
         setRows(prev => {
           const next = [...prev];
           const idx = next.findIndex(x => x.orderId === row.orderId);
@@ -342,15 +670,19 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     setTimeout(() => setProcessProgress(null), 1500);
   };
 
-  // "Proses" button: save resi + process shipment (status -> 'shipped'), non-blocking per-row
+  // "Proses" button: only processes SELECTED orders with valid resi (status -> 'shipped')
   const handleProcess = async () => {
+    const sourceOrders = salesOrders && salesOrders.length > 0 ? salesOrders : menungguOrders;
+    // Process rows that are selected, have resi, and not yet success
+    const rowsToProcess = rows.filter(r => selectedIds.has(r.orderId) && r.orderNo.trim() && r.resi.trim() && r.status !== 'success');
+    
+    if (rowsToProcess.length === 0) return;
+
     setIsProcessing(true);
     let successCount = 0;
     let errorCount = 0;
     let notYetDueCount = 0;
 
-    const sourceOrders = salesOrders && salesOrders.length > 0 ? salesOrders : menungguOrders;
-    const rowsToProcess = rows.filter(r => r.orderNo.trim() && r.resi.trim() && r.status !== 'success');
     setProcessProgress({ current: 0, total: rowsToProcess.length });
     let processed = 0;
 
@@ -403,7 +735,6 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
         });
 
         successCount++;
-
         const isWarning = order.estimatedShippingDate && isNotYetDue(order.estimatedShippingDate);
         if (isWarning) notYetDueCount++;
 
@@ -442,35 +773,49 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   };
 
   const filledCount = rows.filter(r => r.resi.trim()).length;
-
-  if (!isOpen) return null;
+  const nonSuccessRows = rows.filter(r => r.status !== 'success');
+  const selectedCount = nonSuccessRows.filter(r => selectedIds.has(r.orderId)).length;
+  const processableCount = rows.filter(r => selectedIds.has(r.orderId) && r.resi.trim() && r.status !== 'success').length;
 
   return createPortal(
-    <div
-      className={`fixed inset-0 transition-all duration-300 ease-in-out bg-neutral-950/70 backdrop-blur-xs ${MODAL_TIERS.DIALOG} flex items-center justify-center p-4 sm:p-8 overflow-y-auto`}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl w-[96%] max-w-[1400px] h-[92vh] shadow-2xl overflow-hidden flex flex-col my-auto" style={{ filter: 'drop-shadow(0 30px 80px rgba(6,14,30,0.55))' }} onClick={e => e.stopPropagation()}>
-        
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div 
+        className={`bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[92vh] transition-all duration-300 w-full ${
+          sidebarHidden ? 'max-w-[96vw]' : 'max-w-[90vw]'
+        }`}
+      >
         {/* Header */}
-        <div className="relative bg-gradient-to-br from-[#173a6b] via-[#2b5a9e] to-[#3d6eb0] text-white px-6 pt-5 pb-0">
-          <div className="flex items-start justify-between gap-3 pb-4">
-            <div>
-              <div className="inline-flex items-center gap-1.5 font-['Space_Grotesk'] text-[10.5px] font-semibold tracking-[1.4px] uppercase text-white/65 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#7fd9b8]"></span>
-                Pemrosesan Batch
-              </div>
-              <h2 className="font-['Space_Grotesk'] text-xl font-bold m-0 tracking-[-0.2px]">Proses Massal Pesanan Dikemas</h2>
+        <div className="relative flex items-center justify-between px-7 py-4.5 bg-gradient-to-r from-[#173a6b] to-[#2b5a9e] text-white flex-none overflow-hidden">
+          <div className="flex items-center gap-3.5 z-10">
+            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20 shadow-inner">
+              <Send className="w-5 h-5 text-white" />
             </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors">
-              <X className="w-4 h-4" />
-            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-['IBM_Plex_Mono'] text-[11px] uppercase tracking-[1.2px] text-white/70">
+                  Pemrosesan Batch
+                </span>
+              </div>
+              <h2 className="font-['Space_Grotesk'] text-[19px] font-bold tracking-[-0.3px] text-white leading-tight">
+                Proses Massal Pesanan Dikemas
+              </h2>
+            </div>
           </div>
-          <div className="flex items-end gap-[2px] h-3 px-0.5 opacity-55">
+          
+          <button 
+            onClick={onClose} 
+            disabled={isProcessing}
+            className="z-10 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer border border-white/10 disabled:opacity-40"
+          >
+            <X className="w-4 h-4" />
+          </button>
+
+          <div className="absolute right-0 top-0 bottom-0 w-80 opacity-10 flex items-center justify-around pointer-events-none pr-4">
             {Array.from({ length: 90 }).map((_, i) => (
               <span key={i} className="block bg-white/80 w-[2px]" style={{ height: `${[40, 60, 100, 75][Math.floor(Math.random() * 4)]}%` }}></span>
             ))}
           </div>
+
           {/* Smooth progress bar */}
           {processProgress && (
             <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10">
@@ -495,246 +840,300 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
             </div>
           )}
 
-          <div className="border border-[#dde4f0] rounded-lg overflow-hidden bg-white flex flex-col flex-1 min-h-0">
-            <div className="overflow-x-auto relative flex flex-col flex-1 min-h-0">
-              <div className="grid grid-cols-[1.2fr_1.5fr_1fr_2.5fr_60px_1.5fr_70px] gap-0 min-w-[1100px] bg-[#f1f6fc] border-b border-[#dde4f0] flex-none">
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4">Nomor Order</span>
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Nomor Resi</span>
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Platform Order</span>
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Nama Barang</span>
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center border-l border-[#dde4f0]">Qty</span>
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Note Customer</span>
-                <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center border-l border-[#dde4f0]">Aksi</span>
-              </div>
-              <div 
-                className="flex-1 overflow-y-auto" 
-                ref={gridRef}
-                onPaste={handlePaste}
+          {/* Top Controls Toolbar */}
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap flex-none">
+            <div className="flex items-center gap-2.5">
+              <span className="text-[12.5px] text-[#525c6d] font-['Space_Grotesk'] font-medium">
+                Total <span className="font-bold text-[#101826] font-numeric">{rows.length}</span> pesanan dikemas
+              </span>
+              {selectedCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-[#2b5a9e]/10 text-[#2b5a9e] border border-[#2b5a9e]/20">
+                  <Check className="w-3 h-3" />
+                  {selectedCount} dipilih
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSortShipping}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#173a6b] hover:bg-[#0f274a] text-white text-[12.5px] font-['Space_Grotesk'] font-semibold rounded-lg shadow-sm transition-all duration-200 cursor-pointer active:scale-95"
+                title="Urutkan pesanan berdasarkan Nomor Resi dan Platform Order"
               >
+                <ArrowUpDown className="w-3.5 h-3.5" />
+                Urutkan Pengiriman
+              </button>
+            </div>
+          </div>
+
+          {/* Single Scroll Container for Table: Header and Body lockstep scroll together */}
+          <div className="border border-[#dde4f0] rounded-lg overflow-hidden bg-white flex flex-col flex-1 min-h-0">
+            <div 
+              className="flex-1 overflow-auto relative" 
+              ref={gridRef}
+              onPaste={handlePaste}
+            >
+              <div className="min-w-[1220px]">
+                {/* Sticky Header: moves horizontally with body, sticks vertically */}
+                <div className="sticky top-0 z-20 grid grid-cols-[44px_1.2fr_1.5fr_1fr_2.5fr_60px_1.5fr_70px] gap-0 bg-[#f1f6fc] border-b border-[#dde4f0] shadow-sm">
+                  {/* Master Checkbox */}
+                  <div className="p-2.5 flex items-center justify-center">
+                    <input
+                      type="checkbox"
+                      ref={masterCheckboxRef}
+                      checked={nonSuccessRows.length > 0 && nonSuccessRows.every(r => selectedIds.has(r.orderId))}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded text-[#2b5a9e] border-gray-300 focus:ring-[#2b5a9e] focus:ring-offset-0 cursor-pointer"
+                      title="Pilih Semua / Batalkan Semua"
+                    />
+                  </div>
+                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Nomor Order</span>
+                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Nomor Resi</span>
+                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Platform Order</span>
+                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Nama Barang</span>
+                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center border-l border-[#dde4f0]">Qty</span>
+                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-start text-left p-2.5 flex items-center pl-4 border-l border-[#dde4f0]">Note Customer</span>
+                  <span className="font-['Space_Grotesk'] text-[10px] font-semibold uppercase tracking-[0.6px] text-[#5f6b7d] justify-center text-center p-2.5 flex items-center border-l border-[#dde4f0]">Aksi</span>
+                </div>
+
+                {/* Table Body Rows */}
                 {rows.length === 0 ? (
                   <div className="p-8 text-center text-[#525c6d] font-['Inter'] text-sm">
                     Tidak ada orderan berstatus Dikemas saat ini.
                   </div>
                 ) : (
                   rows.map((row, i) => {
+                    const isSelected = selectedIds.has(row.orderId);
                     return (
-                    <React.Fragment key={row.orderId || i}>
-                      <div className={`grid grid-cols-[1.2fr_1.5fr_1fr_2.5fr_60px_1.5fr_70px] gap-0 min-w-[1100px] border-b border-[#dde4f0] transition-colors items-stretch
-                        ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : i % 2 !== 0 ? 'bg-[#f3f7fc]' : 'bg-white'}
-                      `}>
-                      
-                      {/* Nomor Order */}
-                      <div className="flex items-center px-4 py-2 border-r border-[#dde4f0] relative h-full">
-                        <div className="flex flex-col justify-center">
-                          <span className="font-['IBM_Plex_Mono'] text-[13.5px] font-semibold text-[#173a6b]">
-                            {row.orderNo}
-                          </span>
-                        </div>
-                        <div 
-                          className="ml-auto text-neutral-400 hover:text-brand-500 cursor-pointer"
-                          onClick={() => setActiveTooltip(activeTooltip === row.orderId ? null : row.orderId)}
-                        >
-                          <Eye className="w-4.5 h-4.5" />
-                        </div>
-                        {activeTooltip === row.orderId && (
-                           <div className="absolute top-[60%] mt-2 left-4 w-[320px] bg-white shadow-[0_12px_48px_rgba(0,0,0,0.12)] border border-[#e5e7eb] rounded-xl p-4 z-50 text-left cursor-default flex flex-col" onClick={e => e.stopPropagation()}>
-                             <div className="flex justify-between items-center mb-3">
-                               <span className="font-semibold text-[13px] text-neutral-800 tracking-tight">Detail Pesanan</span>
-                               <X className="w-3.5 h-3.5 cursor-pointer text-neutral-400 hover:text-neutral-600 shrink-0" onClick={() => setActiveTooltip(null)} />
-                             </div>
-                             
-                             <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-3">
-                               {/* Nama Pembeli */}
-                               <div className="flex flex-col group items-start">
-                                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Nama</span>
-                                 <div className="flex items-center gap-1.5">
-                                   <span className="text-[11.5px] text-neutral-800 font-medium truncate" title={row.order.customerName}>{row.order.customerName || '-'}</span>
-                                   {row.order.customerName && (
-                                      <button onClick={() => navigator.clipboard.writeText(row.order.customerName || '')} className="text-neutral-300 hover:text-brand-600 transition-colors opacity-0 group-hover:opacity-100" title="Copy">
-                                        <Copy className="w-3 h-3" />
-                                      </button>
-                                   )}
-                                 </div>
-                               </div>
-
-                               {/* No Handphone */}
-                               <div className="flex flex-col group items-start">
-                                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">No. HP</span>
-                                 <div className="flex items-center gap-1.5">
-                                   <span className="text-[11.5px] text-neutral-800 font-medium truncate font-['Inter']">{formatPhoneNumber(row.order.phoneNumber)}</span>
-                                   {row.order.phoneNumber && (
-                                      <button onClick={() => navigator.clipboard.writeText(row.order.phoneNumber || '')} className="text-neutral-300 hover:text-brand-600 transition-colors opacity-0 group-hover:opacity-100" title="Copy">
-                                        <Copy className="w-3 h-3" />
-                                      </button>
-                                   )}
-                                 </div>
-                               </div>
-
-                               {/* Opsi Pengiriman */}
-                               <div className="flex flex-col">
-                                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Pengiriman</span>
-                                 <span className="text-[11.5px] text-neutral-800 font-medium truncate">{getEffectiveOrderLogistics({ ...row.order, shipment: { ...row.order.shipment, shippingNumber: row.resi || row.order.shipment?.shippingNumber || '' } }, undefined, '-')}</span>
-                               </div>
-
-                               {/* Total Belanja */}
-                               <div className="flex flex-col">
-                                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Total</span>
-                                 <span className="text-[11.5px] font-bold text-[#173a6b]">NT$ {((row.order.totalPrice || 0) / 100).toLocaleString()}</span>
-                               </div>
-                             </div>
-
-                             {/* Kode / Alamat */}
-                             <div className="flex flex-col bg-neutral-50 rounded-lg p-2.5 mb-3 border border-neutral-100 group">
-                               <div className="flex items-center gap-2 mb-1">
-                                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Kode / Alamat</span>
-                                 <div className="flex gap-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    {row.order.addressPhotoUrl && (
-                                      <div className="relative flex">
-                                        <div 
-                                          className="text-neutral-400 hover:text-brand-600 transition-colors flex items-center gap-1 bg-white border border-neutral-200 px-1.5 py-0.5 rounded shadow-sm cursor-pointer"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setPreviewImage(row.order.addressPhotoUrl);
-                                            setHoverPreview(null);
-                                          }}
-                                          onMouseEnter={(e) => {
-                                            if (!row.order.addressPhotoUrl) return;
-                                            const rect = e.currentTarget.getBoundingClientRect();
-                                            setHoverPreview({ url: row.order.addressPhotoUrl, x: rect.right, y: rect.top, width: 220, align: 'right' });
-                                          }}
-                                          onMouseLeave={() => setHoverPreview(null)}
-                                        >
-                                          <Eye className="w-3 h-3" />
-                                          <span className="text-[8px] font-bold uppercase tracking-wider">View</span>
-                                        </div>
-                                      </div>
-                                    )}
-                                    {row.order.pickupDetails && (
-                                      <button onClick={() => navigator.clipboard.writeText(row.order.pickupDetails || '')} className="text-neutral-400 hover:text-brand-600 transition-colors" title="Copy Alamat">
-                                        <Copy className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                 </div>
-                               </div>
-                               <span className="text-[11px] text-neutral-700 font-medium line-clamp-2 leading-relaxed" title={row.order.pickupDetails}>{row.order.pickupDetails || '-'}</span>
-                             </div>
-                           </div>
-                        )}
-
-                      </div>
-
-                      {/* No Resi (Editable input) */}
-                      <div className="border-r border-[#dde4f0] h-full flex items-center">
-                        <input 
-                          type="text" 
-                          className="w-full h-full border-none bg-transparent px-4 py-2 font-['IBM_Plex_Mono'] text-[13.5px] tracking-[0.2px] text-[#101826] text-left focus:outline-2 focus:-outline-offset-2 focus:outline-[#2b5a9e] focus:bg-white placeholder:font-['Inter'] placeholder:text-[#98a1b0] disabled:text-[#525c6d]"
-                          value={row.resi}
-                          placeholder="Ketik / Paste No Resi"
-                          disabled={row.status === 'success'}
-                          data-row={i}
-                          onChange={e => handleInputChange(i, e.target.value)}
-                        />
-                      </div>
-
-                      {/* Platform Order */}
-                      <div className="flex flex-col justify-center px-4 py-2 border-r border-[#dde4f0] h-full">
-                        <span className="font-['Inter'] text-[12.5px] font-medium text-neutral-800">
-                          {row.order.platformOrder || '-'}
-                        </span>
-                        {row.order.platformChannel && (
-                          <span className="font-['Inter'] text-[10px] text-neutral-500 mt-0.5">
-                            {row.order.platformChannel}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Nama Barang & QTY */}
-                      <div className="col-span-2 flex flex-col h-full border-r border-[#dde4f0]">
-                        {row.order.items?.map((item, idx) => {
-                          const coverUrl = item.bookCover || books?.find(b => b.id === item.bookId)?.cover;
-                          return (
-                            <div key={idx} className={`grid grid-cols-[1fr_60px] flex-1 ${idx !== 0 ? 'border-t border-[#dde4f0]' : ''}`}>
-                               {/* Nama Barang */}
-                               <div className="flex items-center gap-3 px-3 py-2">
-                                 <div 
-                                    className="relative rounded shrink-0 overflow-visible border border-neutral-200 cursor-pointer bg-neutral-100"
-                                    onClick={(e) => {
-                                       e.stopPropagation();
-                                       if (coverUrl) setPreviewImage(coverUrl);
-                                       setHoverPreview(null);
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      if (!coverUrl) return;
-                                      const rect = e.currentTarget.getBoundingClientRect();
-                                      setHoverPreview({ url: coverUrl, x: rect.left + rect.width / 2, y: rect.top, width: 112, align: 'center' });
-                                    }}
-                                    onMouseLeave={() => setHoverPreview(null)}
-                                 >
-                                    {coverUrl ? (
-                                      <img src={coverUrl} alt="cover" referrerPolicy="no-referrer" className="w-[32px] h-[44px] object-cover rounded-sm" />
-                                    ) : (
-                                      <div className="w-[32px] h-[44px] flex items-center justify-center text-[6px] text-neutral-400">No Img</div>
-                                    )}
-                                 </div>
-                                 <span className="text-[12.5px] font-medium text-neutral-800 line-clamp-2 leading-[1.3]">{item.bookName || '-'}</span>
-                               </div>
-                               {/* Qty */}
-                               <div className="flex items-center justify-center font-bold text-[13.5px] text-neutral-900 border-l border-[#dde4f0]">
-                                 {item.qty} <span className="text-[10px] ml-0.5 font-normal text-neutral-500">pcs</span>
-                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Note Dari Customer */}
-                      <div className="flex flex-col justify-center px-4 py-2 font-['Inter'] text-[12.5px] leading-[1.35] text-[#374151] border-r border-[#dde4f0] h-full">
-                        <div className={`font-medium ${row.customerNote === '-' ? 'text-[#9ca3af] italic' : 'text-[#1f2937]'}`}>
-                          {row.customerNote}
-                        </div>
-                        {row.deskripsi && (
-                          <div
-                            className={`text-[10.5px] font-semibold mt-1 inline-flex items-center gap-1.5 transition-all duration-300 ease-out ${
-                              row.deskripsiType === 'ok' ? 'text-[#12876b]' : row.deskripsiType === 'warn' ? 'text-[#a9711f]' : 'text-[#b8433a]'
-                            }`}
-                            style={{ animation: 'fadeSlideIn 0.25s ease-out' }}
-                          >
-                            {row.deskripsiType === 'warn' && row.deskripsi === 'Menyimpan...' ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : row.deskripsiType === 'warn' && row.deskripsi === 'Memproses...' ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : row.deskripsiType === 'ok' ? (
-                              <Check className="w-3 h-3" />
-                            ) : row.deskripsiType === 'warn' ? (
-                              <span>⚠</span>
-                            ) : (
-                              <span>✕</span>
-                            )}
-                            {row.deskripsi}
+                      <React.Fragment key={row.orderId || i}>
+                        <div className={`grid grid-cols-[44px_1.2fr_1.5fr_1fr_2.5fr_60px_1.5fr_70px] gap-0 border-b border-[#dde4f0] transition-colors items-stretch
+                          ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : isSelected ? 'bg-[#edf4fc]' : i % 2 !== 0 ? 'bg-[#f8fafc]' : 'bg-white'}
+                        `}>
+                          {/* Row Checkbox */}
+                          <div className="flex items-center justify-center p-2 border-r border-[#dde4f0]">
+                            <input
+                              type="checkbox"
+                              data-checkbox-index={i}
+                              checked={isSelected}
+                              onChange={() => toggleSelect(row.orderId)}
+                              onKeyDown={(e) => handleCheckboxKeyDown(e, i, row.orderId)}
+                              disabled={row.status === 'success'}
+                              className="w-4 h-4 rounded text-[#2b5a9e] border-gray-300 focus:ring-[#2b5a9e] focus:ring-offset-0 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                            />
                           </div>
-                        )}
-                      </div>
 
-                      {/* Aksi */}
-                      <div className="px-2 py-2 flex items-center justify-center gap-2 h-full">
-                        <button
-                          onClick={() => handleRowRevert(i)}
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded transition"
-                          title="Kembalikan ke status Confirmed"
-                        >
-                          <Undo2 className="w-4.5 h-4.5" />
-                        </button>
-                        <button
-                          onClick={() => handleRowProcess(i)}
-                          disabled={row.status === 'success' || !row.resi.trim()}
-                          className="p-1.5 text-brand-600 hover:bg-brand-50 rounded transition disabled:opacity-30 disabled:cursor-not-allowed"
-                          title="Proses Kirim (Baris ini)"
-                        >
-                          <Send className="w-4.5 h-4.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </React.Fragment>
+                          {/* Nomor Order */}
+                          <div className="flex items-center px-4 py-2 border-r border-[#dde4f0] relative h-full">
+                            <div className="flex flex-col justify-center">
+                              <span className="font-['IBM_Plex_Mono'] text-[13.5px] font-semibold text-[#173a6b]">
+                                {row.orderNo}
+                              </span>
+                            </div>
+                            <div 
+                              className="ml-auto text-neutral-400 hover:text-brand-500 cursor-pointer"
+                              onClick={() => setActiveTooltip(activeTooltip === row.orderId ? null : row.orderId)}
+                            >
+                              <Eye className="w-4.5 h-4.5" />
+                            </div>
+                            {activeTooltip === row.orderId && (
+                              <div className="absolute top-[60%] mt-2 left-4 w-[320px] bg-white shadow-[0_12px_48px_rgba(0,0,0,0.12)] border border-[#e5e7eb] rounded-xl p-4 z-50 text-left cursor-default flex flex-col" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-3">
+                                  <span className="font-semibold text-[13px] text-neutral-800 tracking-tight">Detail Pesanan</span>
+                                  <X className="w-3.5 h-3.5 cursor-pointer text-neutral-400 hover:text-neutral-600 shrink-0" onClick={() => setActiveTooltip(null)} />
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-3">
+                                  {/* Nama Pembeli */}
+                                  <div className="flex flex-col group items-start">
+                                    <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Nama</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[11.5px] text-neutral-800 font-medium truncate" title={row.order.customerName}>{row.order.customerName || '-'}</span>
+                                      {row.order.customerName && (
+                                        <button onClick={() => navigator.clipboard.writeText(row.order.customerName || '')} className="text-neutral-300 hover:text-brand-600 transition-colors opacity-0 group-hover:opacity-100" title="Copy">
+                                          <Copy className="w-3 h-3" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* No Handphone */}
+                                  <div className="flex flex-col group items-start">
+                                    <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">No. HP</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[11.5px] text-neutral-800 font-medium truncate font-['Inter']">{formatPhoneNumber(row.order.phoneNumber)}</span>
+                                      {row.order.phoneNumber && (
+                                        <button onClick={() => navigator.clipboard.writeText(row.order.phoneNumber || '')} className="text-neutral-300 hover:text-brand-600 transition-colors opacity-0 group-hover:opacity-100" title="Copy">
+                                          <Copy className="w-3 h-3" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Opsi Pengiriman */}
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Pengiriman</span>
+                                    <span className="text-[11.5px] text-neutral-800 font-medium truncate">{getEffectiveOrderLogistics({ ...row.order, shipment: { ...row.order.shipment, shippingNumber: row.resi || row.order.shipment?.shippingNumber || '' } }, undefined, '-')}</span>
+                                  </div>
+
+                                  {/* Total Belanja */}
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mb-0.5">Total</span>
+                                    <span className="text-[11.5px] font-bold text-[#173a6b]">NT$ {((row.order.totalPrice || 0) / 100).toLocaleString()}</span>
+                                  </div>
+                                </div>
+
+                                {/* Kode / Alamat */}
+                                <div className="flex flex-col bg-neutral-50 rounded-lg p-2.5 mb-3 border border-neutral-100 group">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Kode / Alamat</span>
+                                    <div className="flex gap-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      {row.order.addressPhotoUrl && (
+                                        <div className="relative flex">
+                                          <div 
+                                            className="text-neutral-400 hover:text-brand-600 transition-colors flex items-center gap-1 bg-white border border-neutral-200 px-1.5 py-0.5 rounded shadow-sm cursor-pointer"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setPreviewImage(row.order.addressPhotoUrl);
+                                              setHoverPreview(null);
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              if (!row.order.addressPhotoUrl) return;
+                                              const rect = e.currentTarget.getBoundingClientRect();
+                                              setHoverPreview({ url: row.order.addressPhotoUrl, x: rect.right, y: rect.top, width: 220, align: 'right' });
+                                            }}
+                                            onMouseLeave={() => setHoverPreview(null)}
+                                          >
+                                            <Eye className="w-3 h-3" />
+                                            <span className="text-[8px] font-bold uppercase tracking-wider">View</span>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {row.order.pickupDetails && (
+                                        <button onClick={() => navigator.clipboard.writeText(row.order.pickupDetails || '')} className="text-neutral-400 hover:text-brand-600 transition-colors" title="Copy Alamat">
+                                          <Copy className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span className="text-[11px] text-neutral-700 font-medium line-clamp-2 leading-relaxed" title={row.order.pickupDetails}>{row.order.pickupDetails || '-'}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* No Resi (Editable input with keyboard navigation) */}
+                          <div className="border-r border-[#dde4f0] h-full flex items-center">
+                            <input 
+                              type="text" 
+                              className="w-full h-full border-none bg-transparent px-4 py-2 font-['IBM_Plex_Mono'] text-[13.5px] tracking-[0.2px] text-[#101826] text-left focus:outline-2 focus:-outline-offset-2 focus:outline-[#2b5a9e] focus:bg-white placeholder:font-['Inter'] placeholder:text-[#98a1b0] disabled:text-[#525c6d]"
+                              value={row.resi}
+                              placeholder="Ketik / Paste No Resi"
+                              disabled={row.status === 'success'}
+                              data-row={i}
+                              data-resi-index={i}
+                              onChange={e => handleInputChange(i, e.target.value)}
+                              onKeyDown={e => handleResiKeyDown(e, i)}
+                            />
+                          </div>
+
+                          {/* Platform Order */}
+                          <div className="flex flex-col justify-center px-4 py-2 border-r border-[#dde4f0] h-full">
+                            <span className="font-['Inter'] text-[12.5px] font-medium text-neutral-800">
+                              {row.order.platformOrder || '-'}
+                            </span>
+                            {row.order.platformChannel && (
+                              <span className="font-['Inter'] text-[10px] text-neutral-500 mt-0.5">
+                                {row.order.platformChannel}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Nama Barang & QTY */}
+                          <div className="col-span-2 flex flex-col h-full border-r border-[#dde4f0]">
+                            {row.order.items?.map((item, idx) => {
+                              const coverUrl = item.bookCover || books?.find(b => b.id === item.bookId)?.cover;
+                              return (
+                                <div key={idx} className={`grid grid-cols-[1fr_60px] flex-1 ${idx !== 0 ? 'border-t border-[#dde4f0]' : ''}`}>
+                                  {/* Nama Barang */}
+                                  <div className="flex items-center gap-3 px-3 py-2">
+                                    <div 
+                                      className="relative rounded shrink-0 overflow-visible border border-neutral-200 cursor-pointer bg-neutral-100"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (coverUrl) setPreviewImage(coverUrl);
+                                        setHoverPreview(null);
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        if (!coverUrl) return;
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setHoverPreview({ url: coverUrl, x: rect.left + rect.width / 2, y: rect.top, width: 112, align: 'center' });
+                                      }}
+                                      onMouseLeave={() => setHoverPreview(null)}
+                                    >
+                                      {coverUrl ? (
+                                        <img src={coverUrl} alt="cover" referrerPolicy="no-referrer" className="w-[32px] h-[44px] object-cover rounded-sm" />
+                                      ) : (
+                                        <div className="w-[32px] h-[44px] flex items-center justify-center text-[6px] text-neutral-400">No Img</div>
+                                      )}
+                                    </div>
+                                    <span className="text-[12.5px] font-medium text-neutral-800 line-clamp-2 leading-[1.3]">{item.bookName || '-'}</span>
+                                  </div>
+                                  {/* Qty */}
+                                  <div className="flex items-center justify-center font-bold text-[13.5px] text-neutral-900 border-l border-[#dde4f0]">
+                                    {item.qty} <span className="text-[10px] ml-0.5 font-normal text-neutral-500">pcs</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Note Dari Customer */}
+                          <div className="flex flex-col justify-center px-4 py-2 font-['Inter'] text-[12.5px] leading-[1.35] text-[#374151] border-r border-[#dde4f0] h-full">
+                            <div className={`font-medium ${row.customerNote === '-' ? 'text-[#9ca3af] italic' : 'text-[#1f2937]'}`}>
+                              {row.customerNote}
+                            </div>
+                            {row.deskripsi && (
+                              <div
+                                className={`text-[10.5px] font-semibold mt-1 inline-flex items-center gap-1.5 transition-all duration-300 ease-out ${
+                                  row.deskripsiType === 'ok' ? 'text-[#12876b]' : row.deskripsiType === 'warn' ? 'text-[#a9711f]' : 'text-[#b8433a]'
+                                }`}
+                                style={{ animation: 'fadeSlideIn 0.25s ease-out' }}
+                              >
+                                {row.deskripsiType === 'warn' && (row.deskripsi === 'Menyimpan...' || row.deskripsi === 'Memproses...') ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : row.deskripsiType === 'ok' ? (
+                                  <Check className="w-3 h-3" />
+                                ) : row.deskripsiType === 'warn' ? (
+                                  <span>⚠</span>
+                                ) : (
+                                  <span>✕</span>
+                                )}
+                                {row.deskripsi}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Aksi */}
+                          <div className="px-2 py-2 flex items-center justify-center gap-2 h-full">
+                            <button
+                              onClick={() => handleRowRevert(i)}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded transition"
+                              title="Kembalikan ke status Confirmed"
+                            >
+                              <Undo2 className="w-4.5 h-4.5" />
+                            </button>
+                            <button
+                              onClick={() => handleRowProcess(i)}
+                              disabled={row.status === 'success' || !row.resi.trim()}
+                              className="p-1.5 text-brand-600 hover:bg-brand-50 rounded transition disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="Proses Kirim (Baris ini)"
+                            >
+                              <Send className="w-4.5 h-4.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </React.Fragment>
                     );
                   })
                 )}
@@ -747,6 +1146,9 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
         <div className="flex items-center justify-between gap-2.5 px-6 py-4 border-t border-[#dde4f0] bg-[#e9edf5]">
           <span className="font-['IBM_Plex_Mono'] text-[11.5px] text-[#525c6d]">
             {filledCount} / {rows.length} resi terisi
+            <span className="ml-2.5 text-[#2b5a9e] font-semibold">
+              • {selectedCount} dipilih
+            </span>
             {processProgress && (
               <span className="ml-2 text-[#2b5a9e] font-semibold">
                 ({processProgress.current}/{processProgress.total})
@@ -774,13 +1176,14 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
             </button>
             <button 
               onClick={handleProcess} 
-              disabled={isProcessing || isSavingAll || rows.length === 0} 
+              disabled={isProcessing || isSavingAll || processableCount === 0} 
               className="bg-[#2b5a9e] hover:bg-[#173a6b] text-white border-none font-['Space_Grotesk'] font-bold text-[13px] tracking-[0.2px] px-5.5 py-2 rounded-lg transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+              title={processableCount === 0 ? "Centang pesanan yang sudah ada resi untuk diproses" : undefined}
             >
               {isProcessing ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Memproses...</>
               ) : (
-                <><Send className="w-3.5 h-3.5" /> Proses</>
+                <><Send className="w-3.5 h-3.5" /> Proses{selectedCount > 0 ? ` (${selectedCount})` : ''}</>
               )}
             </button>
           </div>
