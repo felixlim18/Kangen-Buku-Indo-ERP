@@ -365,6 +365,13 @@ export const PurchasesTab = () => {
   const [books, setBooks] = useState<any[]>([]);
   const [freightInList, setFreightInList] = useState<any[]>([]);
   const [journalEntries, setJournalEntries] = useState<any[]>([]);
+  const [isSubmittingPo, setIsSubmittingPo] = useState(false);
+  const [toastNotification, setToastNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const triggerToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToastNotification({ message: msg, type });
+    setTimeout(() => setToastNotification(null), 3500);
+  };
 
   const getPendingFreightInRecords = () => {
     if (!freightInList || !Array.isArray(freightInList)) return [];
@@ -1248,11 +1255,25 @@ export const PurchasesTab = () => {
 
 
   useEffect(() => {
-    const loadData = async () => {
+    // 1. Real-time listener for purchaseOrders collection
+    const unsubPO = onSnapshot(collection(db, 'purchaseOrders'), (poSnap) => {
+      const pList: any[] = [];
+      poSnap.forEach((d) => pList.push({ id: d.id, ...d.data() }));
+      const sorted = pList.sort((a, b) => {
+        const dateA = a.purchaseDate?.seconds || 0;
+        const dateB = b.purchaseDate?.seconds || 0;
+        return dateB - dateA;
+      });
+      setPurchaseOrders(sanitizePurchaseOrders(sorted));
+    }, (err) => {
+      console.error('Real-time listener error for purchaseOrders:', err);
+    });
+
+    // 2. Fetch master reference data (platforms, catalog, freightIn, journalEntries, pricingTiers)
+    const loadMasterData = async () => {
       try {
-        const [platSnap, poSnap, catSnap, freightSnap, journalSnap, tiersSnap] = await Promise.all([
+        const [platSnap, catSnap, freightSnap, journalSnap, tiersSnap] = await Promise.all([
           getDocs(collection(db, 'platforms')),
-          getDocs(collection(db, 'purchaseOrders')),
           getDocs(collection(db, 'catalog')),
           getDocs(collection(db, 'freightIn')),
           getDocs(collection(db, 'journalEntries')),
@@ -1260,51 +1281,45 @@ export const PurchasesTab = () => {
         ]);
         
         // Platforms
-        const platList = [];
+        const platList: any[] = [];
         platSnap.forEach((d) => platList.push({ id: d.id, ...d.data() }));
         setPlatforms(platList);
 
-        // Purchase Orders
-        const pList = [];
-        poSnap.forEach((d) => pList.push({ id: d.id, ...d.data() }));
-        const sorted = pList.sort((a, b) => {
-          const dateA = a.purchaseDate?.seconds || 0;
-          const dateB = b.purchaseDate?.seconds || 0;
-          return dateB - dateA;
-        });
-        setPurchaseOrders(sanitizePurchaseOrders(sorted));
-
         // Catalog
-        const bList = [];
+        const bList: any[] = [];
         catSnap.forEach((d) => bList.push({ id: d.id, ...d.data() }));
         setBooks(bList);
 
         // Freight In
-        const fList = [];
+        const fList: any[] = [];
         freightSnap.forEach((d) => fList.push({ id: d.id, ...d.data() }));
         setFreightInList(fList);
 
         // Journal Entries
-        const jList = [];
+        const jList: any[] = [];
         journalSnap.forEach((d) => jList.push({ id: d.id, ...d.data() }));
         setJournalEntries(jList);
 
         // Pricing Tiers
-        const tList = [];
+        const tList: any[] = [];
         tiersSnap.forEach((d) => tList.push({ id: d.id, ...d.data() }));
         tList.sort((a, b) => a.from - b.from);
         setPricingTiers(tList);
 
       } catch (err) {
         if (String(err).includes('quota') || String(err).includes('Quota')) {
-           console.warn('Quota exceeded while fetching PurchasesTab data');
+           console.warn('Quota exceeded while fetching PurchasesTab master data');
         } else {
-           console.error('Error fetching data for PurchasesTab:', err);
+           console.error('Error fetching master data for PurchasesTab:', err);
         }
       }
     };
 
-    loadData();
+    loadMasterData();
+
+    return () => {
+      unsubPO();
+    };
   }, []);
 
   // Listen for navigation requests from Journal Entry list links
@@ -1382,6 +1397,65 @@ export const PurchasesTab = () => {
     return parseDateClient(rawDate);
   };
 
+  // Helper: get the latest receipt date from a PO (for Sebagian / Diterima sorting & filtering)
+  const getPoLastReceiptDate = (po: any): Date | null => {
+    if (!po) return null;
+    const receipts = po.receipts;
+    if (Array.isArray(receipts) && receipts.length > 0) {
+      let latest = 0;
+      receipts.forEach((r: any) => {
+        const ts = r.receivedDate?.seconds || r.receivedDate?.toDate?.()?.getTime?.() / 1000 || 0;
+        if (ts > latest) latest = ts;
+      });
+      if (latest > 0) return new Date(latest * 1000);
+    }
+    // Fallback to updatedAt
+    const fallback = po.updatedAt || po.purchaseDate;
+    if (fallback?.seconds) return new Date(fallback.seconds * 1000);
+    if (typeof fallback?.toDate === 'function') return fallback.toDate();
+    return getPoDateObj(po);
+  };
+
+  // Helper: get the cancel date from a PO
+  const getPoCancelDate = (po: any): Date | null => {
+    if (!po) return null;
+    const cancelDate = po.cancelledAt || po.updatedAt;
+    if (cancelDate?.seconds) return new Date(cancelDate.seconds * 1000);
+    if (typeof cancelDate?.toDate === 'function') return cancelDate.toDate();
+    return getPoDateObj(po);
+  };
+
+  // Helper: get relevant date for a PO based on current status filter context
+  const getPoDateForStatusContext = (po: any, statusCtx: string): Date | null => {
+    if (statusCtx === 'Sebagian' || statusCtx === 'Diterima') return getPoLastReceiptDate(po);
+    if (statusCtx === 'Cancel') return getPoCancelDate(po);
+    return getPoDateObj(po); // Semua / Menunggu: purchaseDate
+  };
+
+  // Dynamic sorting function based on active status tab
+  const sortPurchaseOrdersByTab = (list: any[], statusTab: string): any[] => {
+    return [...list].sort((a, b) => {
+      if (statusTab === 'Semua' || statusTab === 'Menunggu') {
+        // Sort by purchaseCode descending (largest No. DOC first)
+        const codeComp = (b.purchaseCode || '').localeCompare(a.purchaseCode || '');
+        if (codeComp !== 0) return codeComp;
+        // Fallback: createdAt descending
+        return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+      }
+      if (statusTab === 'Sebagian' || statusTab === 'Diterima') {
+        const dateA = getPoLastReceiptDate(a);
+        const dateB = getPoLastReceiptDate(b);
+        return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
+      }
+      if (statusTab === 'Cancel') {
+        const dateA = getPoCancelDate(a);
+        const dateB = getPoCancelDate(b);
+        return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
+      }
+      return 0;
+    });
+  };
+
   const calculatePoRemainingNTDCents = (po: any): number => {
     if (po.status === 'received' || po.status === 'cancelled') return 0;
     if (po.status === 'pending') {
@@ -1428,9 +1502,9 @@ export const PurchasesTab = () => {
     return matchesCode || matchesTracking || matchesBookRoot || matchesPlatform || matchesItems;
   };
 
-  const matchesDate = (po: any) => {
+  const matchesDate = (po: any, statusCtx?: string) => {
     if (!startDate && !endDate) return true;
-    const poDateObj = getPoDateObj(po);
+    const poDateObj = getPoDateForStatusContext(po, statusCtx || poStatusFilter);
     if (!poDateObj) return true;
     if (startDate) {
       const start = new Date(startDate.getTime());
@@ -1445,13 +1519,13 @@ export const PurchasesTab = () => {
     return true;
   };
 
-  // Filter master PO lists
-  const dateFilteredPOs = purchaseOrders.filter(matchesDate).filter(po => {
+  // Filter master PO lists - apply status first, then use status-aware date filter
+  const platformFilteredPOs = purchaseOrders.filter(po => {
     if (!selectedPlatformFilter || selectedPlatformFilter === 'all' || selectedPlatformFilter === '') return true;
     return po.supplierId === selectedPlatformFilter;
   });
 
-  const statusFilteredPOs = dateFilteredPOs.filter(po => {
+  const statusFilteredPOs = platformFilteredPOs.filter(po => {
     if (poStatusFilter === 'Semua') return true;
     if (poStatusFilter === 'Menunggu') return po.status === 'pending';
     if (poStatusFilter === 'Sebagian') return po.status === 'partial';
@@ -1460,7 +1534,13 @@ export const PurchasesTab = () => {
     return true;
   });
 
-  const filteredPOs = statusFilteredPOs.filter(matchesSearch);
+  // Dynamic date filter based on the current status tab context
+  const dateFilteredPOs = statusFilteredPOs.filter(po => matchesDate(po, poStatusFilter));
+
+  // Apply dynamic sort based on active status tab
+  const sortedFilteredPOs = sortPurchaseOrdersByTab(dateFilteredPOs, poStatusFilter);
+
+  const filteredPOs = sortedFilteredPOs.filter(matchesSearch);
   const paginatedPOs = filteredPOs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const totalPages = Math.ceil(filteredPOs.length / pageSize);
 
@@ -2874,6 +2954,7 @@ export const PurchasesTab = () => {
       return;
     }
 
+    setIsSubmittingPo(true);
     try {
       let poId = doc(collection(db, 'purchaseOrders')).id;
       let existingPo: any = null;
@@ -3333,9 +3414,26 @@ export const PurchasesTab = () => {
       setSupplierTrackingNumber('');
       setAddedItems([]);
       setPreviewCoverIdx(null);
+      const wasEditing = !!editingPoId;
       setEditingPoId(null);
+
+      // Auto-reset filter and trigger success toast
+      if (!wasEditing) {
+        if (poStatusFilter === 'Diterima' || poStatusFilter === 'Cancel' || poStatusFilter === 'Sebagian') {
+          setPoStatusFilter('Semua');
+        }
+        setSearchQuery('');
+        setStartDate(null);
+        setEndDate(null);
+        setPoPresetLabel('Semua');
+        triggerToast(`PO #${sysPoCode} berhasil dibuat!`, 'success');
+      } else {
+        triggerToast(`PO #${sysPoCode} berhasil diperbarui!`, 'success');
+      }
     } catch (err: any) {
       alert("Error saving Purchase Order: " + err.message);
+    } finally {
+      setIsSubmittingPo(false);
     }
   };
 
@@ -4336,6 +4434,7 @@ export const PurchasesTab = () => {
       const batch = writeBatch(db);
       batch.update(doc(db, 'purchaseOrders', po.id), {
         status: 'cancelled',
+        cancelledAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       });
 
@@ -7388,17 +7487,19 @@ export const PurchasesTab = () => {
                           <>
                             <button
                               type="button"
+                              disabled={isSubmittingPo}
                               onClick={(e) => handleSavePurchaseOrder(e, true)}
-                              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold uppercase shadow-md transition cursor-pointer font-text"
+                              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-lg text-xs font-bold uppercase shadow-md transition cursor-pointer font-text"
                             >
-                              Draft
+                              {isSubmittingPo ? 'Menyimpan...' : 'Draft'}
                             </button>
                             <button
                               type="button"
+                              disabled={isSubmittingPo}
                               onClick={(e) => handleSavePurchaseOrder(e, false)}
-                              className="px-6 py-2.5 bg-[#1F6F54] hover:bg-[#1a5d46] text-white rounded-lg text-xs font-bold uppercase shadow-md transition cursor-pointer font-text"
+                              className="px-6 py-2.5 bg-[#1F6F54] hover:bg-[#1a5d46] disabled:opacity-50 text-white rounded-lg text-xs font-bold uppercase shadow-md transition cursor-pointer font-text"
                             >
-                              simpan
+                              {isSubmittingPo ? 'Menyimpan...' : 'simpan'}
                             </button>
                           </>
                         );
@@ -7408,10 +7509,11 @@ export const PurchasesTab = () => {
                         <button
                           type="button"
                           id="save-new-po-btn"
+                          disabled={isSubmittingPo}
                           onClick={(e) => handleSavePurchaseOrder(e)}
-                          className="px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-bold uppercase shadow-md transition cursor-pointer"
+                          className="px-6 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg text-xs font-bold uppercase shadow-md transition cursor-pointer"
                         >
-                          simpan
+                          {isSubmittingPo ? 'Menyimpan...' : 'simpan'}
                         </button>
                       );
                     })()}
@@ -9175,6 +9277,13 @@ export const PurchasesTab = () => {
             handleOpenClosePoModal(targetPo);
           }}
         />
+      )}
+      {/* Floating Toast Notification */}
+      {toastNotification && (
+        <div className="fixed bottom-6 right-6 z-[9999] flex items-center gap-2.5 px-4 py-3 bg-neutral-900/95 dark:bg-neutral-100/95 text-white dark:text-neutral-900 rounded-xl shadow-2xl backdrop-blur-sm border border-neutral-800 dark:border-neutral-200 text-xs font-semibold animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <span className={`w-2 h-2 rounded-full ${toastNotification.type === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+          <span>{toastNotification.message}</span>
+        </div>
       )}
     </div>
   );
