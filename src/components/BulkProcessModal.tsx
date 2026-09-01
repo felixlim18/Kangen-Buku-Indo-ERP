@@ -905,7 +905,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                 {/* Sticky Header: Perfectly matches row columns */}
                 <div 
                   className="sticky top-0 z-20 grid gap-0 bg-[#f1f6fc] border-b border-[#dde4f0] shadow-xs"
-                  style={{ gridTemplateColumns: '44px 150px 190px 130px minmax(280px, 1fr) 65px 160px 75px' }}
+                  style={{ gridTemplateColumns: '44px 180px 220px 160px 220px 60px minmax(140px, 1fr) 75px' }}
                 >
                   {/* Master Checkbox */}
                   <div className="flex items-center justify-center p-2.5 border-r border-[#dde4f0]">
@@ -958,7 +958,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           className={`grid gap-0 border-b border-[#dde4f0] transition-colors items-stretch
                             ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : isSelected ? 'bg-[#edf4fc]' : i % 2 !== 0 ? 'bg-[#f8fafc]' : 'bg-white'}
                           `}
-                          style={{ gridTemplateColumns: '44px 150px 190px 130px minmax(280px, 1fr) 65px 160px 75px' }}
+                          style={{ gridTemplateColumns: '44px 180px 220px 160px 220px 60px minmax(140px, 1fr) 75px' }}
                         >
                           {/* Checkbox */}
                           <div className="flex items-center justify-center p-2 border-r border-[#dde4f0]">
@@ -974,8 +974,8 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           </div>
 
                           {/* Nomor Order */}
-                          <div className="flex items-center justify-between px-3.5 py-2 border-r border-[#dde4f0] relative h-full">
-                            <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#173a6b] truncate" title={row.orderNo}>
+                          <div className="flex items-center justify-between px-3.5 py-2 border-r border-[#dde4f0] relative h-full min-w-0">
+                            <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#173a6b]" title={row.orderNo}>
                               {row.orderNo}
                             </span>
                             <button
@@ -1105,7 +1105,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                             {row.order.items?.map((item, idx) => {
                               const coverUrl = item.bookCover || books?.find(b => b.id === item.bookId)?.cover;
                               return (
-                                <div key={idx} className={`grid grid-cols-[1fr_65px] flex-1 ${idx !== 0 ? 'border-t border-[#dde4f0]' : ''}`}>
+                                <div key={idx} className={`grid grid-cols-[1fr_60px] flex-1 ${idx !== 0 ? 'border-t border-[#dde4f0]' : ''}`}>
                                   {/* Nama Barang */}
                                   <div className="flex items-center gap-2.5 px-3 py-2 min-w-0 flex-1">
                                     <div 
