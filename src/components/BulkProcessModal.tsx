@@ -903,7 +903,10 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
             >
               <div className="min-w-[1150px]">
                 {/* Sticky Header: Perfectly matches row columns */}
-                <div className="sticky top-0 z-20 grid grid-cols-[48px_160px_190px_135px_minmax(260px,2.2fr)_65px_minmax(150px,1.2fr)_75px] gap-0 bg-[#f1f6fc] border-b border-[#dde4f0] shadow-xs">
+                <div 
+                  className="sticky top-0 z-20 grid gap-0 bg-[#f1f6fc] border-b border-[#dde4f0] shadow-xs"
+                  style={{ gridTemplateColumns: '44px 150px 190px 130px minmax(280px, 1fr) 65px 160px 75px' }}
+                >
                   {/* Master Checkbox */}
                   <div className="flex items-center justify-center p-2.5 border-r border-[#dde4f0]">
                     <input
@@ -951,9 +954,12 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
 
                     return (
                       <React.Fragment key={row.orderId || i}>
-                        <div className={`grid grid-cols-[48px_160px_190px_135px_minmax(260px,2.2fr)_65px_minmax(150px,1.2fr)_75px] gap-0 border-b border-[#dde4f0] transition-colors items-stretch
-                          ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : isSelected ? 'bg-[#edf4fc]' : i % 2 !== 0 ? 'bg-[#f8fafc]' : 'bg-white'}
-                        `}>
+                        <div 
+                          className={`grid gap-0 border-b border-[#dde4f0] transition-colors items-stretch
+                            ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : isSelected ? 'bg-[#edf4fc]' : i % 2 !== 0 ? 'bg-[#f8fafc]' : 'bg-white'}
+                          `}
+                          style={{ gridTemplateColumns: '44px 150px 190px 130px minmax(280px, 1fr) 65px 160px 75px' }}
+                        >
                           {/* Checkbox */}
                           <div className="flex items-center justify-center p-2 border-r border-[#dde4f0]">
                             <input
@@ -1101,7 +1107,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                               return (
                                 <div key={idx} className={`grid grid-cols-[1fr_65px] flex-1 ${idx !== 0 ? 'border-t border-[#dde4f0]' : ''}`}>
                                   {/* Nama Barang */}
-                                  <div className="flex items-center gap-3 px-3 py-2">
+                                  <div className="flex items-center gap-2.5 px-3 py-2 min-w-0 flex-1">
                                     <div 
                                       className="relative rounded shrink-0 overflow-visible border border-neutral-200 cursor-pointer bg-neutral-100 shadow-2xs"
                                       onClick={(e) => {
@@ -1122,7 +1128,19 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                                         <div className="w-[32px] h-[44px] flex items-center justify-center text-[6px] text-neutral-400">No Img</div>
                                       )}
                                     </div>
-                                    <span className="text-[12.5px] font-medium text-neutral-800 line-clamp-2 leading-[1.3]">{item.bookName || '-'}</span>
+                                    <span 
+                                      className="text-[12.5px] font-medium text-neutral-800 leading-[1.35] break-words line-clamp-2 min-w-0"
+                                      style={{
+                                        display: '-webkit-box',
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: 'vertical',
+                                        overflow: 'hidden',
+                                        wordBreak: 'break-word'
+                                      }}
+                                      title={item.bookName || '-'}
+                                    >
+                                      {item.bookName || '-'}
+                                    </span>
                                   </div>
                                   {/* Qty */}
                                   <div className="flex items-center justify-center font-bold font-numeric text-[13px] text-neutral-900 border-l border-[#dde4f0]">
