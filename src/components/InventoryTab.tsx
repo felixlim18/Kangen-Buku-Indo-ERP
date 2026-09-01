@@ -377,11 +377,20 @@ export const InventoryTab: React.FC = () => {
       return;
     }
     
-    // Filter to only 'purchase_received', 'COMPLETED_SALE', 'COMPLETED (SALE)', 'DISPATCHED', 'sale_shipped'
-    const allowedTypes = ['purchase_received', 'COMPLETED_SALE', 'COMPLETED (SALE)', 'DISPATCHED', 'sale_shipped'];
+    // Filter to allowed transaction types (PO receipts, Sales, and Stock Adjustments)
+    const allowedTypes = [
+      'purchase_received',
+      'COMPLETED_SALE',
+      'COMPLETED (SALE)',
+      'DISPATCHED',
+      'sale_shipped',
+      'damaged_stock',
+      'stock_surplus'
+    ];
     const chronological = ledgerEntries
       .filter((e) => {
         if (e.bookId !== selectedBookForLedger.id) return false;
+        if (e.reversed === true) return false;
         if (!allowedTypes.includes(e.type)) return false;
         
         const so = salesOrders.find((s) => s.id === e.refId);
@@ -419,9 +428,7 @@ export const InventoryTab: React.FC = () => {
     });
 
     setBookLedgerEntries(computedEntries);
-    // salesOrders dibaca di dalam efek ini (mencari SO penyebab tiap baris ledger)
-    // tapi sebelumnya tidak ada di deps - laci ledger bisa menampilkan data basi.
-  }, [selectedBookForLedger, ledgerEntries, inventoryList, salesOrders]);
+  }, [selectedBookForLedger, ledgerEntries, inventoryList, salesOrders, damagedRecords]);
 
   // Fetch / Filter Specific Book Ledger timeline on click
   const handleRowClick = (book: Book) => {
@@ -2255,7 +2262,35 @@ export const InventoryTab: React.FC = () => {
               
               <div className="relative border-l-2 border-neutral-200 dark:border-neutral-800 ml-3.5 space-y-5 py-2 animate-in fade-in delay-75">
                 {bookLedgerEntries.map((entry, idx) => {
-                  const isAdd = entry.type === 'purchase_received';
+                  const isAdd = entry.qtyDelta > 0;
+                  const dmg = (entry.type === 'damaged_stock' || entry.type === 'stock_surplus')
+                    ? damagedRecords.find((d) => d.id === entry.refId)
+                    : null;
+
+                  let badgeText = 'MUTASI';
+                  let badgeClass = isAdd 
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' 
+                    : 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400';
+                  let descriptionText = '';
+
+                  if (entry.type === 'purchase_received') {
+                    badgeText = 'RECEIVED (PO)';
+                    descriptionText = `Penerimaan Cargo PO ${entry.refId || ''}`;
+                  } else if (entry.type === 'damaged_stock') {
+                    badgeText = dmg?.adjustmentType ? dmg.adjustmentType.toUpperCase() : 'BARANG RUSAK';
+                    badgeClass = 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400';
+                    descriptionText = `Penyesuaian Stok Rusak: ${dmg?.docNo || entry.refId || ''}${dmg?.notes ? ' (' + dmg.notes + ')' : ''}`;
+                  } else if (entry.type === 'stock_surplus') {
+                    badgeText = dmg?.adjustmentType ? dmg.adjustmentType.toUpperCase() : 'BARANG LEBIH';
+                    descriptionText = `Penyesuaian Stok Lebih: ${dmg?.docNo || entry.refId || ''}${dmg?.notes ? ' (' + dmg.notes + ')' : ''}`;
+                  } else if (entry.type === 'DISPATCHED' || entry.type === 'sale_shipped') {
+                    badgeText = 'DISPATCHED';
+                    descriptionText = `Pengiriman Order - Invoice ${entry.refId || ''}`;
+                  } else {
+                    badgeText = 'COMPLETED (SALE)';
+                    descriptionText = `Penyelesaian Transaksi - Invoice ${entry.refId || ''}`;
+                  }
+
                   return (
                     <div key={entry.id || idx} className="relative pl-6">
                       {/* Timeline dot icon indicator */}
@@ -2272,19 +2307,13 @@ export const InventoryTab: React.FC = () => {
                           <span className={`text-xs font-bold leading-none ${isAdd ? 'text-emerald-600' : 'text-rose-500'}`}>
                             {isAdd ? `+${entry.qtyDelta} Pcs` : `${entry.qtyDelta} Pcs`}
                           </span>
-                          <span className={`text-[9px] font-bold font-numeric px-1.5 py-0.5 rounded uppercase ${
-                            isAdd 
-                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' 
-                              : 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400'
-                          }`}>
-                            {isAdd ? 'RECEIVED (PO)' : 'COMPLETED (SALE)'}
+                          <span className={`text-[9px] font-bold font-numeric px-1.5 py-0.5 rounded uppercase ${badgeClass}`}>
+                            {badgeText}
                           </span>
                         </div>
                         
                         <p className="text-[11px] text-neutral-500 leading-normal font-medium">
-                          {isAdd 
-                            ? `Penerimaan Cargo PO ${entry.refId || ''}` 
-                            : `Penyelesaian Transaksi - Invoice ${entry.refId || ''}`}
+                          {descriptionText}
                         </p>
 
                         <div className="flex justify-between pt-1 text-[10px] font-numeric text-neutral-400 border-t border-neutral-100 dark:border-neutral-805">

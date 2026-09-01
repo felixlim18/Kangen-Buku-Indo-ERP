@@ -243,8 +243,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     setAuthError(null);
 
-    const ownerUsername = (import.meta.env.VITE_OWNER_USERNAME || 'kangenbukuindo@gmail.com').trim();
-    const ownerPassword = (import.meta.env.VITE_OWNER_PASSWORD || 'kangenbukuindo123').trim();
+    const ownerUsername = ((import.meta as any).env?.VITE_OWNER_USERNAME || 'kangenbukuindo@gmail.com').trim();
+    const ownerPassword = ((import.meta as any).env?.VITE_OWNER_PASSWORD || 'kangenbukuindo123').trim();
     
     // Fallback local mock user login for preview / iframe environments if owner credentials are correct
     if (email === ownerUsername && pass === ownerPassword) {

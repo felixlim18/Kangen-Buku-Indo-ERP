@@ -15,7 +15,7 @@ export const getPhysicalOnHandStockForBook = (
   let totalReceived = 0;
   for (let i = 0; i < ledgerEntries.length; i++) {
     const e = ledgerEntries[i];
-    if (e.bookId === bookId && e.type === 'purchase_received' && validPoIds.has(e.refId)) {
+    if (e.bookId === bookId && e.type === 'purchase_received' && validPoIds.has(e.refId) && e.reversed !== true) {
       totalReceived += e.qtyDelta || 0;
     }
   }
@@ -89,7 +89,7 @@ export const getCurrentKontrolStokForBook = (
   let stokMasuk = 0;
   for (let i = 0; i < ledgerEntries.length; i++) {
     const e = ledgerEntries[i];
-    if (e.bookId === bookId && e.type === 'purchase_received' && validPoIds.has(e.refId)) {
+    if (e.bookId === bookId && e.type === 'purchase_received' && validPoIds.has(e.refId) && e.reversed !== true) {
       const m = extractMonth(e.timestamp);
       if (!m || m <= currentMonthString) {
         stokMasuk += e.qtyDelta || 0;
@@ -183,7 +183,7 @@ export const getAllBooksStockData = (
   const stokMasukMonthMap: Record<string, number> = {};
 
   for (const e of ledgerEntries || []) {
-    if (e.bookId && e.type === 'purchase_received' && validPoIds.has(e.refId)) {
+    if (e.bookId && e.type === 'purchase_received' && validPoIds.has(e.refId) && e.reversed !== true) {
       const qty = e.qtyDelta || 0;
       totalReceivedMap[e.bookId] = (totalReceivedMap[e.bookId] || 0) + qty;
 
