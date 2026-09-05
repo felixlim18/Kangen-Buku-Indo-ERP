@@ -3211,7 +3211,8 @@ export const SalesTab: React.FC = () => {
       const matchOrderNum = order.orderNumber?.toLowerCase().includes(gs);
       const matchItem = order.items?.some(it => it.bookName?.toLowerCase().includes(gs));
       const matchResi = order.shipment?.shippingNumber?.toLowerCase().includes(gs);
-      if (!matchCode && !matchName && !matchPlatform && !matchPhone && !matchOrderNum && !matchItem && !matchResi) {
+      const matchDetails = order.pickupDetails?.toLowerCase().includes(gs);
+      if (!matchCode && !matchName && !matchPlatform && !matchPhone && !matchOrderNum && !matchItem && !matchResi && !matchDetails) {
         return false;
       }
     }
