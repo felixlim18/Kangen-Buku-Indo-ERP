@@ -14,10 +14,12 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { DiagnosticReportModal } from './DiagnosticReportModal';
+import { StockOpnamePanel } from './inventory/StockOpnamePanel';
 import { Book, InventoryRecord, InventoryLedgerEntry, DamagedStock, JournalEntry } from '../types';
 import { formatNTD, formatNTDExact } from '../lib/decimal-utils';
 import { getCurrentKontrolStokForBook, getPhysicalOnHandStockForBook, getAllBooksStockData } from '../lib/inventory-utils';
 import { ensureAutoAccountExists } from '../lib/journalAuto';
+import { postStockAdjustment, isStockReduction, buildAdjustmentJournalDescription, type AdjustmentType } from '../lib/stock-adjustment';
 import { useAuth } from '../lib/auth-context';
 import { isPeriodClosed, getYearMonth } from '../lib/period-closing-utils';
 import { getCached, cacheKey, invalidateCollections } from '../lib/firestore-cache';
@@ -247,8 +249,8 @@ export const InventoryTab: React.FC = () => {
     return !!profile?.permissions?.[key];
   };
 
-  // Sub-tabs: 'kontrol_stok', 'monthly', or 'adjustments'
-  const [activeSubTab, setActiveSubTab] = useState<'kontrol_stok' | 'monthly' | 'adjustments'>('kontrol_stok');
+  // Sub-tabs: 'kontrol_stok', 'monthly', 'adjustments', or 'opname'
+  const [activeSubTab, setActiveSubTab] = useState<'kontrol_stok' | 'monthly' | 'adjustments' | 'opname'>('kontrol_stok');
   // Perhitungan sub-tab berjalan sinkron saat render. Tanpa transition, bar tab
   // ikut membeku sampai selesai; dengan transition, tombolnya tetap bisa diklik.
   const [isSubTabPending, startSubTabTransition] = useTransition();
@@ -293,11 +295,11 @@ export const InventoryTab: React.FC = () => {
   const [recordToDelete, setRecordToDelete] = useState<DamagedStock | null>(null);
 
   // Filters for Penyesuaian tab
-  const [adjFilter, setAdjFilter] = useState<'semua' | 'Barang Rusak' | 'Barang Lebih'>('semua');
+  const [adjFilter, setAdjFilter] = useState<'semua' | AdjustmentType>('semua');
   const [adjSearchTerm, setAdjSearchTerm] = useState('');
 
   // Form states for Stock Adjustment
-  const [adjustmentType, setAdjustmentType] = useState<'Barang Rusak' | 'Barang Lebih'>('Barang Rusak');
+  const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>('Barang Rusak');
   const [damageBookName, setDamageBookName] = useState('');
   const [showItemDropdown, setShowItemDropdown] = useState(false);
   const [damageQty, setDamageQty] = useState(''); // Visual string with commas
@@ -573,11 +575,7 @@ export const InventoryTab: React.FC = () => {
       });
 
       if (editingRecord.journalId) {
-        const isDamage = editingRecord.adjustmentType === 'Barang Rusak';
-        const baseDesc = isDamage
-          ? `${editingRecord.adjustmentType} - ${editingRecord.bookName} ${editingRecord.qty} pcs`
-          : `Pendapatan Lain-lain - ${editingRecord.adjustmentType} - ${editingRecord.bookName} ${editingRecord.qty} pcs`;
-        const newJournalDesc = `${baseDesc}${damageNotes ? ' - ' + damageNotes : ''}`;
+        const newJournalDesc = buildAdjustmentJournalDescription(editingRecord.adjustmentType || 'Barang Rusak', editingRecord.bookName, editingRecord.qty, damageNotes);
 
         const journalRef = doc(db, 'journalEntries', editingRecord.journalId);
         batch.update(journalRef, {
@@ -649,7 +647,7 @@ export const InventoryTab: React.FC = () => {
       }
 
       // 2. Apply new record stock effect
-      const isDamage = adjustmentType === 'Barang Rusak';
+      const isDamage = isStockReduction(adjustmentType);
       const newQtyChange = isDamage ? -rawQty : rawQty;
       const baseEnding = (editingRecord.bookId === targetBookId) ? revertedEnding : (bookInventory ? bookInventory.endingStock : 0);
       const baseReady = (editingRecord.bookId === targetBookId) ? revertedReady : getCurrentKontrolStokForBook(targetBookId, inventoryList, ledgerEntries, purchaseOrders, salesOrders, damagedRecords);
@@ -816,9 +814,7 @@ export const InventoryTab: React.FC = () => {
     const movingAverageCost = (bookInventory && bookInventory.movingAverageCost > 0) ? bookInventory.movingAverageCost : (book ? (book.priceNTD || 0) : 0);
     const currentPhysical = book ? getPhysicalOnHandStockForBook(book.id, inventoryList, ledgerEntries, purchaseOrders, salesOrders, damagedRecords) : 0;
     const currentReady = book ? getCurrentKontrolStokForBook(book.id, inventoryList, ledgerEntries, purchaseOrders, salesOrders, damagedRecords) : 0;
-    const currentEnding = bookInventory ? bookInventory.endingStock : 0;
-
-    const isDamage = adjustmentType === 'Barang Rusak';
+    const isDamage = isStockReduction(adjustmentType);
 
     if (isDamage && book && currentPhysical < rawQty) {
       setFormError(`Stok di gudang tidak mencukupi. Stok di gudang saat ini: ${currentPhysical} pcs, jumlah rusak: ${rawQty} pcs.`);
@@ -826,109 +822,18 @@ export const InventoryTab: React.FC = () => {
     }
 
     try {
-      await ensureAutoAccountExists({
-        code: '5500',
-        name: 'Beban Lain-lain',
-        type: 'Expenses',
-        subType: 'Biaya Umum dan Administrasi'
-      });
-      await ensureAutoAccountExists({
-        code: '1201',
-        name: 'Inventory On Hand',
-        type: 'Assets',
-        subType: 'Aset Persediaan'
-      });
-
-      const batch = writeBatch(db);
-
-      const damagedId = doc(collection(db, 'damagedStock')).id;
-      const journalId = await getNextJournalId(damageDate);
-      const ledgerId = `LEDGER-${damagedId}`;
-
-      const dateClean = damageDate.replace(/-/g, '').slice(2);
-      const randomSuffix = Math.floor(100 + Math.random() * 900);
-      const docNo = `PS${dateClean}${randomSuffix}`;
-
-      const qtyChange = isDamage ? -rawQty : rawQty;
-      const nextEndingStock = currentEnding + qtyChange;
-      const nextKontrolStok = currentReady + qtyChange;
-      const nextValue = Math.max(0, nextEndingStock * movingAverageCost);
-
-      const invRef = doc(db, 'inventory', targetBookId);
-      batch.set(invRef, {
-        bookId: targetBookId,
-        initialStock: bookInventory ? bookInventory.initialStock : 0,
-        totalPurchased: bookInventory ? bookInventory.totalPurchased : 0,
-        totalDispatched: bookInventory ? bookInventory.totalDispatched : 0,
-        endingStock: nextEndingStock,
-        readyStock: nextKontrolStok,
-        inTransitStock: bookInventory ? bookInventory.inTransitStock : 0,
-        ordersPlaced: bookInventory ? bookInventory.ordersPlaced : 0,
-        ordersShipped: bookInventory ? bookInventory.ordersShipped : 0,
-        movingAverageCost,
-        totalInventoryValue: nextValue,
-        stockStatus: nextEndingStock > 0 ? 'in_stock' : 'sold_out',
-        lastUpdated: Timestamp.now()
-      }, { merge: true });
-
-      const ledgerRef = doc(db, 'inventoryLedger', ledgerId);
-      batch.set(ledgerRef, {
-        id: ledgerId,
-        bookId: targetBookId,
-        type: isDamage ? 'damaged_stock' : 'stock_surplus',
-        qtyDelta: qtyChange,
-        unitCost: movingAverageCost,
-        refCollection: 'damagedStock',
-        refId: damagedId,
-        balanceAfter: nextEndingStock,
-        movingAvgAfter: movingAverageCost,
-        timestamp: Timestamp.fromDate(new Date(damageDate)),
-        userId: profile?.email || 'system'
-      } as InventoryLedgerEntry);
-
-      const totalAmount = rawQty * movingAverageCost;
-      const damagedRef = doc(db, 'damagedStock', damagedId);
-      batch.set(damagedRef, {
-        id: damagedId,
-        docNo: docNo,
-        adjustmentType: adjustmentType,
+      await postStockAdjustment({
         bookId: targetBookId,
         bookName: targetBookName,
+        bookInventory,
+        movingAverageCost,
+        currentReady,
+        adjustmentType,
         qty: rawQty,
         date: damageDate,
         notes: damageNotes,
-        unitCost: movingAverageCost,
-        totalCost: totalAmount,
-        journalId: journalId,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
+        userEmail: profile?.email || 'system'
       });
-
-      const baseDesc = isDamage
-        ? `${adjustmentType} - ${targetBookName} ${rawQty} pcs`
-        : `Pendapatan Lain-lain - ${adjustmentType} - ${targetBookName} ${rawQty} pcs`;
-      const journalDescription = `${baseDesc}${damageNotes ? ' - ' + damageNotes : ''}`;
-
-      const journalLines = isDamage ? [
-        { account: 'Beban Lain-lain', accountCode: '5500', debit: totalAmount, credit: 0 },
-        { account: 'Inventory On Hand', accountCode: '1201', debit: 0, credit: totalAmount }
-      ] : [
-        { account: 'Inventory On Hand', accountCode: '1201', debit: totalAmount, credit: 0 },
-        { account: 'Beban Lain-lain', accountCode: '5500', debit: 0, credit: totalAmount }
-      ];
-
-      const journalRef = doc(db, 'journalEntries', journalId);
-      batch.set(journalRef, {
-        id: journalId,
-        date: Timestamp.fromDate(new Date(damageDate)),
-        description: journalDescription,
-        lines: journalLines,
-        refType: 'System',
-        refId: damagedId,
-        createdAt: Timestamp.now()
-      } as JournalEntry);
-
-      await batch.commit();
       // Data lokal tidak pernah diperbarui handler ini; sebelum ada cache, UI hanya
       // ikut berubah karena remount memuat ulang. Tarik ulang eksplisit di sini.
       await loadData(true);
@@ -1369,8 +1274,11 @@ export const InventoryTab: React.FC = () => {
       // Type filter
       if (adjFilter !== 'semua') {
         const isSurplus = rec.adjustmentType === 'Barang Lebih' || (rec as any).type === 'surplus';
-        if (adjFilter === 'Barang Rusak' && isSurplus) return false;
-        if (adjFilter === 'Barang Lebih' && !isSurplus) return false;
+        if (adjFilter === 'Barang Lebih') {
+          if (!isSurplus) return false;
+        } else if (isSurplus || (rec.adjustmentType || 'Barang Rusak') !== adjFilter) {
+          return false;
+        }
       }
       // Search filter
       if (adjSearchTerm.trim()) {
@@ -1386,8 +1294,11 @@ export const InventoryTab: React.FC = () => {
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [currentMonthAdjustments, adjFilter, adjSearchTerm]);
 
-  const totalDamageCount = currentMonthAdjustments.filter(r => r.adjustmentType === 'Barang Rusak' || (r as any).type !== 'surplus').length;
-  const totalDamageValue = currentMonthAdjustments.filter(r => r.adjustmentType === 'Barang Rusak' || (r as any).type !== 'surplus').reduce((acc, curr) => acc + (curr.totalCost || 0), 0);
+  // Pengurang stok = semua yang bukan surplus (Barang Rusak + Barang Kurang)
+  const isSurplusRecord = (r: DamagedStock) => r.adjustmentType === 'Barang Lebih' || (r as any).type === 'surplus';
+  const totalDamageCount = currentMonthAdjustments.filter(r => !isSurplusRecord(r)).length;
+  const totalDamageValue = currentMonthAdjustments.filter(r => !isSurplusRecord(r)).reduce((acc, curr) => acc + (curr.totalCost || 0), 0);
+  const totalKurangCount = currentMonthAdjustments.filter(r => r.adjustmentType === 'Barang Kurang').length;
 
   const totalSurplusCount = currentMonthAdjustments.filter(r => r.adjustmentType === 'Barang Lebih' || (r as any).type === 'surplus').length;
   const totalSurplusValue = currentMonthAdjustments.filter(r => r.adjustmentType === 'Barang Lebih' || (r as any).type === 'surplus').reduce((acc, curr) => acc + (curr.totalCost || 0), 0);
@@ -1478,6 +1389,14 @@ export const InventoryTab: React.FC = () => {
                 className={activeSubTab === 'adjustments' ? 'active' : ''}
               >
                 PENYESUAIAN
+              </button>
+            )}
+            {hasPerm('inventory.opname') && (
+              <button
+                onClick={() => startSubTabTransition(() => setActiveSubTab('opname'))}
+                className={activeSubTab === 'opname' ? 'active' : ''}
+              >
+                STOCK OPNAME
               </button>
             )}
           </div>
@@ -1680,6 +1599,21 @@ export const InventoryTab: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {status === 'ready' && activeSubTab === 'opname' && hasPerm('inventory.opname') && (
+        <div className={isSubTabPending ? 'kbi-subtab-pending' : ''}>
+          <StockOpnamePanel
+            booksWithStock={allBooksWithStock}
+            inventoryList={inventoryList}
+            closedPeriods={closedPeriods}
+            userEmail={profile?.email || 'system'}
+            canProcess={isStaffValue}
+            getCurrentReady={(bookId) => getCurrentKontrolStokForBook(bookId, inventoryList, ledgerEntries, purchaseOrders, salesOrders, damagedRecords)}
+            onPosted={() => loadData(true)}
+            showAlert={showAlert}
+          />
         </div>
       )}
 
@@ -2033,7 +1967,7 @@ export const InventoryTab: React.FC = () => {
                 <PackageX className="h-6 w-6" />
               </div>
               <div>
-                <span className="text-xs font-bold text-rose-500 dark:text-rose-400 uppercase tracking-wider block">Barang Rusak</span>
+                <span className="text-xs font-bold text-rose-500 dark:text-rose-400 uppercase tracking-wider block">Barang Rusak / Kurang</span>
                 <div className="flex items-baseline gap-2">
                   <span className="text-xl font-bold text-rose-600 dark:text-rose-400 font-numeric">{totalDamageCount} Transaksi</span>
                   <span className="text-xs font-bold text-neutral-500">({formatNTD(totalDamageValue)})</span>
@@ -2106,7 +2040,13 @@ export const InventoryTab: React.FC = () => {
                     onClick={() => setAdjFilter('Barang Rusak')}
                     className={`px-3 py-1 rounded-lg transition ${adjFilter === 'Barang Rusak' ? 'bg-white dark:bg-neutral-900 text-rose-600 shadow-xs' : 'text-neutral-500'}`}
                   >
-                    Barang Rusak ({totalDamageCount})
+                    Barang Rusak ({totalDamageCount - totalKurangCount})
+                  </button>
+                  <button
+                    onClick={() => setAdjFilter('Barang Kurang')}
+                    className={`px-3 py-1 rounded-lg transition ${adjFilter === 'Barang Kurang' ? 'bg-white dark:bg-neutral-900 text-orange-600 shadow-xs' : 'text-neutral-500'}`}
+                  >
+                    Barang Kurang ({totalKurangCount})
                   </button>
                   <button
                     onClick={() => setAdjFilter('Barang Lebih')}
@@ -2165,7 +2105,11 @@ export const InventoryTab: React.FC = () => {
                         <td className="p-4 whitespace-nowrap">
                           {isSurplus ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
-                              <PackagePlus className="h-3 w-3" /> Barang Lebih
+                              <PackagePlus className="h-3 w-3" /> Barang Lebih{rec.source === 'opname' ? ' · Opname' : ''}
+                            </span>
+                          ) : rec.adjustmentType === 'Barang Kurang' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400">
+                              <PackageX className="h-3 w-3" /> Barang Kurang{rec.source === 'opname' ? ' · Opname' : ''}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-955/40 dark:text-rose-400">
@@ -2377,11 +2321,12 @@ export const InventoryTab: React.FC = () => {
                 </label>
                 <select
                   value={adjustmentType}
-                  onChange={(e) => setAdjustmentType(e.target.value as 'Barang Rusak' | 'Barang Lebih')}
+                  onChange={(e) => setAdjustmentType(e.target.value as AdjustmentType)}
                   className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-850 text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-semibold"
                 >
                   <option value="Barang Rusak">Barang Rusak</option>
                   <option value="Barang Lebih">Barang Lebih</option>
+                  <option value="Barang Kurang">Barang Kurang</option>
                 </select>
               </div>
 

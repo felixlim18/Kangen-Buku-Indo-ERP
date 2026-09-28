@@ -37,7 +37,8 @@ const MODULES = [
   { key: 'freight-in', label: 'Freight In', sub: [] },
   { key: 'inventory', label: 'Stok & Value', sub: [
       { key: 'inventory.kontrol', label: 'Tab "Kontrol Stok"' },
-      { key: 'inventory.laporan', label: 'Tab "Laporan Bulanan"', sensitive: true }
+      { key: 'inventory.laporan', label: 'Tab "Laporan Bulanan"', sensitive: true },
+      { key: 'inventory.opname', label: 'Tab "Stock Opname"', sensitive: true }
     ]
   },
   { key: 'bank-kas', label: 'Bank & Kas', sub: [

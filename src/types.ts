@@ -318,7 +318,8 @@ export interface CoaAccount {
 export interface DamagedStock {
   id: string;
   docNo?: string;
-  adjustmentType?: 'Barang Rusak' | 'Barang Lebih';
+  adjustmentType?: 'Barang Rusak' | 'Barang Lebih' | 'Barang Kurang';
+  source?: 'opname';
   bookId: string;
   bookName: string;
   qty: number;
