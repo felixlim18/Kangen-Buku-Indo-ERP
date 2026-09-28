@@ -2,260 +2,122 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isAuthed() { return request.auth != null; }
-    // Safe role-checking using short-circuiting, custom claims, and get() with defaults
+    // ------------------------------------------------------------------
+    // Identitas
+    //
+    // Akses hanya untuk akun yang:
+    //   1. login ke Firebase Auth dengan email TERVERIFIKASI (akun Google selalu
+    //      terverifikasi; akun email/password buatan sendiri tidak), dan
+    //   2. terdaftar di /authorizedUsers/{email} (Manajemen User) dengan status
+    //      bukan 'nonaktif'.
+    // Role diambil dari authorizedUsers, BUKAN dari /users (yang bisa ditulis
+    // pemiliknya sendiri) dan bukan dari daftar email/UID yang di-hardcode.
+    // ------------------------------------------------------------------
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+    function authPath() {
+      return /databases/$(database)/documents/authorizedUsers/$(myEmail());
+    }
+    function member() {
+      return signedIn()
+        && exists(authPath())
+        && get(authPath()).data.get('status', 'aktif') != 'nonaktif'
+        && get(authPath()).data.get('role', '') in ['owner', 'staff'];
+    }
     function isOwner() {
-      return isAuthed() && (
-        request.auth.token.role == 'owner' ||
-        request.auth.token.email == 'felixsalimzz@gmail.com' ||
-        request.auth.token.email == 'kangenbukuindo@gmail.com' ||
-        request.auth.uid == 'cFd2OLcEMtgddj3JEwaqsRxOoMv2' ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'guest') == 'owner')
-      );
+      return member() && get(authPath()).data.role == 'owner';
     }
-    function isStaff() {
-      return isAuthed() && (
-        request.auth.token.role == 'owner' ||
-        request.auth.token.role == 'staff' ||
-        request.auth.token.role == 'admin' ||
-        request.auth.token.email == 'felixsalimzz@gmail.com' ||
-        request.auth.token.email == 'kangenbukuindo@gmail.com' ||
-        request.auth.token.email == 'kangenbukuindo2@gmail.com' ||
-        request.auth.uid == 'cFd2OLcEMtgddj3JEwaqsRxOoMv2' ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'guest') == 'owner' ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'guest') == 'staff'))
-      );
+    function hasPerm(key) {
+      return isOwner()
+        || (member() && get(authPath()).data.get('permissions', {}).get(key, false) == true);
     }
 
-    function hasPerm(mod) {
-      return isOwner() || (
-        isStaff() &&
-        request.auth.token.email != null &&
-        exists(/databases/$(database)/documents/authorizedUsers/$(request.auth.token.email)) &&
-        get(/databases/$(database)/documents/authorizedUsers/$(request.auth.token.email)).data.permissions.get(mod, false) == true
-      );
-    }
+    // ------------------------------------------------------------------
+    // Default: tolak semua. Koleksi yang tidak disebut di bawah tidak bisa diakses.
+    // ------------------------------------------------------------------
 
-    // Global default-deny rule
-    match /{document=**} {
-      allow read, write: if true;
-    }
-
-    // Authorized Users collection
+    // Manajemen User: hanya owner yang menulis. Anggota boleh membaca dokumennya
+    // sendiri (dipakai saat login); owner membaca semua.
     match /authorizedUsers/{email} {
-      allow read: if isAuthed();
+      allow read: if isOwner() || (signedIn() && email == myEmail());
       allow write: if isOwner();
     }
 
-    // Users Match
+    // Profil login. Pemilik boleh menulis profilnya, tapi field role harus sama
+    // dengan role di authorizedUsers (tidak bisa mengangkat diri jadi owner).
     match /users/{uid} {
-      allow read: if isAuthed() && (request.auth.uid == uid || isOwner());
-      allow write: if isAuthed() && (request.auth.uid == uid || isOwner());
-    }
-
-    // Catalog: staff read, staff write, owner delete
-    match /catalog/{bookId} {
-      allow read: if isAuthed(); 
-      allow create, update: if hasPerm('catalog');
+      allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
+      allow create, update: if isOwner() || (
+        member()
+        && request.auth.uid == uid
+        && request.resource.data.get('role', '') == get(authPath()).data.role
+        && request.resource.data.get('email', '') == myEmail()
+      );
       allow delete: if isOwner();
     }
 
-    // Categories
-    match /categories/{id} {
-      allow read: if isAuthed();
-      allow create, update: if hasPerm('catalog');
-      allow delete: if hasPerm('catalog');
+    // Pengaturan. settings/line berisi token & secret LINE -> owner saja.
+    match /settings/{id} {
+      allow read: if id == 'line' ? isOwner() : member();
+      allow write: if isOwner() || (id != 'line' && member());
     }
 
-    // Dynamic Order Types Configuration
-    match /orderTypes/{id} {
-      allow read: if isAuthed();
-      allow create, update: if isStaff();
-      allow delete: if isOwner();
-    }
-
-    // Dynamic Channels Configuration
-    match /channels/{id} {
-      allow read: if isAuthed();
-      allow create, update: if isStaff();
-      allow delete: if isOwner();
-    }
-
-    // Dynamic Platforms Configuration
-    match /platforms/{id} {
-      allow read: if isAuthed();
-      allow create, update: if isStaff();
-      allow delete: if isOwner();
-    }
-
-    // Suppliers
-    match /suppliers/{id} {
-      allow read: if isAuthed();
-      allow create, update: if hasPerm('purchases');
-      allow delete: if isOwner();
-    }
-
-    // Sales Orders
-    match /salesOrders/{id} {
-      allow read: if isAuthed();
-      allow create: if hasPerm('sales');
-      allow update: if hasPerm('sales');
-      allow delete: if isOwner();
-    }
-
-    // Purchase Orders
-    match /purchaseOrders/{id} {
-      allow read: if isAuthed();
-      allow create, update, delete: if hasPerm('purchases');
-
-      match /receiptEvents/{eventId} {
-        allow read: if isAuthed();
-        allow create, update, delete: if hasPerm('purchases');
-      }
-    }
-
-    // Support collectionGroup queries on receiptEvents
-    match /{path=**}/receiptEvents/{eventId} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('purchases');
-    }
-
-    // Inventory status & Ledger
-    match /inventory/{bookId} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('inventory') || hasPerm('sales') || hasPerm('purchases') || hasPerm('freight-in');
-    }
-
-    match /inventoryLedger/{entryId} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('inventory') || hasPerm('sales') || hasPerm('purchases') || hasPerm('freight-in');
-    }
-
-    // FX rates
-    match /fxRates/{date} {
-      allow read: if isAuthed();
-      allow write: if isStaff();
-    }
-
-    // Cash flow
-    match /cashFlow/{entryId} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('financial') || hasPerm('income') || hasPerm('purchases') || hasPerm('piutang') || hasPerm('sales');
-    }
-
-    // Journal Entry
-    match /journalEntries/{entryId} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('double-entry') || hasPerm('sales') || hasPerm('purchases') || hasPerm('freight-in') || hasPerm('piutang') || hasPerm('fixed-assets') || hasPerm('income') || hasPerm('iklan') || hasPerm('perlengkapan') || hasPerm('ongkir');
-    }
-
-    // Chart of Accounts (CoA)
-    match /coa/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('double-entry');
-    }
-
-    // Payroll
+    // Gaji: data sensitif.
     match /payroll/{id} {
+      allow read, write: if hasPerm('financial.payroll');
+    }
+
+    // Log audit & aktivitas user: hanya boleh ditambah, tidak bisa diubah/dihapus.
+    match /auditLog/{id} {
+      allow read: if member();
+      allow create: if member();
+    }
+    match /userActivities/{id} {
+      allow read: if member();
+      allow create: if member();
+    }
+
+    // Preferensi per-user (mis. urutan tabel bulk packing). ID dokumen = email
+    // (atau uid untuk akun tanpa email) pemiliknya.
+    match /userPreferences/{prefId} {
+      allow read, write: if member()
+        && (prefId.lower() == myEmail() || prefId == request.auth.uid);
+    }
+
+    // Data LINE user id dari webhook (ditulis server).
+    match /lineUsers/{id} {
       allow read, write: if isOwner();
     }
 
-    // Partners
-    match /partners/{id} {
-      allow read: if isAuthed();
-      allow write: if isOwner();
-    }
-    match /paymentBatches/{id} {
-      allow read: if isAuthed();
-      allow write: if isOwner();
-    }
-
-    // Counters
-    match /counters/{id} {
-      allow read, write: if isStaff();
-    }
-
-    // Freight In tracking
-    match /freightIn/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('freight-in');
+    // Data operasional ERP: semua anggota aktif boleh baca & tulis. Akses per-tab
+    // diatur di UI (Manajemen User); di sini batasnya "anggota terdaftar & aktif".
+    match /{collection}/{id} {
+      allow read, write: if member() && collection in [
+        'adsPurchases', 'accounts', 'amortizations', 'bankAccounts', 'bankReconciliations',
+        'bebanLainnya', 'books', 'cashFlow', 'catalog', 'categories', 'channels',
+        'closedPeriods', 'coa', 'coaAccounts', 'counters', 'damagedStock',
+        'dashboardNotes', 'dashboardTasks', 'fixedAssets', 'freightIn', 'fxRates',
+        'globalSettings', 'incomeEntries', 'inventory', 'inventoryLedger',
+        'journalEntries', 'journals', 'loans', 'manualReceivables', 'ongkosKirim',
+        'orderTypes', 'partners', 'paymentBatches', 'periodClosings',
+        'perlengkapanCategories', 'perlengkapanItems', 'perlengkapanPurchases',
+        'platforms', 'pricingTiers', 'prive', 'purchaseOrders', 'revaluasiKursLogs',
+        'salesOrders', 'setoranModal', 'suppliers', 'usedDocCodes'
+      ];
     }
 
-    // Global settings configuration
-    match /globalSettings/{id} {
-      allow read: if isAuthed();
-      allow write: if isStaff();
+    match /purchaseOrders/{poId}/receiptEvents/{eventId} {
+      allow read, write: if member();
     }
-
-    // Monthly Period Closings
-    match /periodClosings/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('closing') || hasPerm('double-entry');
-    }
-
-    // Damaged Stock tracking
-    match /damagedStock/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('inventory');
-    }
-
-    // Fixed Assets tracking
-    match /fixedAssets/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('fixed-assets');
-    }
-
-    // Prive tracking
-    match /prive/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('financial');
-    }
-
-    // Setoran Modal tracking
-    match /setoranModal/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('financial');
-    }
-
-    // Income tracking
-    match /incomeEntries/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('income');
-    }
-
-    // Ads tracking
-    match /adsPurchases/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('iklan');
-    }
-
-    // Audit Log tracking: append-only (no update or delete)
-    match /auditLog/{id} {
-      allow read: if isAuthed();
-      allow create: if isAuthed();
-      allow update, delete: if false;
-    }
-
-    // Perlengkapan collections
-    match /perlengkapanCategories/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('perlengkapan');
-    }
-    match /perlengkapanItems/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('perlengkapan');
-    }
-    match /perlengkapanPurchases/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('perlengkapan');
-    }
-
-    // Ongkos Kirim tracking
-    match /ongkosKirim/{id} {
-      allow read: if isAuthed();
-      allow write: if hasPerm('ongkir');
+    // collectionGroup('receiptEvents')
+    match /{path=**}/receiptEvents/{eventId} {
+      allow read: if member();
     }
   }
 }

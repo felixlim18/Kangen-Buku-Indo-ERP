@@ -143,3 +143,59 @@ exports.sendMetaPurchaseEvent = onDocumentCreated(
     }
   }
 );
+
+// ---------------------------------------------------------------------------
+// Sinkron role ERP -> custom claim Firebase Auth
+//
+// Aturan Firebase Storage tidak bisa membaca Firestore database bernama (ini
+// bukan "(default)"), jadi siapa owner/staff disampaikan lewat custom claim
+// `role` di token login. Sumber kebenarannya tetap /authorizedUsers/{email}
+// (Manajemen User). Claim diisi saat dokumen itu berubah dan saat akun baru
+// pertama kali login.
+// ---------------------------------------------------------------------------
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const functionsV1 = require("firebase-functions/v1");
+const { getFirestore } = require("firebase-admin/firestore");
+
+const ERP_DATABASE = "ai-studio-53e52a01-a8d6-4019-9f99-16eb3032e0f7";
+
+const erpRoleFrom = (data) =>
+  data && data.status !== "nonaktif" && ["owner", "staff"].includes(data.role) ? data.role : null;
+
+async function applyRoleClaim(user, role) {
+  const current = user.customClaims || {};
+  if ((current.role || null) === role) return false;
+  const next = { ...current };
+  if (role) next.role = role; else delete next.role;
+  await admin.auth().setCustomUserClaims(user.uid, next);
+  // Akses dicabut / diturunkan -> paksa login ulang supaya token lama tak terpakai.
+  if (!role || current.role === "owner") await admin.auth().revokeRefreshTokens(user.uid);
+  return true;
+}
+
+exports.syncErpRoleClaims = onDocumentWritten(
+  { document: "authorizedUsers/{email}", database: ERP_DATABASE, region: "asia-east1" },
+  async (event) => {
+    const email = String(event.params.email || "").toLowerCase();
+    const role = erpRoleFrom(event.data && event.data.after && event.data.after.data());
+    let user;
+    try {
+      user = await admin.auth().getUserByEmail(email);
+    } catch (err) {
+      if (err.code === "auth/user-not-found") return; // diisi saat akun pertama login
+      throw err;
+    }
+    if (await applyRoleClaim(user, role)) {
+      logger.info(`Claim role ${email} -> ${role || "(dihapus)"}`);
+    }
+  }
+);
+
+exports.syncErpRoleOnSignup = functionsV1.auth.user().onCreate(async (user) => {
+  if (!user.email) return;
+  const snap = await getFirestore(ERP_DATABASE).doc(`authorizedUsers/${user.email.toLowerCase()}`).get();
+  const role = erpRoleFrom(snap.exists ? snap.data() : null);
+  if (role && (await applyRoleClaim(user, role))) {
+    logger.info(`Claim role ${user.email} -> ${role} (akun baru)`);
+  }
+});

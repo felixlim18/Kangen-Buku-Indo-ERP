@@ -1,0 +1,33 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Hanya owner/staff aktif. Role datang dari custom claim `role` yang diisi
+    // Cloud Function syncErpRoleClaims dari /authorizedUsers (Manajemen User).
+    function member() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.role in ['owner', 'staff'];
+    }
+
+    // Unggahan hanya gambar, maksimal 10 MB.
+    function validImage() {
+      return request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Cover buku (CatalogTab)
+    match /catalog/{file} {
+      allow read, delete: if member();
+      allow create, update: if member() && validImage();
+    }
+
+    // Foto alamat / label pelanggan di Sales Order (SalesTab) - data pribadi
+    match /sales-photos/{file} {
+      allow read, delete: if member();
+      allow create, update: if member() && validImage();
+    }
+
+    // Selain dua folder di atas: tolak.
+  }
+}
