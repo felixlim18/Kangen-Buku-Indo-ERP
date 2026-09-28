@@ -666,6 +666,7 @@ export const PurchasesTab = () => {
   // Tipe hasil datar (bukan union bertanda) - proyek ini tidak mengaktifkan
   // strictNullChecks, jadi narrowing `if (!result.ok)` pada union tidak reliable
   // dan `result.reason` tetap ditolak compiler di cabang yang sudah dipersempit.
+  const savingPoIdsRef = useRef<Set<string>>(new Set());
   const saveBulkScannedPoCore = async (scannedId: string): Promise<{ ok: boolean; reason?: string }> => {
     const entry = scannedPos.find(s => s.id === scannedId);
     if (!entry || entry.isSaved) return { ok: false, reason: 'PO tidak ditemukan di antrean atau sudah tersimpan.' };
@@ -674,7 +675,30 @@ export const PurchasesTab = () => {
     const receiveState = entry.receiveItemsState || {};
     const currentKodeEkspedisi = (kodeEkspedisi || tempKodeEkspedisi || entry.kodeEkspedisi || '').trim().toUpperCase();
 
+    // `isSaved` baru ter-set SETELAH commit, jadi klik ganda "Terima" (atau "Terima"
+    // bersamaan dengan "Terima Semua") dulu lolos dua kali dan menulis ledger
+    // purchase_received ganda - stok gudang jadi kelebihan. Kunci sinkron per PO.
+    if (savingPoIdsRef.current.has(po.id)) return { ok: false, reason: 'PO ini sedang diproses.' };
+    savingPoIdsRef.current.add(po.id);
+
     try {
+      // Snapshot PO di antrean bisa basi (sudah diterima dari tab/jalur lain).
+      // Tolak kalau qty diterima di server sudah berubah sejak PO discan.
+      const freshSnap = await getDoc(doc(db, 'purchaseOrders', po.id));
+      if (!freshSnap.exists()) return { ok: false, reason: 'PO tidak ditemukan di database.' };
+      const fresh = freshSnap.data() as any;
+      const receivedMap = (items: any[] | undefined, fallback: any) =>
+        new Map<string, number>(
+          (items && items.length > 0 ? items : [{ bookId: fallback.bookId, qtyReceived: fallback.qtyReceived }])
+            .map((it: any) => [it.bookId, it.qtyReceived || 0])
+        );
+      const snapshotReceived = receivedMap(po.items, po);
+      const freshReceived = receivedMap(fresh.items, fresh);
+      const changed = [...freshReceived].some(([bookId, qty]) => qty !== (snapshotReceived.get(bookId) || 0));
+      if (changed || fresh.status === 'cancelled') {
+        return { ok: false, reason: 'PO sudah diterima/diubah sejak discan. Muat ulang halaman lalu scan ulang.' };
+      }
+
       const batch = writeBatch(db);
       const poItems = po.items && po.items.length > 0 ? po.items : [{
         bookId: po.bookId,
@@ -750,9 +774,10 @@ export const PurchasesTab = () => {
 
             batch.set(invRef, {
               bookId: item.bookId,
-              initialStock: 0,
+              // initialStock & totalDispatched sengaja tidak ditulis: merge:true
+              // mempertahankan nilai lama. Dulu di-set 0 di sini, sehingga stok awal
+              // (dipakai rumus Stok Digudang) terhapus setiap kali barang diterima.
               totalPurchased: prevPurchased + qtyRecNum,
-              totalDispatched: 0,
               endingStock: nextEnding,
               readyStock: nextReady,
               inTransitStock: nextTransit,
@@ -865,6 +890,8 @@ export const PurchasesTab = () => {
     } catch (err: any) {
       console.error("Gagal menyimpan penerimaan bulk scan:", err);
       return { ok: false, reason: err.message || String(err) };
+    } finally {
+      savingPoIdsRef.current.delete(po.id);
     }
   };
 
@@ -897,8 +924,9 @@ export const PurchasesTab = () => {
   const [isAcceptingAll, setIsAcceptingAll] = useState(false); // true HANYA selama loop berjalan (untuk spinner)
   const [acceptAllDone, setAcceptAllDone] = useState(false);   // true permanen setelah user mengonfirmasi & proses selesai
 
+  const acceptAllRunningRef = useRef(false);
   const handleAcceptAllScanned = async () => {
-    if (isAcceptingAll) return;
+    if (isAcceptingAll || acceptAllRunningRef.current) return;
 
     const pending = scannedPos.filter(e => !e.isSaved);
     if (pending.length === 0) return;
@@ -931,6 +959,7 @@ export const PurchasesTab = () => {
 
     if (!window.confirm(confirmMsg)) return;
 
+    acceptAllRunningRef.current = true;
     setIsAcceptingAll(true);
 
     const failed: Array<{ code: string; reason: string }> = [...preSkipped];
@@ -952,6 +981,7 @@ export const PurchasesTab = () => {
     setTimeout(() => setScanSuccessToast(null), 6000);
 
     setIsAcceptingAll(false);
+    acceptAllRunningRef.current = false;
     // acceptAllDone TIDAK pernah direset - tombol nonaktif permanen untuk sisa
     // sesi modal ini, sesuai keputusan user (mencegah klik ganda yang memproses
     // ulang PO yang sama, dan menandai dengan jelas bahwa antrean sudah dieksekusi).
@@ -1006,6 +1036,7 @@ export const PurchasesTab = () => {
   const [receiveDate, setReceiveDate] = useState('');
   const [receiveNoteGlobal, setReceiveNoteGlobal] = useState('');
   const [isProcessingReceive, setIsProcessingReceive] = useState(false);
+  const processingReceiveRef = useRef(false);
   
   const [closePoOption, setClosePoOption] = useState('refund');
   const [refundAmount, setRefundAmount] = useState('');
@@ -3519,7 +3550,8 @@ export const PurchasesTab = () => {
   // Process Received Goods Confirmations
   const handleProcessReceiveGoods = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPo || isProcessingReceive) return;
+    if (!selectedPo || isProcessingReceive || processingReceiveRef.current) return;
+    processingReceiveRef.current = true;
     setIsProcessingReceive(true);
 
     let hasError = false;
@@ -3556,6 +3588,7 @@ export const PurchasesTab = () => {
 
     if (hasError) {
       setIsProcessingReceive(false);
+      processingReceiveRef.current = false;
       return;
     }
 
@@ -3667,9 +3700,10 @@ export const PurchasesTab = () => {
 
             batch.set(invRef, {
               bookId: item.bookId,
-              initialStock: 0,
+              // initialStock & totalDispatched sengaja tidak ditulis: merge:true
+              // mempertahankan nilai lama. Dulu di-set 0 di sini, sehingga stok awal
+              // (dipakai rumus Stok Digudang) terhapus setiap kali barang diterima.
               totalPurchased: prevPurchased + qtyRecNum,
-              totalDispatched: 0,
               endingStock: nextEnding,
               readyStock: nextReady,
               inTransitStock: nextTransit,
@@ -3836,6 +3870,7 @@ export const PurchasesTab = () => {
       alert("Gagal memproses penerimaan: " + err.message);
     } finally {
       setIsProcessingReceive(false);
+      processingReceiveRef.current = false;
     }
   };
 
