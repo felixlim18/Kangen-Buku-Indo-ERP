@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/api-fetch';
 import React, { useState, useEffect } from 'react';
 import { useSettings, LineSettings } from '../lib/use-settings';
 import { db } from '../lib/firebase';
@@ -63,7 +64,7 @@ export const LineIntegrationManager: React.FC = () => {
   const fetchRecentUsers = async () => {
     setIsLoadingUsers(true);
     try {
-      const res = await fetch('/api/line/recent-users');
+      const res = await apiFetch('/api/line/recent-users');
       const contentType = res.headers.get('content-type');
       if (res.ok && contentType && contentType.includes('application/json')) {
         const data = await res.json();
@@ -160,7 +161,7 @@ export const LineIntegrationManager: React.FC = () => {
     setTestResult(null);
 
     try {
-      const res = await fetch('/api/line/send-test', {
+      const res = await apiFetch('/api/line/send-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

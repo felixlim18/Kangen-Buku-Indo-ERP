@@ -83,12 +83,21 @@ const LOCAL_BRANDING_KEY = 'kbi_branding_settings_v1';
 const LOCAL_DATA_MASTER_KEY = 'kbi_datamaster_settings_v1';
 const LOCAL_LINE_SETTINGS_KEY = 'kbi_line_settings_v1';
 
+// Token & secret LINE tidak pernah disimpan di localStorage (dulu tersalin ke
+// browser setiap staff). Salinan lama yang masih berisi secret dibersihkan di sini.
+const withoutLineSecrets = (s: LineSettings): LineSettings =>
+  ({ ...s, channelAccessToken: '', channelSecret: '' });
+
 export function getStoredLineSettings(): LineSettings {
   if (typeof window === 'undefined') return DEFAULT_LINE_SETTINGS;
   try {
     const raw = localStorage.getItem(LOCAL_LINE_SETTINGS_KEY);
     if (raw) {
-      return { ...DEFAULT_LINE_SETTINGS, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      if (parsed.channelAccessToken || parsed.channelSecret) {
+        localStorage.setItem(LOCAL_LINE_SETTINGS_KEY, JSON.stringify(withoutLineSecrets(parsed)));
+      }
+      return withoutLineSecrets({ ...DEFAULT_LINE_SETTINGS, ...parsed });
     }
   } catch (e) {
     console.warn('Failed to parse local line settings:', e);
@@ -171,11 +180,13 @@ export function useSettings() {
         const data = snap.data() as LineSettings;
         const merged = { ...DEFAULT_LINE_SETTINGS, ...data };
         setLineSettings(merged);
-        localStorage.setItem(LOCAL_LINE_SETTINGS_KEY, JSON.stringify(merged));
+        localStorage.setItem(LOCAL_LINE_SETTINGS_KEY, JSON.stringify(withoutLineSecrets(merged)));
       } else {
         setDoc(doc(db, 'settings', 'line'), DEFAULT_LINE_SETTINGS).catch(() => {});
       }
-    }, (err) => {
+    }, (err: any) => {
+      // settings/line hanya bisa dibaca owner; untuk staff ini memang ditolak.
+      if (err?.code === 'permission-denied') return;
       handleFirestoreError(err, OperationType.GET, 'settings/line');
     });
 

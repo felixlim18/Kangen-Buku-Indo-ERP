@@ -50,7 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   sidebarHidden, 
   setSidebarHidden 
 }) => {
-  const { user, profile, logout, loginAsDemo } = useAuth();
+  const { user, profile, logout } = useAuth();
   const { branding } = useSettings();
   const [isAccountingOpen, setIsAccountingOpen] = useState(currentTab === 'financial');
   const [isDoubleEntryOpen, setIsDoubleEntryOpen] = useState(currentTab === 'coa' || currentTab === 'journal' || currentTab === 'closing' || currentTab === 'ledger-summary' || currentTab === 'trial-balance' || currentTab === 'audit-log');
@@ -792,45 +792,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
           )
-        ) : (
-          sidebarHidden ? (
-            <button
-              onClick={() => loginAsDemo('owner')}
-              className="h-10 w-10 bg-gradient-to-tr from-blue-500 to-indigo-650 rounded-lg flex items-center justify-center text-white hover:opacity-90 shadow-md cursor-pointer"
-              title="Demo Owner Login"
-            >
-              <Sparkles className="h-4 w-4" />
-            </button>
-          ) : (
-            <div className="space-y-3 p-1">
-              <div className="flex items-center gap-2 text-blue-500 dark:text-blue-400">
-                <Sparkles className="h-4 w-4 shrink-0 animate-pulse" />
-                <p className="text-xs font-semibold">Akses Instan Demo</p>
-              </div>
-              
-              <p className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-normal font-medium">
-                Silahkan klik satu-tombol di bawah untuk langsung mencoba sebagai Owner (Akses penuh) atau Staff.
-              </p>
-              
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  id="demo-owner-login"
-                  onClick={() => loginAsDemo('owner')}
-                  className="px-2 py-1.5 bg-gradient-to-tr from-blue-500 to-sky-500 hover:opacity-95 rounded text-[10px] font-bold text-center select-text text-white shadow-md cursor-pointer transition"
-                >
-                  Owner
-                </button>
-                <button
-                  id="demo-staff-login"
-                  onClick={() => loginAsDemo('staff')}
-                  className="px-2 py-1.5 bg-neutral-105 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 border border-neutral-200 dark:border-neutral-800 rounded text-[10px] font-bold text-center select-text text-neutral-700 dark:text-neutral-300 cursor-pointer transition"
-                >
-                  Staff
-                </button>
-              </div>
-            </div>
-          )
-        )}
+        ) : null}
       </div>
     </div>
   );

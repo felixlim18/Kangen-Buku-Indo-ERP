@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/api-fetch';
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -2117,7 +2118,7 @@ export const PurchasesTab = () => {
           }
 
           // Process and send to server
-          const response = await fetch('/api/import-po', {
+          const response = await apiFetch('/api/import-po', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -2364,7 +2365,7 @@ export const PurchasesTab = () => {
             }
 
             // Send to server
-            const response = await fetch('/api/import-po', {
+            const response = await apiFetch('/api/import-po', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'

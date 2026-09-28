@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { User, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
@@ -20,7 +20,6 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   loginWithEmailPassword: (e: string, p: string) => Promise<void>;
   logout: () => Promise<void>;
-  loginAsDemo: (role: 'owner' | 'staff') => Promise<void>;
   updateDisplayName: (newName: string) => Promise<void>;
 }
 
@@ -48,7 +47,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         let claimRole: 'owner' | 'staff' | 'partner' | null = null;
         let isTokenRefreshedMessageNeeded = false;
         try {
-          const tokenResult = await currentUser.getIdTokenResult();
+          let tokenResult = await currentUser.getIdTokenResult();
+          // Claim `role` diisi Cloud Function syncErpRoleClaims dan dibutuhkan aturan
+          // Storage. Token lama belum membawanya -> minta token baru sekali.
+          if (!tokenResult.claims.role) tokenResult = await currentUser.getIdTokenResult(true);
           const roleClaim = tokenResult.claims.role as 'owner' | 'staff' | 'partner' | undefined;
           if (roleClaim) {
             claimRole = roleClaim;
@@ -219,7 +221,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         } catch (redirectErr: any) {
           console.error("Redirect Auth failed", redirectErr);
-          setAuthError("Popup login diblokir oleh extension/browser preview. Silakan buka aplikasi di tab browser baru atau gunakan Login Demo.");
+          setAuthError("Popup login diblokir oleh extension/browser preview. Silakan buka aplikasi di tab browser baru.");
         }
       } else {
         setAuthError(error instanceof Error ? error.message : "Gagal melakukan Google Sign-In.");
@@ -237,130 +239,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(false);
   };
 
+  // Login email/password memakai Firebase Auth sungguhan. Dulu ada jalur "mock
+  // user" yang membandingkan password dengan VITE_OWNER_PASSWORD di browser -
+  // nilainya ikut ter-bundle ke JS publik dan tidak memberi identitas Firebase
+  // apa pun, sehingga hanya berfungsi selama aturan Firestore terbuka. Dihapus
+  // bersama loginAsDemo (password demo yang di-hardcode).
   const loginWithEmailPassword = async (rawEmail: string, rawPass: string) => {
     const email = rawEmail.trim();
-    const pass = rawPass.trim();
-    setLoading(true);
-    setAuthError(null);
-
-    const ownerUsername = ((import.meta as any).env?.VITE_OWNER_USERNAME || 'kangenbukuindo@gmail.com').trim();
-    const ownerPassword = ((import.meta as any).env?.VITE_OWNER_PASSWORD || 'kangenbukuindo123').trim();
-    
-    // Fallback local mock user login for preview / iframe environments if owner credentials are correct
-    if (email === ownerUsername && pass === ownerPassword) {
-      console.warn("Using local mock demo user fallback for preview environment");
-      const mockUser = {
-        uid: 'demo-owner-uid',
-        email,
-        displayName: 'Login Owner',
-        emailVerified: true,
-        isAnonymous: false,
-        metadata: {},
-        providerData: [],
-        refreshToken: '',
-        tenantId: null,
-        delete: async () => {},
-        getIdToken: async () => 'mock-token',
-        getIdTokenResult: async () => ({
-          authTime: '',
-          expirationTime: '',
-          issuedAtTime: '',
-          signInProvider: 'demo',
-          signInSecondFactor: null,
-          token: 'mock-token',
-          claims: { role: 'owner' }
-        }),
-        reload: async () => {},
-        toJSON: () => ({}),
-        phoneNumber: null,
-        photoURL: null,
-        providerId: 'demo'
-      } as unknown as User;
-
-      setUser(mockUser);
-      setProfile({
-        uid: mockUser.uid,
-        email,
-        role: 'owner',
-        displayName: 'Login Owner',
-        permissions: {},
-        status: 'aktif'
-      });
-      setLoading(false);
+    const pass = rawPass;
+    if (!email || !pass) {
+      setAuthError("Isi email dan password.");
       return;
     }
-
+    setLoading(true);
+    setAuthError(null);
     try {
       await signInWithEmailAndPassword(auth, email, pass);
     } catch (err: any) {
       console.warn("Firebase email auth attempt notice:", err?.code || err);
-      setAuthError("Username atau password salah.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loginAsDemo = async (role: 'owner' | 'staff') => {
-    setLoading(true);
-    setAuthError(null);
-    const email = role === 'owner' ? 'kangenbukuindo@gmail.com' : 'kangenbukuindo2@gmail.com';
-    const password = 'kangenbukuindo123';
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (err: any) {
-      console.warn("Firebase email auth attempt notice:", err?.code || err);
-      let success = false;
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-email' || err.code === 'auth/missing-password' || err.code === 'auth/wrong-password') {
-        try {
-          await createUserWithEmailAndPassword(auth, email, password);
-          success = true;
-        } catch (createErr: any) {
-          console.error("Failed to create demo user in Firebase Auth", createErr);
-        }
-      }
-      
-      if (!success) {
-        // Fallback local mock user login for preview / iframe environments
-        console.warn("Using local mock demo user fallback for preview environment");
-        const mockUser = {
-          uid: role === 'owner' ? 'demo-owner-uid' : 'demo-staff-uid',
-          email,
-          displayName: role === 'owner' ? 'Demo Owner' : 'Demo Staff',
-          emailVerified: true,
-          isAnonymous: false,
-          metadata: {},
-          providerData: [],
-          refreshToken: '',
-          tenantId: null,
-          delete: async () => {},
-          getIdToken: async () => 'mock-token',
-          getIdTokenResult: async () => ({
-            authTime: '',
-            expirationTime: '',
-            issuedAtTime: '',
-            signInProvider: 'demo',
-            signInSecondFactor: null,
-            token: 'mock-token',
-            claims: { role }
-          }),
-          reload: async () => {},
-          toJSON: () => ({}),
-          phoneNumber: null,
-          photoURL: null,
-          providerId: 'demo'
-        } as unknown as User;
-
-        setUser(mockUser);
-        setProfile({
-          uid: mockUser.uid,
-          email,
-          role,
-          displayName: role === 'owner' ? 'Demo Owner' : 'Demo Staff',
-          permissions: role === 'owner' ? {} : { pos: true, sales: true },
-          status: 'aktif'
-        });
-      }
-    } finally {
+      setAuthError("Email atau password salah.");
       setLoading(false);
     }
   };
@@ -392,7 +289,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, authError, setAuthError, loginWithEmailPassword, loginWithGoogle, signInWithGoogle, logout, loginAsDemo, updateDisplayName }}>
+    <AuthContext.Provider value={{ user, profile, loading, authError, setAuthError, loginWithEmailPassword, loginWithGoogle, signInWithGoogle, logout, updateDisplayName }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1857,7 +1857,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-xs text-neutral-900 dark:text-white mb-1">{a.t}</div>
-                        <div className="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-normal" dangerouslySetInnerHTML={{ __html: a.d }} />
+                        <div className="text-[11.5px] text-neutral-500 dark:text-neutral-400 leading-normal">{a.d}</div>
                       </div>
 
                       <div className="flex flex-col items-end gap-1.5 shrink-0">

@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/api-fetch';
 import { Drawer } from 'vaul';
 import { getNextJournalId } from '../lib/journalUtils';
 import Papa from 'papaparse';
@@ -609,7 +610,7 @@ const QrCodeModal: React.FC<{
 
 export const SalesTab: React.FC = () => {
   const { profile, user } = useAuth();
-  const { branding, lineSettings } = useSettings();
+  const { branding } = useSettings();
   const { sidebarHidden } = useSidebar();
   const isStaffValue = profile?.role === 'owner' || profile?.role === 'staff';
 
@@ -2219,20 +2220,12 @@ export const SalesTab: React.FC = () => {
         await setDoc(orderRef, orderPayload);
 
         // Dispatch LINE notification asynchronously
-        if (lineSettings?.enabled && lineSettings?.channelAccessToken) {
-          fetch('/api/line/notify-order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              channelAccessToken: lineSettings.channelAccessToken,
-              ownerUserId: lineSettings.ownerUserId,
-              resellerUserId: lineSettings.resellerUserId,
-              notifyOwnerNewOrder: lineSettings.notifyOwnerNewOrder,
-              notifyResellerNewOrder: lineSettings.notifyResellerNewOrder,
-              orderData: orderPayload
-            })
-          }).catch((err) => console.warn('Gagal mengirim notifikasi LINE:', err));
-        }
+        // Server yang memutuskan (settings/line hanya bisa dibaca owner).
+        apiFetch('/api/line/notify-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderData: orderPayload })
+        }).catch((err) => console.warn('Gagal mengirim notifikasi LINE:', err));
 
         setIsNewOrderOpen(false);
         if (!options.isDraft && cartItems.length > 0) {

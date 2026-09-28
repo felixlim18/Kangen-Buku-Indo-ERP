@@ -1,23 +1,9 @@
-import { getNextJournalId } from '../lib/journalUtils';
 import { FALLBACK_NTD_PER_IDR, FALLBACK_NTD_PER_USD } from '../lib/exchangeRateConstants';
 import { Request, Response } from 'express';
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, getDocs, query, where, doc, writeBatch, Timestamp, getDoc } from 'firebase/firestore';
-import fs from 'fs';
-import path from 'path';
+import { getDb, collection, getDocs, query, where, doc, writeBatch, Timestamp, getDoc, getNextJournalId } from './firestore-admin';
 
-// Parse configuration
-const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
-let firebaseConfig;
-if (fs.existsSync(configPath)) {
-  firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-} else {
-  console.warn('firebase-applet-config.json not found, using env if available');
-}
-
-// Initialize Firebase only if not already initialized
-const app = getApps().length === 0 ? initializeApp(firebaseConfig || {}) : getApps()[0];
-const db = getFirestore(app, firebaseConfig?.firestoreDatabaseId);
+// Firestore lewat firebase-admin (lihat firestore-admin.ts); dulu SDK klien tanpa login.
+const db = getDb();
 
 // Helper for dates
 const parseDate = (dateStr: any) => {

@@ -1,27 +1,23 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDoc, getDocs, collection } from 'firebase/firestore';
-import fs from 'fs';
-import path from 'path';
+import { getDb, isAdminConfigured, doc, setDoc, getDoc, getDocs, collection } from './firestore-admin';
 
-// Firebase setup for Node server
-const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
-let firebaseConfig: any = null;
-if (fs.existsSync(configPath)) {
+// Firestore lewat firebase-admin (lihat firestore-admin.ts). Tanpa kredensial
+// server, fitur yang butuh database dilewati dengan aman.
+const db: any = isAdminConfigured() ? getDb() : null;
+
+// Token LINE diambil di SERVER (env atau settings/line), tidak lagi dikirim dari
+// browser - settings/line kini hanya bisa dibaca owner.
+async function resolveLineAccessToken(): Promise<string> {
+  if (process.env.LINE_CHANNEL_ACCESS_TOKEN) return process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!db) return '';
   try {
-    firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const snap = await getDoc(doc(db, 'settings', 'line'));
+    return snap.exists() ? snap.data()?.channelAccessToken || '' : '';
   } catch (e) {
-    console.warn('Failed reading firebase-applet-config.json');
+    console.warn('Could not fetch line settings from Firestore:', e);
+    return '';
   }
-}
-
-let db: any = null;
-try {
-  const app = getApps().length === 0 ? initializeApp(firebaseConfig || {}) : getApps()[0];
-  db = getFirestore(app, firebaseConfig?.firestoreDatabaseId);
-} catch (e) {
-  console.warn('Firestore initialization skipped in server/line.ts:', e);
 }
 
 export interface LineConfig {
@@ -105,32 +101,23 @@ export async function lineWebhookHandler(req: Request, res: Response) {
   }
 
   try {
-    const signature = req.headers['x-line-signature'] as string;
-    const bodyStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+    // Tolak semua request yang tidak ditandatangani LINE. Dulu signature yang salah
+    // hanya dicatat lalu tetap diproses, jadi siapa pun bisa memalsukan event.
+    // HMAC dihitung dari body MENTAH (lihat express.json verify di server.ts).
+    const signature = String(req.headers['x-line-signature'] || '');
     const channelSecret = process.env.LINE_CHANNEL_SECRET || '';
-
-    // Validate signature if secret is available
-    if (channelSecret && signature) {
-      const hmac = crypto.createHmac('sha256', channelSecret).update(bodyStr).digest('base64');
-      if (hmac !== signature) {
-        console.warn('LINE Webhook Signature mismatch');
-      }
+    const rawBody: Buffer | undefined = (req as any).rawBody;
+    if (!channelSecret || !signature || !rawBody) {
+      return res.status(401).json({ error: 'Signature LINE tidak valid.' });
+    }
+    const expected = crypto.createHmac('sha256', channelSecret).update(rawBody).digest();
+    const given = Buffer.from(signature, 'base64');
+    if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
+      return res.status(401).json({ error: 'Signature LINE tidak valid.' });
     }
 
     const events = req.body?.events || [];
-    let accessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || (req.query?.token as string) || '';
-
-    // If access token is not in env or query, fetch from Firestore settings/line
-    if (!accessToken && db) {
-      try {
-        const settingsSnap = await getDoc(doc(db, 'settings', 'line'));
-        if (settingsSnap.exists()) {
-          accessToken = settingsSnap.data()?.channelAccessToken || '';
-        }
-      } catch (e) {
-        console.warn('Could not fetch line settings from Firestore:', e);
-      }
-    }
+    const accessToken = await resolveLineAccessToken();
 
     for (const event of events) {
       const userId = event.source?.userId;
@@ -187,16 +174,22 @@ export async function lineWebhookHandler(req: Request, res: Response) {
 // Endpoint to send LINE order notification
 export async function lineNotifyOrderEndpoint(req: Request, res: Response) {
   try {
+    // Penerima & sakelar notifikasi dibaca dari settings/line di server - bukan
+    // dari body - supaya endpoint ini tidak bisa dipakai mengirim pesan ke ID LINE
+    // sembarang, dan staff (yang tidak bisa membaca settings/line) tetap memicu notif.
+    const { orderData } = req.body;
+    const lineSettings: any = db ? ((await getDoc(doc(db, 'settings', 'line'))).data() || {}) : {};
+    if (!lineSettings.enabled) {
+      return res.status(200).json({ success: false, skipped: 'Notifikasi LINE nonaktif.' });
+    }
     const {
-      channelAccessToken,
       ownerUserId,
       resellerUserId,
       notifyOwnerNewOrder = true,
       notifyResellerNewOrder = true,
-      orderData
-    } = req.body;
+    } = lineSettings;
 
-    const token = channelAccessToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    const token = await resolveLineAccessToken();
     if (!token) {
       return res.status(400).json({ error: 'LINE Channel Access Token belum dikonfigurasi.' });
     }
@@ -315,7 +308,9 @@ export async function lineSendTestEndpoint(req: Request, res: Response) {
   try {
     const { channelAccessToken, targetUserId, recipientName = 'User' } = req.body;
 
-    const token = channelAccessToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    // Hanya owner yang boleh mencoba token yang belum disimpan (halaman Pengaturan LINE).
+    const isOwner = (req as any).erpUser?.role === 'owner';
+    const token = (isOwner && channelAccessToken) || await resolveLineAccessToken();
     if (!token) {
       return res.status(400).json({ error: 'LINE Channel Access Token belum diisi.' });
     }

@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/api-fetch';
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, X, Send, Bot, User, BookOpen, RefreshCw, HelpCircle, Tags } from 'lucide-react';
 import { Category } from '../types';
@@ -71,7 +72,7 @@ export const CategoryAiModal: React.FC<CategoryAiModalProps> = ({
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/category-ai', {
+      const res = await apiFetch('/api/category-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -113,7 +114,7 @@ export const CategoryAiModal: React.FC<CategoryAiModalProps> = ({
     setClassificationResult(null);
 
     try {
-      const res = await fetch('/api/category-ai', {
+      const res = await apiFetch('/api/category-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
