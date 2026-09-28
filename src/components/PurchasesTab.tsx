@@ -417,6 +417,92 @@ export const PurchasesTab = () => {
     }
   };
 
+  // Masukkan satu PO utuh ke antrean scan (dipakai scan kode PO & pencarian manual).
+  const addPoToScanQueue = (matchedPo: any, sourceCode: string) => {
+    const currentScannedPos = scannedPosRef.current || [];
+    const existingIndex = currentScannedPos.findIndex(s => s.id === matchedPo.id);
+    if (existingIndex >= 0) {
+      setExpandedScannedPoId(matchedPo.id);
+      playScanSound();
+      setScanSuccessToast(`PO #${matchedPo.purchaseCode || matchedPo.id} sudah ada di daftar antrean scan.`);
+      setTimeout(() => setScanSuccessToast(null), 3500);
+      return;
+    }
+
+    const poItems = matchedPo.items && matchedPo.items.length > 0 ? matchedPo.items : [{
+      bookId: matchedPo.bookId,
+      bookName: matchedPo.bookName,
+      qty: matchedPo.qty,
+      qtyReceived: matchedPo.qtyReceived || 0,
+      pricePlatformTotal: matchedPo.purchasePriceIDR || matchedPo.purchasePriceNTD / 100,
+      priceNTDTotal: matchedPo.purchasePriceNTD,
+      pricePerItem: matchedPo.pricePerUnitNTD
+    }];
+
+    const initialMap: Record<string, { qtyReceivedThisTime: string, isCancelled: boolean }> = {};
+    poItems.forEach((it: any) => {
+      const remaining = Math.max(0, it.qty - (it.qtyReceived || 0));
+      initialMap[it.bookId] = {
+        qtyReceivedThisTime: String(remaining || 1),
+        isCancelled: false
+      };
+    });
+
+    const newEntry = {
+      id: matchedPo.id,
+      purchaseCode: matchedPo.purchaseCode,
+      supplierId: matchedPo.supplierId,
+      supplierName: matchedPo.supplierName,
+      po: matchedPo,
+      receiveItemsState: initialMap,
+      isSaved: false,
+      scannedBarcodes: [sourceCode],
+      kodeEkspedisi: kodeEkspedisi || tempKodeEkspedisi
+    };
+
+    setScannedPos(prev => [newEntry, ...prev]);
+    setExpandedScannedPoId(matchedPo.id);
+    playScanSound();
+    setScanSuccessToast(`PO #${matchedPo.purchaseCode || matchedPo.id} berhasil terdeteksi dan ditambahkan.`);
+    setTimeout(() => setScanSuccessToast(null), 3500);
+  };
+
+  // Pencarian manual: cocokkan sebagian teks (tanpa spasi/tanda baca, huruf besar-kecil
+  // diabaikan) ke Kode PO, Nomor Pembelian supplier, atau Nomor Resi.
+  const normalizeSearch = (v: any) => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const bulkScanSuggestions = React.useMemo(() => {
+    const q = normalizeSearch(bulkScanSearchQuery);
+    if (!q) return [];
+    const results: Array<{ po: any; field: string; value: string; receivable: boolean }> = [];
+    for (const po of purchaseOrders) {
+      if (po.status === 'cancelled' || po.isCancelled) continue;
+      const displayCode = (po.purchaseCode || '').replace(/^#?P(?!O)/, 'PO').replace(/^#/, '');
+      const fields: Array<[string, string]> = [
+        ['Kode PO', displayCode],
+        ['No. Pembelian', po.supplierOrderNumber || ''],
+        ['No. Resi', po.supplierTrackingNumber || '']
+      ];
+      const hit = fields.find(([, v]) => v && normalizeSearch(v).includes(q));
+      if (!hit) continue;
+      results.push({ po, field: hit[0], value: hit[1], receivable: po.status === 'pending' || po.status === 'partial' });
+    }
+    // PO yang masih bisa diterima dulu, lalu yang terbaru
+    const ts = (po: any) => po.purchaseDate?.seconds || po.createdAt?.seconds || 0;
+    return results.sort((a, b) => (Number(b.receivable) - Number(a.receivable)) || (ts(b.po) - ts(a.po))).slice(0, 8);
+  }, [bulkScanSearchQuery, purchaseOrders]);
+
+  const handleBulkManualSearchSubmit = () => {
+    const receivable = bulkScanSuggestions.filter(r => r.receivable);
+    if (receivable.length === 1) {
+      addPoToScanQueue(receivable[0].po, bulkScanSearchQuery.trim());
+    } else if (receivable.length > 1) {
+      return; // biarkan user memilih dari daftar
+    } else {
+      handleProcessScannedCode(bulkScanSearchQuery); // barcode buku / ISBN
+    }
+    setBulkScanSearchQuery('');
+  };
+
   const handleProcessScannedCode = (rawCode: string) => {
     if (!rawCode || !rawCode.trim()) return;
     const cleanCode = rawCode.trim();
@@ -450,51 +536,7 @@ export const PurchasesTab = () => {
     });
 
     if (matchedPo) {
-      const existingIndex = currentScannedPos.findIndex(s => s.id === matchedPo.id);
-      if (existingIndex >= 0) {
-        setExpandedScannedPoId(matchedPo.id);
-        playScanSound();
-        setScanSuccessToast(`PO #${matchedPo.purchaseCode || matchedPo.id} sudah ada di daftar antrean scan.`);
-        setTimeout(() => setScanSuccessToast(null), 3500);
-        return;
-      }
-
-      const poItems = matchedPo.items && matchedPo.items.length > 0 ? matchedPo.items : [{
-        bookId: matchedPo.bookId,
-        bookName: matchedPo.bookName,
-        qty: matchedPo.qty,
-        qtyReceived: matchedPo.qtyReceived || 0,
-        pricePlatformTotal: matchedPo.purchasePriceIDR || matchedPo.purchasePriceNTD / 100,
-        priceNTDTotal: matchedPo.purchasePriceNTD,
-        pricePerItem: matchedPo.pricePerUnitNTD
-      }];
-
-      const initialMap: Record<string, { qtyReceivedThisTime: string, isCancelled: boolean }> = {};
-      poItems.forEach((it: any) => {
-        const remaining = Math.max(0, it.qty - (it.qtyReceived || 0));
-        initialMap[it.bookId] = {
-          qtyReceivedThisTime: String(remaining || 1),
-          isCancelled: false
-        };
-      });
-
-      const newEntry = {
-        id: matchedPo.id,
-        purchaseCode: matchedPo.purchaseCode,
-        supplierId: matchedPo.supplierId,
-        supplierName: matchedPo.supplierName,
-        po: matchedPo,
-        receiveItemsState: initialMap,
-        isSaved: false,
-        scannedBarcodes: [cleanCode],
-        kodeEkspedisi: kodeEkspedisi || tempKodeEkspedisi
-      };
-
-      setScannedPos(prev => [newEntry, ...prev]);
-      setExpandedScannedPoId(matchedPo.id);
-      playScanSound();
-      setScanSuccessToast(`PO #${matchedPo.purchaseCode || matchedPo.id} berhasil terdeteksi dan ditambahkan.`);
-      setTimeout(() => setScanSuccessToast(null), 3500);
+      addPoToScanQueue(matchedPo, cleanCode);
       return;
     }
 
@@ -8754,29 +8796,77 @@ export const PurchasesTab = () => {
                       <div className="flex gap-2">
                         <input
                           type="text"
-                          placeholder="Masukkan kode pengadaan… (contoh: 26062001)"
+                          placeholder="Ketik kode PO, nomor pembelian, atau nomor resi…"
                           value={bulkScanSearchQuery}
                           onChange={(e) => setBulkScanSearchQuery(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault();
-                              handleProcessScannedCode(bulkScanSearchQuery);
+                              handleBulkManualSearchSubmit();
+                            } else if (e.key === 'Escape' && bulkScanSearchQuery) {
+                              e.stopPropagation();
                               setBulkScanSearchQuery('');
                             }
                           }}
-                          className="flex-1 h-[42px] px-3.5 border border-[#D9D0BC] dark:border-[#48454F] rounded-[8px] bg-white dark:bg-[#1B1922] text-[#211F29] dark:text-[#F4F2ED] font-['Inter'] font-semibold text-[13px] focus:outline-none focus:border-[#B8763A]"
+                          aria-label="Cari PO berdasarkan kode PO, nomor pembelian, atau nomor resi"
+                          className="flex-1 min-w-0 h-[42px] px-3.5 border border-[#D9D0BC] dark:border-[#48454F] rounded-[8px] bg-white dark:bg-[#1B1922] text-[#211F29] dark:text-[#F4F2ED] font-['Inter'] font-semibold text-[13px] focus:outline-none focus:border-[#B8763A]"
                         />
                         <button
                           type="button"
-                          onClick={() => {
-                            handleProcessScannedCode(bulkScanSearchQuery);
-                            setBulkScanSearchQuery('');
-                          }}
+                          onClick={handleBulkManualSearchSubmit}
                           className="h-[42px] px-4 bg-[#B8763A] hover:bg-[#B8763A]/90 text-white rounded-[8px] text-[13px] font-semibold cursor-pointer transition shrink-0"
                         >
                           Cari
                         </button>
                       </div>
+
+                      {bulkScanSearchQuery.trim() && (
+                        <div className="rounded-[8px] border border-[#E8E2D3] dark:border-[#37343F] bg-white dark:bg-[#1B1922] overflow-hidden">
+                          {bulkScanSuggestions.length === 0 ? (
+                            <div className="px-3.5 py-3 text-[12px] text-[#6E6B78] dark:text-[#AEA9B7]">
+                              Tidak ada PO yang cocok. Tekan Enter untuk mencari sebagai barcode / ISBN buku.
+                            </div>
+                          ) : (
+                            <ul className="max-h-[260px] overflow-y-auto divide-y divide-[#F0EBDF] dark:divide-[#2E2B36]">
+                              {bulkScanSuggestions.map(({ po, field, value, receivable }) => {
+                                const displayCode = (po.purchaseCode || '').replace(/^#?P(?!O)/, 'PO').replace(/^#/, '') || po.id;
+                                const items = po.items && po.items.length > 0 ? po.items : [{ bookName: po.bookName, qty: po.qty, qtyReceived: po.qtyReceived }];
+                                const inQueue = scannedPos.some(s => s.id === po.id);
+                                return (
+                                  <li key={po.id}>
+                                    <button
+                                      type="button"
+                                      disabled={!receivable}
+                                      onClick={() => {
+                                        addPoToScanQueue(po, value);
+                                        setBulkScanSearchQuery('');
+                                      }}
+                                      className="w-full text-left px-3.5 py-2.5 hover:bg-[#F5F1E7] dark:hover:bg-[#242230] transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent"
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="font-['Inter'] font-bold text-[13px] text-[#211F29] dark:text-[#F4F2ED]">{displayCode}</span>
+                                        <span className={`text-[10.5px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                                          inQueue ? 'bg-[#E8E2D3] text-[#6E6B78] dark:bg-[#37343F] dark:text-[#AEA9B7]'
+                                          : receivable ? 'bg-[#FBEEDD] text-[#B8763A] dark:bg-[#3A2A1A] dark:text-[#E0A868]'
+                                          : 'bg-[#E3F1E6] text-[#3D7A4F] dark:bg-[#1E3326] dark:text-[#7BC08E]'
+                                        }`}>
+                                          {inQueue ? 'Di antrean' : receivable ? (po.status === 'partial' ? 'Sebagian' : 'Menunggu') : 'Sudah diterima'}
+                                        </span>
+                                      </div>
+                                      <div className="text-[11.5px] text-[#6E6B78] dark:text-[#AEA9B7] mt-0.5 truncate">
+                                        {field}: <span className="font-semibold text-[#211F29] dark:text-[#F4F2ED]">{value}</span> · {po.supplierName || '-'}
+                                      </div>
+                                      <div className="text-[11.5px] text-[#6E6B78] dark:text-[#AEA9B7] truncate">
+                                        {items.map((it: any) => `${it.bookName} (${it.qtyReceived || 0}/${it.qty})`).join(', ')}
+                                      </div>
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                   </div>
