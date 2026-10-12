@@ -255,6 +255,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   // Order yang sedang diproses otomatis di Shopee / iOPEN Mall (tombol Action)
   const [autoShipIds, setAutoShipIds] = useState<Set<string>>(new Set());
+  const [autoShipAllProgress, setAutoShipAllProgress] = useState<{ done: number; total: number } | null>(null);
   const [hoverPreview, setHoverPreview] = useState<{ url: string, x: number, y: number, width: number, align?: 'center' | 'right' } | null>(null);
 
   // Master checkbox element ref for indeterminate state
@@ -651,6 +652,19 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     }
   };
 
+  // Tombol "Action Semua": jalankan Action untuk semua order Shopee / iOPEN yang resinya masih kosong.
+  // Satu per satu, karena extension memproses antrian bergiliran dan tiap permintaan punya timeout sendiri.
+  const autoShipTargets = rows.filter(r => r.status !== 'success' && !r.resi.trim() && getAutoShipPlatform(r.orderNo));
+  const handleAutoShipAll = async () => {
+    const targets = autoShipTargets.map(r => ({ orderId: r.orderId, orderNo: r.orderNo, platform: getAutoShipPlatform(r.orderNo)! }));
+    setAutoShipAllProgress({ done: 0, total: targets.length });
+    for (const [i, t] of targets.entries()) {
+      await handleAutoShipAction(t.platform, t.orderId, t.orderNo);
+      setAutoShipAllProgress({ done: i + 1, total: targets.length });
+    }
+    setAutoShipAllProgress(null);
+  };
+
   const handleRowRevert = async (rowIndex: number) => {
     const row = rows[rowIndex];
     try {
@@ -904,6 +918,18 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAutoShipAll}
+                disabled={!!autoShipAllProgress || autoShipTargets.length === 0}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#ee4d2d] hover:bg-[#d73211] text-white text-[12.5px] font-['Space_Grotesk'] font-semibold rounded-lg shadow-xs transition-all duration-200 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+                title="Jalankan Action (Shopee 安排出貨 / iOPEN Mall 取寄件編號) untuk semua order yang Nomor Resi-nya masih kosong"
+              >
+                {autoShipAllProgress ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                {autoShipAllProgress
+                  ? `Memproses ${autoShipAllProgress.done}/${autoShipAllProgress.total}`
+                  : `Action Semua (${autoShipTargets.length})`}
+              </button>
               <button
                 type="button"
                 onClick={handleSortShipping}
