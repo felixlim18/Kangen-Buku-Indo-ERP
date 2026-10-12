@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "KBI Shopee Auto 安排出貨",
-  "version": "1.0.0",
-  "description": "Tombol Action di ERP KangenBukuIndo: otomatis 安排出貨 di Shopee Seller Center lalu salin nomor resi ke ERP.",
+  "name": "KBI Auto 出貨 (Shopee & iOPEN Mall)",
+  "version": "1.1.0",
+  "description": "Tombol Action di ERP KangenBukuIndo: otomatis 安排出貨 (Shopee) / 取寄件編號 (iOPEN Mall) lalu salin nomor resi ke ERP.",
   "permissions": ["storage"],
-  "host_permissions": ["https://seller.shopee.tw/*"],
+  "host_permissions": ["https://seller.shopee.tw/*", "https://sales.iopenmall.tw/*"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
@@ -20,6 +20,11 @@
     {
       "matches": ["https://seller.shopee.tw/portal/sale/order*"],
       "js": ["shopee.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://sales.iopenmall.tw/*/admweb/admweb.main.php*"],
+      "js": ["iopen.js"],
       "run_at": "document_idle"
     }
   ]

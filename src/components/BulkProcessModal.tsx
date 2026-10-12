@@ -10,7 +10,7 @@ import { useSidebar } from '../lib/sidebar-context';
 import { ImagePreviewModal } from './ui/ImagePreviewModal';
 import { useModalEsc } from '../lib/use-modal-esc';
 import { getEffectiveOrderLogistics, sanitizeResiNumber } from '../lib/sales-logistics-utils';
-import { isShopeePlatform, requestShopeeTrackingNumber } from '../lib/shopee-auto-ship';
+import { AUTO_SHIP_LABELS, getAutoShipPlatform, requestTrackingNumber, type AutoShipPlatform } from '../lib/auto-ship';
 
 interface BulkProcessModalProps {
   isOpen: boolean;
@@ -253,7 +253,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   const [summary, setSummary] = useState<{ success: number; warn: number; fail: number } | null>(null);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  // Order yang sedang diproses otomatis di Shopee (tombol Action)
+  // Order yang sedang diproses otomatis di Shopee / iOPEN Mall (tombol Action)
   const [autoShipIds, setAutoShipIds] = useState<Set<string>>(new Set());
   const [hoverPreview, setHoverPreview] = useState<{ url: string, x: number, y: number, width: number, align?: 'center' | 'right' } | null>(null);
 
@@ -630,18 +630,18 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     setRows(newRows);
   };
 
-  // Tombol "Action": 安排出貨 otomatis di Shopee Seller Center via extension, lalu isi Nomor Resi
-  const handleShopeeAction = async (orderId: string, orderNo: string) => {
+  // Tombol "Action": via extension, 安排出貨 (Shopee) / 取寄件編號 (iOPEN Mall) lalu isi Nomor Resi
+  const handleAutoShipAction = async (platform: AutoShipPlatform, orderId: string, orderNo: string) => {
     const patchRow = (patch: Partial<RowData>) =>
       setRows(prev => prev.map(r => (r.orderId === orderId ? { ...r, ...patch } : r)));
 
     setAutoShipIds(prev => new Set(prev).add(orderId));
     try {
-      const resi = sanitizeResiNumber(await requestShopeeTrackingNumber(orderNo.trim()));
+      const resi = sanitizeResiNumber(await requestTrackingNumber(platform, orderNo.trim()));
       patchRow({ resi, status: 'idle', deskripsi: 'Menyimpan...', deskripsiType: 'warn' });
       instantSaveResi(orderId, resi);
     } catch (err: any) {
-      patchRow({ deskripsi: err.message || 'Gagal mengambil resi dari Shopee', deskripsiType: '' });
+      patchRow({ deskripsi: err.message || `Gagal mengambil resi dari ${AUTO_SHIP_LABELS[platform].site}`, deskripsiType: '' });
     } finally {
       setAutoShipIds(prev => {
         const next = new Set(prev);
@@ -973,6 +973,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                     const isSelected = selectedIds.has(row.orderId);
                     const resolvedPlat = getResolvedPlatform(row.order);
                     const resolvedChan = getResolvedChannel(row.order);
+                    const autoShipPlatform = getAutoShipPlatform(resolvedPlat);
 
                     return (
                       <React.Fragment key={row.orderId || i}>
@@ -1224,12 +1225,12 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
 
                           {/* Aksi */}
                           <div className="px-2 py-2 flex items-center justify-center gap-1.5 h-full">
-                            {isShopeePlatform(resolvedPlat) && (
+                            {autoShipPlatform && (
                               <button
-                                onClick={() => handleShopeeAction(row.orderId, row.orderNo)}
+                                onClick={() => handleAutoShipAction(autoShipPlatform, row.orderId, row.orderNo)}
                                 disabled={row.status === 'success' || !row.orderNo.trim() || autoShipIds.has(row.orderId)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11.5px] font-semibold text-white bg-[#ee4d2d] hover:bg-[#d73211] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                                title="安排出貨 otomatis di Shopee lalu isi Nomor Resi"
+                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-[11.5px] font-semibold text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${autoShipPlatform === 'shopee' ? 'bg-[#ee4d2d] hover:bg-[#d73211]' : 'bg-[#0b5a36] hover:bg-[#08452a]'}`}
+                                title={`${AUTO_SHIP_LABELS[autoShipPlatform].action} otomatis di ${AUTO_SHIP_LABELS[autoShipPlatform].site} lalu isi Nomor Resi`}
                               >
                                 {autoShipIds.has(row.orderId) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
                                 Action

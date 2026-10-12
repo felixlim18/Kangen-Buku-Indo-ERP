@@ -116,7 +116,7 @@ async function getTrackingNumber(orderNo) {
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.type !== 'RUN') return;
+  if (msg?.type !== 'RUN' || msg.platform !== 'shopee') return;
   getTrackingNumber(msg.orderNo)
     .then((resi) => chrome.runtime.sendMessage({ type: 'DONE', ok: true, resi }))
     .catch((err) => chrome.runtime.sendMessage({ type: 'DONE', ok: false, error: err.message }));
