@@ -22,6 +22,11 @@ const openModals = () =>
 
 const orderCards = () => [...document.querySelectorAll('a.order-card')];
 const cardOrderNo = (card) => text(card.querySelector('.order-sn')).replace(/^訂單編號\s*/, '');
+// Nomor resi yang sudah ada, tampil di bawah 全家 / 7-ELEVEN / dll. di kolom 物流方式
+const cardTrackingNumber = (card) => {
+  const tn = text(card.querySelector('.order-fulfilment-info .tracking-number')).replace(/\s+/g, '');
+  return /^[A-Z0-9]{6,}$/i.test(tn) ? tn.toUpperCase() : null;
+};
 
 async function searchOrder(orderNo) {
   const input = await waitFor(() => document.querySelector('.order-search-input input'), 20000);
@@ -55,15 +60,25 @@ async function searchOrder(orderNo) {
 async function getTrackingNumber(orderNo) {
   let card = await searchOrder(orderNo);
 
-  // Kondisi normal: 安排出貨. Kalau sudah pernah diatur, nomor resi bisa dilihat lewat 查看物流.
-  const arrange = findButton(card, '安排出貨');
-  const view = findButton(card, '查看物流');
-  if (arrange) arrange.click();
-  else if (view) view.click();
-  else {
+  // Tombol aksi & nomor resi baru dirender beberapa saat setelah kartu muncul (awalnya hanya 查看詳情).
+  // - Nomor resi sudah ada di kolom 物流方式 -> langsung pakai
+  // - 安排出貨 -> klik (kondisi normal)
+  // - hanya 查看物流 -> buka dialognya untuk membaca nomor resi
+  const next = await waitFor(() => {
+    card = orderCards().find((c) => cardOrderNo(c) === orderNo) || card;
+    const existing = cardTrackingNumber(card);
+    if (existing) return { resi: existing };
+    const arrange = findButton(card, '安排出貨');
+    if (arrange) return { button: arrange };
+    return null;
+  }, 8000);
+  if (next?.resi) return next.resi;
+  const button = next?.button || findButton(card, '查看物流');
+  if (!button) {
     const labels = [...card.querySelectorAll('.order-actions button')].map(text).join(', ');
     throw new Error(`Tombol 安排出貨 tidak ada di order ini (aksi tersedia: ${labels || '-'}).`);
   }
+  button.click();
 
   const clicked = new WeakSet();
   let lastActionAt = Date.now();
@@ -101,6 +116,8 @@ async function getTrackingNumber(orderNo) {
     // Dialog tertutup tanpa nomor resi -> buka 查看物流 untuk membaca nomornya
     if (modals.length === 0 && Date.now() - lastActionAt > 3000 && viewClicks < 2) {
       card = orderCards().find((c) => cardOrderNo(c) === orderNo) || card;
+      const shown = cardTrackingNumber(card);
+      if (shown) return shown;
       const v = findButton(card, '查看物流');
       if (v) {
         viewClicks++;
