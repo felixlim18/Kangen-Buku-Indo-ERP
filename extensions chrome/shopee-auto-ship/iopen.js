@@ -117,7 +117,7 @@ async function printLabels(step) {
     }
   }
   if (found.length === 0) return 0;
-  chrome.runtime.sendMessage({ type: 'STEP_PROGRESS', selected: found.length, missing: step.orders.filter((o) => !found.includes(o)) });
+  chrome.runtime.sendMessage({ type: 'STEP_PROGRESS', selectedOrders: found });
 
   const button = [...document.querySelectorAll('button')].find((b) => text(b) === '列印超商標籤');
   if (!button) throw new Error('Tombol 列印超商標籤 tidak ditemukan.');

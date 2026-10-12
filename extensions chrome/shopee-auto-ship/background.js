@@ -44,8 +44,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else if (msg.type === 'DONE' && fromWorker && current.kind === 'ship') {
     finish({ ok: msg.ok, resi: msg.resi, error: msg.error });
   } else if (msg.type === 'STEP_PROGRESS' && fromWorker && current.kind === 'print') {
-    current.step.selected = msg.selected;
-    current.step.missing = msg.missing || [];
+    current.step.selectedOrders = msg.selectedOrders || [];
     armTimer(PRINT_STEP_TIMEOUT_MS);
   } else if (msg.type === 'PRINT_FOCUS' && fromWorker && current.kind === 'print') {
     // Dialog cetak hanya muncul di tab yang sedang tampil. Tab ini dilepas dari tab kerja supaya langkah
@@ -61,8 +60,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     current.results.push({
       label: current.step.label,
       ok: msg.ok,
-      printed: msg.ok ? msg.printed ?? current.step.selected ?? 0 : 0,
-      missing: current.step.missing || [],
+      site: current.step.site,
+      orders: current.step.orders,
+      selectedOrders: current.step.selectedOrders || [],
+      printed: msg.ok ? msg.printed ?? current.step.selectedOrders?.length ?? 0 : 0,
       error: msg.error,
     });
     if (msg.closeTab) chrome.tabs.remove(sender.tab.id).catch(() => {});
@@ -99,7 +100,7 @@ function armTimer(ms) {
     if (current.kind === 'ship') {
       finish({ ok: false, error: `Timeout. Pastikan ${label} sudah login di Chrome ini.` });
     } else {
-      current.results.push({ label, ok: false, printed: 0, missing: [], error: 'Timeout (pastikan sudah login)' });
+      current.results.push({ label, site: current.step.site, orders: current.step.orders, selectedOrders: [], ok: false, printed: 0, error: 'Timeout (pastikan sudah login)' });
       nextPrintStep();
     }
   }, ms);
@@ -137,17 +138,33 @@ async function nextPrintStep() {
   current.step = current.steps.shift();
   if (!current.step) {
     chrome.tabs.update(current.erpTabId, { active: true }).catch(() => {});
-    finish({ ok: true, results: current.results });
+    finish({ ok: true, results: current.results.map(({ label, ok, printed, error }) => ({ label, ok, printed, error })), missing: missingOrders(current.results) });
     return;
   }
   armTimer(PRINT_STEP_TIMEOUT_MS);
   const url = current.step.site === 'shopee' ? shopeeMassUrl(current.step.method) : `${IOPEN_ADMWEB}?action=order_control_batch_pic&order_status=21#tab21`;
   try {
     current.workerTabId = await openWorkerTab(current.step.site, url);
+    // Tampilkan tab kerja: Shopee tidak memperbarui pilihan centang di tab yang tersembunyi
+    const tab = await chrome.tabs.update(current.workerTabId, { active: true });
+    await chrome.windows.update(tab.windowId, { focused: true });
   } catch (err) {
-    current.results.push({ label: current.step.label, ok: false, printed: 0, missing: [], error: err.message });
+    current.results.push({ label: current.step.label, site: current.step.site, orders: current.step.orders, selectedOrders: [], ok: false, printed: 0, error: err.message });
     nextPrintStep();
   }
+}
+
+// Order yang tidak ketemu di langkah mana pun untuk situsnya (Shopee punya 2 langkah: 店到店 & 7-11).
+// Situs yang salah satu langkahnya gagal tidak dihitung, karena belum tentu ordernya memang tidak ada.
+function missingOrders(results) {
+  const missing = [];
+  for (const site of new Set(results.map((r) => r.site))) {
+    const steps = results.filter((r) => r.site === site);
+    if (steps.some((r) => !r.ok)) continue;
+    const found = new Set(steps.flatMap((r) => r.selectedOrders));
+    missing.push(...steps[0].orders.filter((o) => !found.has(o)));
+  }
+  return missing;
 }
 
 function finish(result) {

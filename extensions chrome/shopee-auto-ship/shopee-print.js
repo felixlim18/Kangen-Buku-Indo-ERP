@@ -33,17 +33,25 @@ async function selectAndDownload(step) {
   const rows = [...document.querySelectorAll('.mass-ship-row')].filter((r) => wanted.has(rowOrderNo(r)));
   if (rows.length === 0) return 0;
 
-  for (const row of rows) {
-    const input = row.querySelector('label.eds-checkbox input');
-    if (input && !input.checked) row.querySelector('label.eds-checkbox').click();
-  }
-  await sleep(500);
-
-  const awb = await waitFor(() => {
+  const checkRows = () => {
+    for (const row of rows) {
+      const input = row.querySelector('label.eds-checkbox input');
+      if (input && !input.checked) row.querySelector('label.eds-checkbox').click();
+    }
+  };
+  const awbEnabled = () => {
     const l = docCheckbox('寄件單');
     return l && !l.classList.contains('disabled') ? l : null;
-  }, 5000);
-  if (!awb) throw new Error('Pilihan 寄件單 tidak aktif.');
+  };
+  checkRows();
+  await sleep(500);
+  let awb = await waitFor(awbEnabled, 10000);
+  if (!awb) {
+    // Centangan kadang ter-reset saat daftar dirender ulang: centang lagi sekali
+    checkRows();
+    awb = await waitFor(awbEnabled, 10000);
+  }
+  if (!awb) throw new Error(`Pilihan 寄件單 tidak aktif (${document.querySelectorAll('.mass-ship-row input:checked').length} order tercentang).`);
   if (!awb.querySelector('input').checked) awb.click();
   await sleep(400);
 
@@ -57,7 +65,7 @@ async function selectAndDownload(step) {
   const download = [...document.querySelectorAll('button')].find((b) => text(b).includes('下載所選文件') && !b.disabled);
   if (!download) throw new Error('Tombol 下載所選文件 tidak aktif.');
 
-  chrome.runtime.sendMessage({ type: 'STEP_PROGRESS', selected: rows.length, missing: step.orders.filter((o) => !rows.some((r) => rowOrderNo(r) === o)) });
+  chrome.runtime.sendMessage({ type: 'STEP_PROGRESS', selectedOrders: rows.map(rowOrderNo) });
   document.documentElement.dataset.kbiSameTab = '1';
   download.click();
   return rows.length;

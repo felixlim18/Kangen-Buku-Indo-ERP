@@ -20,8 +20,13 @@ export interface PrintStepResult {
   label: string;
   ok: boolean;
   printed: number;
-  missing: string[];
   error?: string;
+}
+
+export interface PrintLabelsResult {
+  steps: PrintStepResult[];
+  /** Order modal yang tidak ditemukan di halaman cetak situsnya */
+  missing: string[];
 }
 
 // Kirim permintaan ke extension dan tunggu balasan KBI_RESULT dengan id yang sama
@@ -73,8 +78,8 @@ export const requestTrackingNumber = async (platform: AutoShipPlatform, orderNo:
 };
 
 /** Cetak label (Shopee 蝦皮店到店 & 7-ELEVEN, iOPEN Mall) untuk order-order ini. */
-export const requestPrintLabels = async (shopeeOrders: string[], iopenOrders: string[]): Promise<PrintStepResult[]> => {
+export const requestPrintLabels = async (shopeeOrders: string[], iopenOrders: string[]): Promise<PrintLabelsResult> => {
   const msg = await callExtension('PRINT_LABELS', { shopeeOrders, iopenOrders }, PRINT_TIMEOUT_MS, 'Timeout menunggu proses cetak');
   if (!msg.ok) throw new Error(msg.error || 'Gagal mencetak label');
-  return msg.results || [];
+  return { steps: msg.results || [], missing: msg.missing || [] };
 };

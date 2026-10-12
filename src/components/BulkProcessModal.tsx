@@ -676,12 +676,11 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     setIsPrintingLabels(true);
     setPrintMessage(null);
     try {
-      const results = await requestPrintLabels(shopeeOrders, iopenOrders);
-      const parts = results.map(r => (r.ok ? `${r.label}: ${r.printed}` : `${r.label}: gagal (${r.error})`));
-      const missing = results.flatMap(r => r.missing);
+      const { steps, missing } = await requestPrintLabels(shopeeOrders, iopenOrders);
+      const parts = steps.map(r => (r.ok ? `${r.label}: ${r.printed}` : `${r.label}: gagal (${r.error})`));
       setPrintMessage({
         text: (parts.length ? parts.join(' · ') : 'Tidak ada label untuk dicetak') + (missing.length ? ` · tidak ditemukan: ${missing.join(', ')}` : ''),
-        ok: results.every(r => r.ok),
+        ok: steps.every(r => r.ok),
       });
     } catch (err: any) {
       setPrintMessage({ text: err.message || 'Gagal mencetak label', ok: false });
