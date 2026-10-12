@@ -25,6 +25,17 @@ const shopeeMassUrl = (method) =>
 const queue = [];
 let current = null;
 
+// Chrome mematikan service worker yang menganggur ~30 detik, sehingga status job hilang (mis. saat user
+// lama di dialog cetak). Selama ada job, panggil API extension berkala supaya service worker tetap hidup.
+let keepAlive = null;
+function setKeepAlive(on) {
+  if (on && !keepAlive) keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
+  if (!on && keepAlive) {
+    clearInterval(keepAlive);
+    keepAlive = null;
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const fromWorker = current && sender.tab?.id === current.workerTabId;
 
@@ -107,7 +118,12 @@ function armTimer(ms) {
 }
 
 async function runNext() {
-  if (current || queue.length === 0) return;
+  if (current) return;
+  if (queue.length === 0) {
+    setKeepAlive(false);
+    return;
+  }
+  setKeepAlive(true);
   current = queue.shift();
 
   if (current.kind === 'print') {
