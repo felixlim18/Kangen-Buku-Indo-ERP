@@ -17,6 +17,7 @@ import {
   FileText
 } from 'lucide-react';
 import { formatNTD, formatIDR, formatNumber } from '../../lib/decimal-utils';
+import { SellerShippedChecklist, type PoShippingMark, poShippingAlertCardClass } from './SellerShippedChecklist';
 
 export interface PurchaseOrderMobileCardProps {
   po: any;
@@ -24,6 +25,7 @@ export interface PurchaseOrderMobileCardProps {
   isStaffValue: boolean;
   canViewAmount: boolean;
   onOpenDetail: (po: any) => void;
+  onSellerShippedChange?: (po: any, mark: PoShippingMark, checked: boolean) => void;
   onEditPO?: (po: any) => void;
   onReceivePO?: (po: any) => void;
   onRevertStatus?: (po: any) => void;
@@ -37,6 +39,7 @@ export const PurchaseOrderMobileCard: React.FC<PurchaseOrderMobileCardProps> = R
   isStaffValue,
   canViewAmount,
   onOpenDetail,
+  onSellerShippedChange,
   onEditPO,
   onReceivePO,
   onRevertStatus,
@@ -118,7 +121,7 @@ export const PurchaseOrderMobileCard: React.FC<PurchaseOrderMobileCardProps> = R
     <>
       <article
         onClick={() => onOpenDetail(po)}
-        className="bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 rounded-2xl overflow-hidden shadow-xs active:scale-[0.99] transition duration-150 flex relative cursor-pointer select-none font-['Lexend']"
+        className={`${poShippingAlertCardClass(po) || 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800'} border rounded-2xl overflow-hidden shadow-xs active:scale-[0.99] transition duration-150 flex relative cursor-pointer select-none font-['Lexend']`}
       >
         {/* Left Status Spine */}
         <div className={`w-2 shrink-0 ${spineColor}`} />
@@ -195,6 +198,8 @@ export const PurchaseOrderMobileCard: React.FC<PurchaseOrderMobileCardProps> = R
               )}
             </div>
           )}
+
+          {onSellerShippedChange && <SellerShippedChecklist po={po} onChange={onSellerShippedChange} />}
 
           {/* Row 3: Progress Bar (Received Qty / Ordered Qty) */}
           <div className="space-y-1">

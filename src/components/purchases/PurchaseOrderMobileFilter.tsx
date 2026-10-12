@@ -39,6 +39,12 @@ export interface PurchaseOrderMobileFilterProps {
   selectedPlatform?: string;
   setSelectedPlatform?: (platformId: string) => void;
   platforms?: Array<{ id: string; name: string; currency?: string }>;
+  // Checklist "dikirim penjual"
+  sellerShippedFilter?: 'all' | 'shipped' | 'not_shipped';
+  setSellerShippedFilter?: (value: 'all' | 'shipped' | 'not_shipped') => void;
+  // Checklist "sampai di ekspedisi"
+  arrivedFilter?: 'all' | 'arrived' | 'not_arrived';
+  setArrivedFilter?: (value: 'all' | 'arrived' | 'not_arrived') => void;
   onResetFilters?: () => void;
 }
 
@@ -64,6 +70,10 @@ export const PurchaseOrderMobileFilter: React.FC<PurchaseOrderMobileFilterProps>
   selectedPlatform,
   setSelectedPlatform,
   platforms = [],
+  sellerShippedFilter = 'all',
+  setSellerShippedFilter,
+  arrivedFilter = 'all',
+  setArrivedFilter,
   onResetFilters,
 }) => {
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
@@ -78,7 +88,7 @@ export const PurchaseOrderMobileFilter: React.FC<PurchaseOrderMobileFilterProps>
 
   const isPlatformActive = Boolean(selectedPlatform && selectedPlatform !== 'all' && selectedPlatform !== '');
   const isDateActive = Boolean(datePresetLabel && datePresetLabel !== 'Semua' && datePresetLabel !== 'Semua Tanggal');
-  const activeFiltersCount = (isPlatformActive ? 1 : 0) + (isDateActive ? 1 : 0);
+  const activeFiltersCount = (isPlatformActive ? 1 : 0) + (isDateActive ? 1 : 0) + (sellerShippedFilter !== 'all' ? 1 : 0) + (arrivedFilter !== 'all' ? 1 : 0);
 
   return (
     <div className="space-y-2.5 md:hidden">
@@ -249,6 +259,56 @@ export const PurchaseOrderMobileFilter: React.FC<PurchaseOrderMobileFilterProps>
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* Pengiriman Penjual Section */}
+              {setSellerShippedFilter && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+                    Pengiriman Penjual
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([['all', 'Semua'], ['shipped', 'Sudah dikirim'], ['not_shipped', 'Belum dikirim']] as const).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setSellerShippedFilter(key)}
+                        className={`min-h-[44px] px-2 py-2.5 rounded-xl text-xs font-semibold border transition cursor-pointer active:scale-[0.98] ${
+                          sellerShippedFilter === key
+                            ? 'bg-[#6B1F3D]/10 border-[#6B1F3D] text-[#6B1F3D] dark:text-rose-300 font-bold'
+                            : 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sampai di Ekspedisi Section */}
+              {setArrivedFilter && (
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+                    Sampai di Ekspedisi
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([['all', 'Semua'], ['arrived', 'Sudah sampai di ekspedisi'], ['not_arrived', 'Belum sampai di ekspedisi']] as const).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setArrivedFilter(key)}
+                        className={`min-h-[44px] px-2 py-2.5 rounded-xl text-xs font-semibold border transition cursor-pointer active:scale-[0.98] ${
+                          arrivedFilter === key
+                            ? 'bg-[#6B1F3D]/10 border-[#6B1F3D] text-[#6B1F3D] dark:text-rose-300 font-bold'
+                            : 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}

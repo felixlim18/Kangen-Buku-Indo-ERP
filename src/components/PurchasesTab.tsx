@@ -67,6 +67,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 import { FileSpreadsheet, Download, Upload, CheckCircle2, BookOpen, Copy, Loader2, AlertTriangle, RefreshCw, RotateCcw, Scan, Truck, ChevronRight, AlertCircle, MessageSquareWarning, MoreHorizontal, Settings } from 'lucide-react';
 import { PurchaseOrderMobileFilter } from './purchases/PurchaseOrderMobileFilter';
+import { SellerShippedChecklist, type PoShippingMark, getPoShippingAlertRank, poShippingAlertCardClass } from './purchases/SellerShippedChecklist';
 import { PurchaseOrderMobileCard } from './purchases/PurchaseOrderMobileCard';
 import { PurchaseDetailDrawer } from './purchases/PurchaseDetailDrawer';
 
@@ -280,13 +281,12 @@ export const PurchasesTab = () => {
     } catch { return Timestamp.now(); }
   };
   const [poPresetLabel, setPoPresetLabel] = useState('Semua');
-  const [activeTab, setActiveTab] = useState('main');
   const setCsvPlatformId = (id: any) => {};
   const formatToHTMLDate = (date: any) => formatToHTMLDateImpl(date);
-  const [trackingNumberInputs, setTrackingNumberInputs] = useState<any>({});
-  const handleSaveTrackingNumber = async (po: any, val: any) => {};
 
   const [poStatusFilter, setPoStatusFilter] = useState('Semua');
+  const [sellerShippedFilter, setSellerShippedFilter] = useState<'all' | 'shipped' | 'not_shipped'>('all');
+  const [arrivedFilter, setArrivedFilter] = useState<'all' | 'arrived' | 'not_arrived'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [liveRates, setLiveRates] = useState<Record<string, number>>({});
   const [isPlatformOpen, setIsPlatformOpen] = useState(false);
@@ -874,6 +874,22 @@ export const PurchasesTab = () => {
         lastUpdated: Timestamp.now()
       };
 
+      // Jalur scan dulu tidak menambah entri `receipts`, sehingga kartu PO tidak
+      // menampilkan "Diterima <tanggal>". Catat sama seperti jalur penerimaan biasa.
+      if (totalReceivedThisRunSum > 0 && itemsReceivedThisTime.length > 0) {
+        updatePoData.receipts = [
+          ...(fresh.receipts || []),
+          {
+            receivedDate: Timestamp.now(),
+            receivedQty: totalReceivedThisRunSum,
+            notes: currentKodeEkspedisi ? `[Nomor Freight-In: ${currentKodeEkspedisi}] Scan terima` : 'Scan terima',
+            receivedBy: user?.uid || 'anonymous',
+            ...(currentKodeEkspedisi ? { kodeEkspedisi: currentKodeEkspedisi } : {}),
+            items: itemsReceivedThisTime
+          }
+        ];
+      }
+
       if (currentKodeEkspedisi) {
         updatePoData.kodeEkspedisi = currentKodeEkspedisi;
       }
@@ -1430,31 +1446,6 @@ export const PurchasesTab = () => {
     ? (liveRates[selectedPlatform.currency] ?? (selectedPlatform.currency === 'IDR' ? FALLBACK_NTD_PER_IDR : selectedPlatform.currency === 'USD' ? FALLBACK_NTD_PER_USD : 1.0))
     : 1.0;
 
-  const isWithinTrailing2Days = (dateData: any) => {
-    if (!dateData) return false;
-    const date = dateData.seconds ? new Date(dateData.seconds * 1000) : new Date(dateData);
-    const now = new Date();
-    const diffTime = now.getTime() - date.getTime();
-    const diffDays = diffTime / (1000 * 60 * 60 * 24);
-    return diffDays >= 0 && diffDays <= 2;
-  };
-
-  // Active Checklist: created within trailing 2 days AND NOT shipped yet, and status pending and no tracking number
-  const tasksChecklistPOs = purchaseOrders.filter(po => {
-    const isPending = po.status === 'pending';
-    const noTrackingNumber = !po.supplierTrackingNumber || po.supplierTrackingNumber.trim() === '';
-    return isWithinTrailing2Days(po.purchaseDate) && !po.isShipped && isPending && noTrackingNumber;
-  });
-
-  // Task History: shipped within trailing 24 hours
-  const tasksHistoryPOs = purchaseOrders.filter(po => {
-    if (!po.isShipped || !po.shippedAt) return false;
-    const shippedDate = po.shippedAt.seconds ? new Date(po.shippedAt.seconds * 1000) : new Date(po.shippedAt);
-    const now = new Date();
-    const diffHours = (now.getTime() - shippedDate.getTime()) / (1000 * 60 * 60);
-    return diffHours >= 0 && diffHours <= 24;
-  });
-
   const getPoDateObj = (po: any): Date | null => {
     if (!po) return null;
     const rawDate = po.purchaseDate || po.createdAt || po.date;
@@ -1595,6 +1586,10 @@ export const PurchasesTab = () => {
 
   // Filter master PO lists - apply status first, then use status-aware date filter
   const platformFilteredPOs = purchaseOrders.filter(po => {
+    if (sellerShippedFilter === 'shipped' && !po.isShipped) return false;
+    if (sellerShippedFilter === 'not_shipped' && po.isShipped) return false;
+    if (arrivedFilter === 'arrived' && !po.isArrivedAtForwarder) return false;
+    if (arrivedFilter === 'not_arrived' && po.isArrivedAtForwarder) return false;
     if (!selectedPlatformFilter || selectedPlatformFilter === 'all' || selectedPlatformFilter === '') return true;
     return po.supplierId === selectedPlatformFilter;
   });
@@ -1612,7 +1607,10 @@ export const PurchasesTab = () => {
   const dateFilteredPOs = statusFilteredPOs.filter(po => matchesDate(po, poStatusFilter));
 
   // Apply dynamic sort based on active status tab
-  const sortedFilteredPOs = sortPurchaseOrdersByTab(dateFilteredPOs, poStatusFilter);
+  // PO yang terlambat ditandai naik ke paling atas: biru (belum dikirim penjual) dulu,
+  // lalu merah (belum sampai di ekspedisi). Sort stabil, urutan tab tetap di dalamnya.
+  const sortedFilteredPOs = sortPurchaseOrdersByTab(dateFilteredPOs, poStatusFilter)
+    .sort((a, b) => getPoShippingAlertRank(a) - getPoShippingAlertRank(b));
 
   const filteredPOs = sortedFilteredPOs.filter(matchesSearch);
   const paginatedPOs = filteredPOs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -4425,31 +4423,27 @@ export const PurchasesTab = () => {
     }
   };
 
-  // Shipper Task Toggle Action (Checking supplier Shipment)
-  const handleToggleTaskShipping = async (poId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await updateDoc(doc(db, 'purchaseOrders', poId), {
-        isShipped: true,
-        shippedAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
-      });
-    } catch (err: any) {
-      alert("Error updating shipping Task: " + err.message);
+  // Checklist "dikirim penjual" / "sampai di ekspedisi" di kartu PO. Tanggal otomatis
+  // hari ini. "Sampai" butuh "dikirim"; membatalkan "dikirim" ikut membatalkan "sampai".
+  const handleSetSellerShipped = async (po: any, mark: PoShippingMark, checked: boolean) => {
+    const now = Timestamp.now();
+    const update: any = { updatedAt: now };
+    if (mark === 'shipped') {
+      update.isShipped = checked;
+      update.shippedAt = checked ? now : null;
+      if (!checked) {
+        update.isArrivedAtForwarder = false;
+        update.arrivedAtForwarderAt = null;
+      }
+    } else {
+      if (checked && !po.isShipped) return;
+      update.isArrivedAtForwarder = checked;
+      update.arrivedAtForwarderAt = checked ? now : null;
     }
-  };
-
-  // Revert shipping Task toggle (move back to not shipped)
-  const handleUntoggleTaskShipping = async (poId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
     try {
-      await updateDoc(doc(db, 'purchaseOrders', poId), {
-        isShipped: false,
-        shippedAt: null,
-        updatedAt: Timestamp.now()
-      });
+      await updateDoc(doc(db, 'purchaseOrders', po.id), update);
     } catch (err: any) {
-      alert("Error reverting shipping Task: " + err.message);
+      alert("Gagal menyimpan tanda pengiriman: " + err.message);
     }
   };
 
@@ -4599,7 +4593,7 @@ export const PurchasesTab = () => {
           </div>
         </div>
 
-        {activeTab === 'main' && (
+        {(
           <div className="hidden md:flex items-center gap-2 flex-wrap">
             <input type="file" accept=".csv,.xlsx,.xls" className="hidden" ref={fileInputRef} onChange={handleImportFile} />
             {hasPerm('purchases.import') && (
@@ -4623,20 +4617,6 @@ export const PurchasesTab = () => {
             >
               <LayoutGrid className="w-3.5 h-3.5 text-[#6b7280]" />
               Platform
-            </button>
-
-            <button
-              onClick={() => setActiveTab('tasks')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[8px] bg-white dark:bg-neutral-900 border border-[#E7E1D2] dark:border-neutral-800 text-[#3d4451] dark:text-neutral-200 hover:text-[#0d1117] hover:border-neutral-300 dark:hover:border-neutral-700 text-[13px] font-semibold transition cursor-pointer relative"
-              title="Verifikasi Pengiriman"
-            >
-              <Calendar className="w-3.5 h-3.5 text-[#6b7280]" />
-              Verifikasi
-              {tasksChecklistPOs.length > 0 && (
-                <span className="bg-[#6B1F3D] text-white font-text text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-1">
-                  {tasksChecklistPOs.length}
-                </span>
-              )}
             </button>
 
             {hasPerm('purchases.receive') && (
@@ -4683,120 +4663,7 @@ export const PurchasesTab = () => {
         )}
       </div>
 
-      {activeTab === 'tasks' ? (
-        // Tasks Checklist sub-panel view
-        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-md font-bold text-neutral-800 dark:text-white uppercase tracking-wider">VERIFIKASI PENGIRIMAN</h3>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">Verifikasi apakah barang belanjaan berikut sudah dikirim oleh supplier.</p>
-            </div>
-            <button 
-              onClick={() => setActiveTab('main')}
-              className="text-indigo-600 dark:text-indigo-400 text-xs font-bold hover:underline cursor-pointer"
-            >
-              &larr; Kembali
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            <h4 className="text-xs font-bold text-[#A9812E] uppercase tracking-widest border-b border-[#E7E1D3] dark:border-neutral-800 pb-2">Perlu Verifikasi ({tasksChecklistPOs.length})</h4>
-            {tasksChecklistPOs.length === 0 ? (
-              <p className="text-xs text-neutral-400 py-2">Semua pengiriman belanjaan terverifikasi dan aman dalam 2 hari teakhir.</p>
-            ) : (
-              <div className="divide-y divide-neutral-100 dark:divide-neutral-800 border border-[#E9E2D8] dark:border-neutral-800 rounded-xl overflow-hidden">
-                {tasksChecklistPOs.map((po, idx) => (
-                  <div key={`${po.id}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-neutral-50/50 dark:bg-neutral-950/20 hover:bg-neutral-100/50 dark:hover:bg-neutral-950/40 text-xs">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-numeric font-bold text-indigo-600 dark:text-indigo-440">{po.purchaseCode?.replace(/^#?P(?!O)/, 'PO').replace(/^#/, '')}</span>
-                        <span className="text-neutral-400 font-numeric text-[10px]">
-                          {po.purchaseDate?.seconds ? formatToYYYYMMDD(new Date(po.purchaseDate.seconds * 1000)) : 'N/A'}
-                        </span>
-                      </div>
-                      <p className="font-semibold text-neutral-800 dark:text-neutral-200 font-text break-words max-w-lg">{po.bookName}</p>
-                      <p className="text-neutral-500">Platform: <span className="font-bold">{platforms.find(p => p.id === po.supplierId)?.name || po.supplierName}</span> | Qty: <span className="font-numeric font-bold">{po.qty}</span></p>
-                      {(po.supplierOrderNumber || po.supplierTrackingNumber) && (
-                        <p className="font-text text-[10px] text-neutral-500">
-                          {po.supplierOrderNumber && <span>Order: <span className="font-numeric text-indigo-600 dark:text-indigo-400 font-bold">{po.supplierOrderNumber}</span></span>}
-                          {po.supplierOrderNumber && po.supplierTrackingNumber && <span className="mx-1">;</span>}
-                          {po.supplierTrackingNumber && <span>Resi: <span className="font-numeric text-orange-600 dark:text-orange-400 font-bold">{po.supplierTrackingNumber}</span></span>}
-                        </p>
-                      )}
-                    </div>
-                    <div className="mt-3 sm:mt-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                      <div className="flex bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-md overflow-hidden focus-within:border-indigo-500 transition-colors">
-                        <input
-                          type="text"
-                          placeholder="Input Resi..."
-                          value={trackingNumberInputs[po.id] || ''}
-                          onChange={(e) => setTrackingNumberInputs(prev => ({...prev, [po.id]: e.target.value}))}
-                          className="px-2 py-1.5 text-[10px] w-24 sm:w-32 focus:outline-none bg-transparent dark:text-white font-numeric"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <button
-                          onClick={(e) => handleSaveTrackingNumber(po.id, e)}
-                          className="px-2.5 py-1.5 bg-[#F1ECE4] hover:bg-[#E9E2D8] dark:bg-neutral-800 dark:hover:bg-neutral-700 text-[#7A6D62] dark:text-neutral-300 font-bold uppercase text-[9px] transition cursor-pointer border-l border-neutral-200 dark:border-neutral-700"
-                        >
-                          Simpan
-                        </button>
-                      </div>
-                      <button
-                        onClick={(e) => handleToggleTaskShipping(po.id, e)}
-                        className="flex items-center justify-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase text-[10px] rounded-md transition cursor-pointer"
-                      >
-                        <Check className="h-3 w-3" />
-                        Telah Dikirim
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-4 pt-4 border-t border-neutral-100 dark:border-neutral-850">
-            <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Riwayat Task Hari ini</h4>
-            {tasksHistoryPOs.length === 0 ? (
-              <p className="text-xs text-neutral-400 py-2">Belum ada riwayat pengiriman baru dalam 24 jam terakhir.</p>
-            ) : (
-              <div className="divide-y divide-neutral-100 dark:divide-neutral-800 border border-[#E9E2D8] dark:border-neutral-800 rounded-xl overflow-hidden">
-                {tasksHistoryPOs.map((po, idx) => (
-                  <div key={`${po.id}-${idx}`} className="p-4 bg-neutral-50/20 dark:bg-neutral-950/5 text-xs flex justify-between items-center opacity-70">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-numeric font-bold line-through text-neutral-400">{po.purchaseCode?.replace(/^#?P(?!O)/, 'PO').replace(/^#/, '')}</span>
-                        <span className="text-neutral-400 font-numeric text-[9px] uppercase">
-                          Shipped at: {po.shippedAt?.seconds ? formatToYYYYMMDD(new Date(po.shippedAt.seconds * 1000)) : 'N/A'}
-                        </span>
-                      </div>
-                      <p className="font-text text-neutral-600 dark:text-neutral-400 truncate max-w-sm">{po.bookName}</p>
-                      {(po.supplierOrderNumber || po.supplierTrackingNumber) && (
-                        <p className="font-text text-[10px] text-neutral-500">
-                          {po.supplierOrderNumber && <span>Order: <span className="font-numeric text-indigo-600 dark:text-indigo-400 font-bold">{po.supplierOrderNumber}</span></span>}
-                          {po.supplierOrderNumber && po.supplierTrackingNumber && <span className="mx-1">;</span>}
-                          {po.supplierTrackingNumber && <span>Resi: <span className="font-numeric text-orange-600 dark:text-orange-400 font-bold">{po.supplierTrackingNumber}</span></span>}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 border border-emerald-100 font-bold uppercase text-[9px]">
-                        Terkirim
-                      </span>
-                      <button
-                        onClick={(e) => handleUntoggleTaskShipping(po.id, e)}
-                        className="px-2.5 py-1 text-xs font-bold text-neutral-600 dark:text-neutral-400 border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-100 dark:hover:bg-neutral-805 transition cursor-pointer"
-                      >
-                        Kembali
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
+      {(
         // Master list main table view
         <>
           {/* PIPELINE & STATUS FILTER CARD */}
@@ -5084,6 +4951,44 @@ export const PurchasesTab = () => {
                           }}
                         />
                       </div>
+                      <div className="col-span-full space-y-1">
+                        <label className="text-[10px] font-bold capitalize text-neutral-500 tracking-wider">Pengiriman Penjual</label>
+                        <div className="flex gap-2 flex-wrap">
+                          {([['all', 'Semua'], ['shipped', 'Sudah dikirim'], ['not_shipped', 'Belum dikirim']] as const).map(([key, label]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => { setSellerShippedFilter(key); setCurrentPage(1); }}
+                              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+                                sellerShippedFilter === key
+                                  ? 'bg-[#eef3fa] border-[#2b5a9e] text-[#2b5a9e]'
+                                  : 'bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:border-neutral-400'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="col-span-full space-y-1">
+                        <label className="text-[10px] font-bold capitalize text-neutral-500 tracking-wider">Sampai di Ekspedisi</label>
+                        <div className="flex gap-2 flex-wrap">
+                          {([['all', 'Semua'], ['arrived', 'Sudah sampai di ekspedisi'], ['not_arrived', 'Belum sampai di ekspedisi']] as const).map(([key, label]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => { setArrivedFilter(key); setCurrentPage(1); }}
+                              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+                                arrivedFilter === key
+                                  ? 'bg-[#eef3fa] border-[#2b5a9e] text-[#2b5a9e]'
+                                  : 'bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:border-neutral-400'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -5118,9 +5023,15 @@ export const PurchasesTab = () => {
                   }}
                   selectedPlatform={selectedPlatformFilter}
                   setSelectedPlatform={setSelectedPlatformFilter}
+                  sellerShippedFilter={sellerShippedFilter}
+                  setSellerShippedFilter={(v) => { setSellerShippedFilter(v); setCurrentPage(1); }}
+                  arrivedFilter={arrivedFilter}
+                  setArrivedFilter={(v) => { setArrivedFilter(v); setCurrentPage(1); }}
                   platforms={platforms}
                   onResetFilters={() => {
                     setSelectedPlatformFilter('');
+                    setSellerShippedFilter('all');
+                    setArrivedFilter('all');
                     setStartDate(null);
                     setEndDate(null);
                     setPoPresetLabel('Semua');
@@ -5191,7 +5102,7 @@ export const PurchasesTab = () => {
               return (
                 <div 
                   key={po.id}
-                  className="bg-white dark:bg-neutral-900 border border-[#E9E2D8] dark:border-neutral-800 rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition duration-200 flex flex-col md:flex-row"
+                  className={`${poShippingAlertCardClass(po) || 'bg-white dark:bg-neutral-900 border-[#E9E2D8] dark:border-neutral-800'} border rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition duration-200 flex flex-col md:flex-row`}
                 >
                   {/* Spine line */}
                   <div className={`w-2 md:w-1.5 shrink-0 ${spineColor}`}></div>
@@ -5249,7 +5160,8 @@ export const PurchasesTab = () => {
                             {po.receipts && po.receipts.length > 0 && (
                               <>
                                 <span className="mx-1.5">·</span>
-                                <span>Diterima {formatToYYYYMMDD(new Date(po.receipts[po.receipts.length - 1].receivedDate?.seconds * 1000))}</span>
+                                {/* Penerimaan sebagian bisa lebih dari sekali: tampilkan tanggal terakhir saja */}
+                                <span>{po.status === 'partial' ? 'Terakhir diterima' : 'Diterima'} {formatToYYYYMMDD(getPoLastReceiptDate(po)!)}</span>
                               </>
                             )}
                           </div>
@@ -5321,6 +5233,8 @@ export const PurchasesTab = () => {
                               </div>
                             )}
                           </div>
+
+                          <SellerShippedChecklist po={po} onChange={handleSetSellerShipped} className="mt-2" />
                         </div>
                       </div>
 
@@ -5823,6 +5737,7 @@ export const PurchasesTab = () => {
                   isStaffValue={isStaffValue}
                   canViewAmount={canViewAmount}
                   onOpenDetail={(targetPo) => setViewingDetailPo(targetPo)}
+                  onSellerShippedChange={handleSetSellerShipped}
                   onEditPO={(targetPo) => handleEditPO(targetPo)}
                   onReceivePO={(targetPo) => handleOpenReceiveGoods(targetPo)}
                   onRevertStatus={(targetPo) => {
@@ -9338,7 +9253,6 @@ export const PurchasesTab = () => {
             <div className="kbi-msheet__body">
               {[
                 { icon: LayoutGrid, label: 'Platform Pembelian', hint: 'Pengaturan sumber platform', run: () => setIsPlatformOpen(true), show: true },
-                { icon: Calendar, label: 'Verifikasi Pengiriman', hint: 'Cek jadwal pengiriman barang', run: () => setActiveTab('tasks'), show: true },
                 { icon: Scan, label: 'Terima Barang', hint: 'Scan untuk terima PO banyak sekaligus', run: () => {
                   setScanSuccessToast(null);
                   setScanErrorToast(null);
