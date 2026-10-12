@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "KBI Shopee Auto 安排出貨",
+  "version": "1.0.0",
+  "description": "Tombol Action di ERP KangenBukuIndo: otomatis 安排出貨 di Shopee Seller Center lalu salin nomor resi ke ERP.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://seller.shopee.tw/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://gen-lang-client-0501656267.web.app/*",
+        "https://gen-lang-client-0501656267.firebaseapp.com/*"
+      ],
+      "js": ["erp-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://seller.shopee.tw/portal/sale/order*"],
+      "js": ["shopee.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
