@@ -13,11 +13,15 @@ export const AUTO_SHIP_LABELS: Record<AutoShipPlatform, { site: string; action: 
 export const isAutoShipExtensionInstalled = (): boolean =>
   document.documentElement.dataset.kbiAutoShipExt === '1';
 
-/** Platform order yang didukung tombol Action, atau null. */
-export const getAutoShipPlatform = (platform: string): AutoShipPlatform | null => {
-  const p = platform.toLowerCase();
-  if (p.includes('shopee')) return 'shopee';
-  if (p.includes('iopen')) return 'iopen';
+/**
+ * Tentukan situs dari format nomor order (bukan dari kolom platform, yang bisa tercatat 7-Eleven dll.):
+ * - Shopee: 14 karakter, diawali tanggal YYMMDD, mis. 260922PH3B4R6P
+ * - iOPEN Mall: 9 angka, mis. 503397944
+ */
+export const getAutoShipPlatform = (orderNo: string): AutoShipPlatform | null => {
+  const no = orderNo.trim().toUpperCase();
+  if (/^\d{6}[A-Z0-9]{8}$/.test(no)) return 'shopee';
+  if (/^\d{9}$/.test(no)) return 'iopen';
   return null;
 };
 

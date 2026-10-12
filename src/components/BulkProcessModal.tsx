@@ -973,7 +973,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                     const isSelected = selectedIds.has(row.orderId);
                     const resolvedPlat = getResolvedPlatform(row.order);
                     const resolvedChan = getResolvedChannel(row.order);
-                    const autoShipPlatform = getAutoShipPlatform(resolvedPlat);
+                    const autoShipPlatform = getAutoShipPlatform(row.orderNo);
 
                     return (
                       <React.Fragment key={row.orderId || i}>
