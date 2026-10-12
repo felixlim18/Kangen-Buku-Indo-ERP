@@ -47,7 +47,8 @@ async function selectAndDownload(step) {
   await sleep(500);
   let awb = await waitFor(awbEnabled, 10000);
   if (!awb) {
-    // Centangan kadang ter-reset saat daftar dirender ulang: centang lagi sekali
+    // Centangan belum diproses (daftar dirender ulang, atau tab latar belakang): tampilkan tab, centang lagi
+    await chrome.runtime.sendMessage({ type: 'NEED_VISIBLE' });
     checkRows();
     awb = await waitFor(awbEnabled, 10000);
   }

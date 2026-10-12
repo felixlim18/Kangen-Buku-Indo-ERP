@@ -19,7 +19,13 @@ async function waitFor(fn, timeoutMs, intervalMs = 300) {
   return null;
 }
 
-const focusTab = () => chrome.runtime.sendMessage({ type: 'PRINT_FOCUS' });
+// Minta tab ini ditampilkan, lalu tunggu gilirannya: kalau tab lain sedang menampilkan dialog cetak,
+// background baru menampilkan tab ini setelah dialog itu selesai. Dialog hanya dibuka di tab yang tampil.
+async function focusTab() {
+  await chrome.runtime.sendMessage({ type: 'PRINT_FOCUS' });
+  await waitFor(() => document.visibilityState === 'visible', 10 * 60000, 300);
+  await sleep(300);
+}
 
 // Shopee /awbprint: PDF label di iframe, dicetak lewat tombol 列印出貨文件
 async function printShopeeAwb() {

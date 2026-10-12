@@ -23,9 +23,10 @@ tekan **Print / Enter** di setiap dialog (extension tidak bisa menekan tombol it
 2. Shopee 7-ELEVEN: sama, tanpa 熱感列印 → halaman 7-11 交貨便服務單 → cetak.
 3. iOPEN Mall: 訂單批次作業 → 出貨中 → centang order modal → 列印超商標籤 → 列印寄件標籤(單排) → cetak.
 
-Ketiganya berjalan **bersamaan**, masing-masing di jendela Chrome sendiri (bertumpuk sedikit bergeser),
-karena Shopee hanya memproses centang di halaman yang tampil. Halaman cetak dibuka di jendela itu (bukan popup),
-jadi tidak perlu mengizinkan pop-up. Jendela label 7-11 & iOPEN tertutup sendiri setelah dialog cetak selesai.
+Ketiganya berjalan **bersamaan** di tab latar belakang di sebelah tab ERP (tidak saling menunggu).
+Tab yang dialog cetaknya siap ditampilkan; kalau ada dialog lain yang masih terbuka, tab berikutnya
+ditampilkan setelah dialog itu selesai. Halaman cetak dibuka di tab itu (bukan popup), jadi tidak perlu
+mengizinkan pop-up. Tab label 7-11 & iOPEN tertutup sendiri setelah dialog cetak selesai.
 
 ## Pasang / update
 1. Buka `chrome://extensions`, aktifkan **Developer mode**.

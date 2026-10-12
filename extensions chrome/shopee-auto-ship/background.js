@@ -1,12 +1,11 @@
 // Antrian job, diproses satu per satu.
 // - ship : ambil nomor resi satu order (Shopee 安排出貨 / iOPEN Mall 取寄件編號) di tab kerja per platform
 // - print: cetak label order dari modal ERP. Shopee 蝦皮店到店, Shopee 7-ELEVEN, dan iOPEN Mall berjalan
-//          bersamaan, masing-masing di jendela sendiri (Shopee hanya memproses centang di halaman yang tampil).
+//          bersamaan, masing-masing di tab sendiri di jendela ERP (tidak saling menunggu).
 const IOPEN_ADMWEB = 'https://sales.iopenmall.tw/050497/admweb/admweb.main.php';
 const SHIP_TIMEOUT_MS = 60000;
 const PRINT_STEP_TIMEOUT_MS = 90000; // sampai dialog cetak muncul
 const PRINT_DIALOG_TIMEOUT_MS = 10 * 60000; // menunggu user menekan Print / Cancel
-const WINDOW_OFFSET = 60; // jendela cetak bertumpuk bergeser, supaya tiap jendela tetap terlihat
 
 const SITES = {
   shopee: { label: 'Shopee Seller Center' },
@@ -50,7 +49,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
   if (msg.type === 'PRINT_LABELS') {
-    queue.push({ kind: 'print', id: msg.id, shopee: msg.shopeeOrders || [], iopen: msg.iopenOrders || [], screen: msg.screen, erpTabId: tabId });
+    queue.push({ kind: 'print', id: msg.id, shopee: msg.shopeeOrders || [], iopen: msg.iopenOrders || [], erpTabId: tabId, erpWindowId: sender.tab.windowId, erpIndex: sender.tab.index });
     runNext();
     return;
   }
@@ -74,15 +73,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   } else if (msg.type === 'STEP_PROGRESS') {
     step.selectedOrders = msg.selectedOrders || [];
     armStepTimer(step, PRINT_STEP_TIMEOUT_MS);
+  } else if (msg.type === 'NEED_VISIBLE') {
+    // Cadangan: halaman perlu tampil sebentar (mis. Shopee belum memproses centang di tab latar belakang)
+    showTab(step.tabId).then(() => setTimeout(() => sendResponse(true), 800), () => sendResponse(false));
+    return true;
   } else if (msg.type === 'PRINT_FOCUS') {
-    // Dialog cetak segera muncul: bawa jendelanya ke depan
+    // Dialog cetak segera muncul: tampilkan tabnya (kecuali sedang ada dialog lain yang terbuka)
     armStepTimer(step, PRINT_DIALOG_TIMEOUT_MS);
-    chrome.windows.update(step.windowId, { focused: true }).then(() => sendResponse(true), () => sendResponse(false));
+    step.dialog = true;
+    const busy = current.steps.some((s) => s !== step && s.dialog && !s.result && s.shown);
+    if (!busy) step.shown = true;
+    (busy ? Promise.resolve() : showTab(step.tabId)).then(() => sendResponse(true), () => sendResponse(false));
     return true;
   } else if (msg.type === 'STEP_DONE') {
     completeStep(step, { ok: msg.ok, printed: msg.printed, error: msg.error });
-    // Jendela label HTML ditutup; jendela PDF Shopee dibiarkan (selesainya dialog PDF tidak pasti)
-    if (msg.closeTab) chrome.windows.remove(step.windowId).catch(() => {});
+    // Tab label HTML ditutup; tab PDF Shopee dibiarkan (selesainya dialog PDF tidak pasti)
+    if (msg.closeTab) chrome.tabs.remove(step.tabId).catch(() => {});
   }
 });
 
@@ -92,11 +98,16 @@ chrome.tabs.onCreated.addListener((tab) => {
   if (step) step.tabId = tab.id;
 });
 
-// Jendela langkah ditutup user sebelum selesai
+// Tab langkah ditutup user sebelum selesai
 chrome.tabs.onRemoved.addListener((tabId) => {
   const step = stepOfTab(tabId);
-  if (step) completeStep(step, { ok: false, error: 'Jendela cetak ditutup sebelum selesai' });
+  if (step) completeStep(step, { ok: false, error: 'Tab cetak ditutup sebelum selesai' });
 });
+
+async function showTab(tabId) {
+  const tab = await chrome.tabs.update(tabId, { active: true });
+  await chrome.windows.update(tab.windowId, { focused: true });
+}
 
 // Pakai tab khusus milik extension, jangan mengambil alih tab yang sedang dipakai user
 async function openWorkerTab(site, url) {
@@ -157,31 +168,18 @@ async function startPrint() {
     return;
   }
 
-  // Jendela bertumpuk sedikit bergeser di area layar ERP
-  const scr = job.screen || { left: 0, top: 0, width: 1440, height: 900 };
-  const n = job.steps.length;
-  const width = Math.max(800, Math.round(scr.width - WINDOW_OFFSET * (n - 1)));
-  const height = Math.max(600, Math.round(scr.height - WINDOW_OFFSET * (n - 1)));
-
+  // Semua langkah jalan bersamaan, tiap langkah di tab latar belakang sendiri di sebelah tab ERP
   await Promise.all(
     job.steps.map(async (step, i) => {
       step.selectedOrders = [];
       armStepTimer(step, PRINT_STEP_TIMEOUT_MS);
       try {
         // Buka kosong dulu, catat id-nya, baru muat halaman (supaya pesan READY pertama sudah dikenali)
-        const win = await chrome.windows.create({
-          url: 'about:blank',
-          left: Math.round(scr.left + WINDOW_OFFSET * i),
-          top: Math.round(scr.top + WINDOW_OFFSET * i),
-          width,
-          height,
-          focused: i === n - 1,
-        });
-        step.windowId = win.id;
-        step.tabId = win.tabs[0].id;
+        const tab = await chrome.tabs.create({ url: 'about:blank', active: false, windowId: job.erpWindowId, index: job.erpIndex + 1 + i });
+        step.tabId = tab.id;
         await chrome.tabs.update(step.tabId, { url: step.url });
       } catch (err) {
-        completeStep(step, { ok: false, error: `Gagal membuka jendela: ${err.message}` });
+        completeStep(step, { ok: false, error: `Gagal membuka tab: ${err.message}` });
       }
     })
   );
@@ -197,12 +195,16 @@ function completeStep(step, { ok, printed, error }) {
   clearTimeout(step.timer);
   step.result = { ok, printed: ok ? printed ?? step.selectedOrders.length : 0, error };
 
-  // Bawa jendela cetak berikutnya yang dialognya masih terbuka ke depan
+  // Tampilkan tab berikutnya yang dialog cetaknya sudah menunggu
   const pending = current.steps.filter((s) => !s.result);
-  if (pending.length > 0) {
-    chrome.windows.update(pending[pending.length - 1].windowId, { focused: true }).catch(() => {});
-  } else {
+  if (pending.length === 0) {
     finishPrint();
+    return;
+  }
+  const waiting = pending.find((s) => s.dialog);
+  if (waiting && step.shown) {
+    waiting.shown = true;
+    showTab(waiting.tabId).catch(() => {});
   }
 }
 
