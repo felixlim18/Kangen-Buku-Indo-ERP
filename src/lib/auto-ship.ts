@@ -4,7 +4,7 @@
 const SHIP_TIMEOUT_MS = 90000;
 // Cetak menunggu user menekan Print di beberapa dialog cetak
 const PRINT_TIMEOUT_MS = 30 * 60000;
-const PROTOCOL_VERSION = 2;
+const PROTOCOL_VERSION = 3;
 
 export type AutoShipPlatform = 'shopee' | 'iopen';
 
@@ -22,6 +22,15 @@ export interface PrintStepResult {
   printed: number;
   error?: string;
 }
+
+/** Bagian cetak label: Shopee 蝦皮店到店, Shopee 7-ELEVEN, iOPEN Mall */
+export type PrintSection = 'shopee-store' | 'shopee-711' | 'iopen';
+
+export const PRINT_SECTION_LABELS: Record<PrintSection, string> = {
+  'shopee-store': 'Shopee 蝦皮店到店',
+  'shopee-711': 'Shopee 7-ELEVEN',
+  iopen: 'iOPEN Mall',
+};
 
 export interface PrintLabelsResult {
   steps: PrintStepResult[];
@@ -77,9 +86,36 @@ export const requestTrackingNumber = async (platform: AutoShipPlatform, orderNo:
   throw new Error(msg.error || `Gagal mengambil nomor resi dari ${site}`);
 };
 
-/** Cetak label (Shopee 蝦皮店到店 & 7-ELEVEN, iOPEN Mall) untuk order-order ini. */
-export const requestPrintLabels = async (shopeeOrders: string[], iopenOrders: string[]): Promise<PrintLabelsResult> => {
-  const msg = await callExtension('PRINT_LABELS', { shopeeOrders, iopenOrders }, PRINT_TIMEOUT_MS, 'Timeout menunggu proses cetak');
+/**
+ * Bagian cetak untuk satu order, atau null kalau labelnya tidak dicetak lewat extension.
+ * iOPEN dari nomor order; Shopee dari nomor resi: TW…/SPX… = 蝦皮店到店, 1 huruf + 11 angka = 7-ELEVEN
+ * (全家, 萊爾富, dll. tidak dicetak).
+ */
+export const getPrintSection = (orderNo: string, resi: string): PrintSection | null => {
+  const cleanResi = resi.replace(/[\s\-_.]+/g, '').toUpperCase();
+  if (!cleanResi) return null;
+  const platform = getAutoShipPlatform(orderNo);
+  if (platform === 'iopen') return 'iopen';
+  if (platform !== 'shopee') return null;
+  if (/^(TW|SPX)/.test(cleanResi)) return 'shopee-store';
+  if (/^[A-Z]\d{11}$/.test(cleanResi)) return 'shopee-711';
+  return null;
+};
+
+/** Cetak label untuk order-order ini; tiap bagian berjalan bersamaan di tab sendiri. */
+export const requestPrintLabels = async (orders: { orderNo: string; section: PrintSection }[]): Promise<PrintLabelsResult> => {
+  const sections: Record<PrintSection, string[]> = { 'shopee-store': [], 'shopee-711': [], iopen: [] };
+  for (const o of orders) sections[o.section].push(o.orderNo.trim().toUpperCase());
+  const msg = await callExtension('PRINT_LABELS', { sections }, PRINT_TIMEOUT_MS, 'Timeout menunggu proses cetak');
   if (!msg.ok) throw new Error(msg.error || 'Gagal mencetak label');
   return { steps: msg.results || [], missing: msg.missing || [] };
+};
+
+/** Ringkasan hasil cetak untuk ditampilkan ke user. */
+export const formatPrintResult = ({ steps, missing }: PrintLabelsResult): { text: string; ok: boolean } => {
+  const parts = steps.map(r => (r.ok ? `${r.label}: ${r.printed}` : `${r.label}: gagal (${r.error})`));
+  return {
+    text: (parts.length ? parts.join(' · ') : 'Tidak ada label untuk dicetak') + (missing.length ? ` · tidak ditemukan: ${missing.join(', ')}` : ''),
+    ok: steps.every(r => r.ok) && missing.length === 0,
+  };
 };

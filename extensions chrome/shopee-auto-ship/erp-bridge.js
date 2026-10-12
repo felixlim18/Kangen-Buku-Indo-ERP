@@ -1,5 +1,5 @@
 // Jembatan antara halaman ERP (window.postMessage) dan service worker extension.
-document.documentElement.dataset.kbiAutoShipExt = '2'; // versi protokol: 2 = AUTO_SHIP + PRINT_LABELS
+document.documentElement.dataset.kbiAutoShipExt = '3'; // versi protokol: 3 = PRINT_LABELS per bagian
 
 const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS'];
 

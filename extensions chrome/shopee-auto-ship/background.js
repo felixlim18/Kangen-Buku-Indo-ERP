@@ -49,7 +49,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
   if (msg.type === 'PRINT_LABELS') {
-    queue.push({ kind: 'print', id: msg.id, shopee: msg.shopeeOrders || [], iopen: msg.iopenOrders || [], erpTabId: tabId, erpWindowId: sender.tab.windowId, erpIndex: sender.tab.index });
+    queue.push({ kind: 'print', id: msg.id, sections: msg.sections || {}, erpTabId: tabId, erpWindowId: sender.tab.windowId, erpIndex: sender.tab.index });
     runNext();
     return;
   }
@@ -158,10 +158,12 @@ async function runNext() {
 
 async function startPrint() {
   const job = current;
+  // ERP sudah mengelompokkan order per bagian (Shopee per 物流方式 dari nomor resi)
+  const sec = job.sections;
   job.steps = [
-    { site: 'shopee', method: '30015', label: 'Shopee 蝦皮店到店', orders: job.shopee, url: shopeeMassUrl('30015') },
-    { site: 'shopee', method: '7', label: 'Shopee 7-ELEVEN', orders: job.shopee, url: shopeeMassUrl('7') },
-    { site: 'iopen', label: 'iOPEN Mall', orders: job.iopen, url: IOPEN_BATCH_URL },
+    { site: 'shopee', method: '30015', label: 'Shopee 蝦皮店到店', orders: sec['shopee-store'] || [], url: shopeeMassUrl('30015') },
+    { site: 'shopee', method: '7', label: 'Shopee 7-ELEVEN', orders: sec['shopee-711'] || [], url: shopeeMassUrl('7') },
+    { site: 'iopen', label: 'iOPEN Mall', orders: sec.iopen || [], url: IOPEN_BATCH_URL },
   ].filter((s) => s.orders.length > 0);
   if (job.steps.length === 0) {
     finishPrint();
@@ -221,17 +223,9 @@ function finishPrint() {
   });
 }
 
-// Order yang tidak ketemu di langkah mana pun untuk situsnya (Shopee punya 2 langkah: 店到店 & 7-11).
-// Situs yang salah satu langkahnya gagal tidak dihitung, karena belum tentu ordernya memang tidak ada.
+// Order yang tidak ketemu di halaman cetak bagiannya (langkah yang gagal tidak dihitung)
 function missingOrders(steps) {
-  const missing = [];
-  for (const site of new Set(steps.map((s) => s.site))) {
-    const siteSteps = steps.filter((s) => s.site === site);
-    if (siteSteps.some((s) => !s.result?.ok)) continue;
-    const found = new Set(siteSteps.flatMap((s) => s.selectedOrders));
-    missing.push(...siteSteps[0].orders.filter((o) => !found.has(o)));
-  }
-  return missing;
+  return steps.filter((s) => s.result?.ok).flatMap((s) => s.orders.filter((o) => !s.selectedOrders.includes(o)));
 }
 
 function finish(result) {

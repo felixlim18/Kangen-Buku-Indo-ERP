@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Eye, Undo2, Send, Copy, Save, Loader2, Check, ArrowUpDown, Zap, Printer } from 'lucide-react';
+import { X, Eye, Undo2, Send, Copy, Save, Loader2, Check, ArrowUpDown, Zap, Printer, ChevronDown } from 'lucide-react';
 import { SalesOrder } from '../types';
 import { confirmSalesOrderTransaction, isUnpaidTransferOrder } from '../lib/db-helpers';
 import { doc, updateDoc, Timestamp, getDoc, setDoc } from 'firebase/firestore';
@@ -10,7 +10,7 @@ import { useSidebar } from '../lib/sidebar-context';
 import { ImagePreviewModal } from './ui/ImagePreviewModal';
 import { useModalEsc } from '../lib/use-modal-esc';
 import { getEffectiveOrderLogistics, sanitizeResiNumber } from '../lib/sales-logistics-utils';
-import { AUTO_SHIP_LABELS, getAutoShipPlatform, requestPrintLabels, requestTrackingNumber, type AutoShipPlatform } from '../lib/auto-ship';
+import { AUTO_SHIP_LABELS, PRINT_SECTION_LABELS, formatPrintResult, getAutoShipPlatform, getPrintSection, requestPrintLabels, requestTrackingNumber, type AutoShipPlatform, type PrintSection } from '../lib/auto-ship';
 
 interface BulkProcessModalProps {
   isOpen: boolean;
@@ -256,7 +256,9 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   // Order yang sedang diproses otomatis di Shopee / iOPEN Mall (tombol Action)
   const [autoShipIds, setAutoShipIds] = useState<Set<string>>(new Set());
   const [autoShipAllProgress, setAutoShipAllProgress] = useState<{ done: number; total: number } | null>(null);
-  const [isPrintingLabels, setIsPrintingLabels] = useState(false);
+  // Cetak label yang sedang berjalan: semua, satu bagian, atau satu order (orderId)
+  const [printingScope, setPrintingScope] = useState<string | null>(null);
+  const [isPrintMenuOpen, setIsPrintMenuOpen] = useState(false);
   const [printMessage, setPrintMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [hoverPreview, setHoverPreview] = useState<{ url: string, x: number, y: number, width: number, align?: 'center' | 'right' } | null>(null);
 
@@ -667,25 +669,28 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     setAutoShipAllProgress(null);
   };
 
-  // Tombol "Print Resi": cetak label lewat extension untuk order di modal ini yang sudah punya resi
-  // (Shopee 蝦皮店到店 & 7-ELEVEN di 批次出貨, iOPEN Mall di 訂單批次作業)
-  const printTargets = rows.filter(r => r.status !== 'success' && r.resi.trim() && getAutoShipPlatform(r.orderNo));
-  const handlePrintLabels = async () => {
-    const shopeeOrders = printTargets.filter(r => getAutoShipPlatform(r.orderNo) === 'shopee').map(r => r.orderNo.trim().toUpperCase());
-    const iopenOrders = printTargets.filter(r => getAutoShipPlatform(r.orderNo) === 'iopen').map(r => r.orderNo.trim());
-    setIsPrintingLabels(true);
+  // "Print Resi": cetak label lewat extension untuk order yang sudah punya resi, semua sekaligus,
+  // per bagian (Shopee 蝦皮店到店 / Shopee 7-ELEVEN / iOPEN Mall), atau per baris
+  const printTargets = rows
+    .filter(r => r.status !== 'success')
+    .map(r => ({ row: r, section: getPrintSection(r.orderNo, r.resi) }))
+    .filter((t): t is { row: RowData; section: PrintSection } => t.section !== null);
+  const printCount = (section?: PrintSection) => printTargets.filter(t => !section || t.section === section).length;
+  const isPrintingLabels = printingScope !== null;
+
+  const handlePrintLabels = async (scope: { section?: PrintSection; orderId?: string } = {}) => {
+    const targets = printTargets.filter(t => (!scope.section || t.section === scope.section) && (!scope.orderId || t.row.orderId === scope.orderId));
+    if (targets.length === 0) return;
+    setIsPrintMenuOpen(false);
+    setPrintingScope(scope.orderId || scope.section || 'all');
     setPrintMessage(null);
     try {
-      const { steps, missing } = await requestPrintLabels(shopeeOrders, iopenOrders);
-      const parts = steps.map(r => (r.ok ? `${r.label}: ${r.printed}` : `${r.label}: gagal (${r.error})`));
-      setPrintMessage({
-        text: (parts.length ? parts.join(' · ') : 'Tidak ada label untuk dicetak') + (missing.length ? ` · tidak ditemukan: ${missing.join(', ')}` : ''),
-        ok: steps.every(r => r.ok),
-      });
+      const result = await requestPrintLabels(targets.map(t => ({ orderNo: t.row.orderNo, section: t.section })));
+      setPrintMessage(formatPrintResult(result));
     } catch (err: any) {
       setPrintMessage({ text: err.message || 'Gagal mencetak label', ok: false });
     } finally {
-      setIsPrintingLabels(false);
+      setPrintingScope(null);
     }
   };
 
@@ -947,16 +952,43 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                   {printMessage.text}
                 </span>
               )}
-              <button
-                type="button"
-                onClick={handlePrintLabels}
-                disabled={isPrintingLabels || !!autoShipAllProgress || printTargets.length === 0}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-[#f1f6fc] border border-[#173a6b] text-[#173a6b] text-[12.5px] font-['Space_Grotesk'] font-semibold rounded-lg shadow-xs transition-all duration-200 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
-                title="Cetak label Shopee (蝦皮店到店 & 7-ELEVEN) dan iOPEN Mall untuk order yang Nomor Resi-nya sudah terisi. Tekan Print/Enter di setiap dialog cetak."
-              >
-                {isPrintingLabels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
-                {isPrintingLabels ? 'Mencetak...' : `Print Resi (${printTargets.length})`}
-              </button>
+              <div className="relative flex">
+                <button
+                  type="button"
+                  onClick={() => handlePrintLabels()}
+                  disabled={isPrintingLabels || !!autoShipAllProgress || printCount() === 0}
+                  className="inline-flex items-center gap-1.5 pl-3.5 pr-2.5 py-1.5 bg-white hover:bg-[#f1f6fc] border border-[#173a6b] text-[#173a6b] text-[12.5px] font-['Space_Grotesk'] font-semibold rounded-l-lg shadow-xs transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Cetak semua label Shopee (蝦皮店到店 & 7-ELEVEN) dan iOPEN Mall untuk order yang Nomor Resi-nya sudah terisi. Tekan Print/Enter di setiap dialog cetak."
+                >
+                  {isPrintingLabels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                  {isPrintingLabels ? 'Mencetak...' : `Print Resi (${printCount()})`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrintMenuOpen(o => !o)}
+                  disabled={isPrintingLabels || !!autoShipAllProgress || printCount() === 0}
+                  className="inline-flex items-center px-1.5 py-1.5 bg-white hover:bg-[#f1f6fc] border border-l-0 border-[#173a6b] text-[#173a6b] rounded-r-lg shadow-xs transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Cetak per bagian"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+                {isPrintMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-30 w-56 bg-white border border-[#dde4f0] rounded-lg shadow-lg py-1 font-['Space_Grotesk']">
+                    {(Object.keys(PRINT_SECTION_LABELS) as PrintSection[]).map(section => (
+                      <button
+                        key={section}
+                        type="button"
+                        onClick={() => handlePrintLabels({ section })}
+                        disabled={printCount(section) === 0}
+                        className="w-full flex items-center justify-between px-3 py-2 text-[12.5px] font-semibold text-[#173a6b] hover:bg-[#f1f6fc] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        <span>Print {PRINT_SECTION_LABELS[section]}</span>
+                        <span className="text-[#5f6b7d]">{printCount(section)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={handleAutoShipAll}
@@ -988,11 +1020,11 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
               ref={gridRef}
               onPaste={handlePaste}
             >
-              <div className="min-w-[1230px]">
+              <div className="min-w-[1260px]">
                 {/* Sticky Header: Perfectly matches row columns */}
                 <div 
                   className="sticky top-0 z-20 grid gap-0 bg-[#f1f6fc] border-b border-[#dde4f0] shadow-xs"
-                  style={{ gridTemplateColumns: '48px 190px 300px 170px minmax(280px, 1fr) 80px minmax(120px, 200px) 180px' }}
+                  style={{ gridTemplateColumns: '48px 190px 300px 170px minmax(280px, 1fr) 80px minmax(120px, 200px) 210px' }}
                 >
                   {/* Master Checkbox */}
                   <div className="flex items-center justify-center p-2.5 border-r border-[#dde4f0]">
@@ -1039,6 +1071,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                     const resolvedPlat = getResolvedPlatform(row.order);
                     const resolvedChan = getResolvedChannel(row.order);
                     const autoShipPlatform = getAutoShipPlatform(row.orderNo);
+                    const printSection = row.status !== 'success' ? getPrintSection(row.orderNo, row.resi) : null;
 
                     return (
                       <React.Fragment key={row.orderId || i}>
@@ -1046,7 +1079,7 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                           className={`grid gap-0 border-b border-[#dde4f0] transition-colors items-stretch
                             ${row.status === 'success' ? 'bg-[#e5f5f0] shadow-[inset_3px_0_0_#12876b]' : row.status === 'error' ? 'bg-[#fbebea] shadow-[inset_3px_0_0_#b8433a]' : isSelected ? 'bg-[#edf4fc]' : i % 2 !== 0 ? 'bg-[#f8fafc]' : 'bg-white'}
                           `}
-                          style={{ gridTemplateColumns: '48px 190px 300px 170px minmax(280px, 1fr) 80px minmax(120px, 200px) 180px' }}
+                          style={{ gridTemplateColumns: '48px 190px 300px 170px minmax(280px, 1fr) 80px minmax(120px, 200px) 210px' }}
                         >
                           {/* Checkbox */}
                           <div className="flex items-center justify-center p-2 border-r border-[#dde4f0]">
@@ -1299,6 +1332,16 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
                               >
                                 {autoShipIds.has(row.orderId) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
                                 Action
+                              </button>
+                            )}
+                            {printSection && (
+                              <button
+                                onClick={() => handlePrintLabels({ orderId: row.orderId })}
+                                disabled={isPrintingLabels}
+                                className="p-1.5 text-[#173a6b] hover:bg-[#eef3fa] rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                title={`Print resi (${PRINT_SECTION_LABELS[printSection]})`}
+                              >
+                                {printingScope === row.orderId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
                               </button>
                             )}
                             <button

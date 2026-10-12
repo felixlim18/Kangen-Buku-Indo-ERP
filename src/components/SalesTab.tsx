@@ -100,6 +100,7 @@ import {
 import QRCode from 'qrcode';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { PackingChecklist } from './PackingChecklist';
+import { formatPrintResult, getPrintSection, requestPrintLabels } from '../lib/auto-ship';
 
 const DEFAULT_ORDER_TYPES = ['Meta Ads', 'Google Ads', 'TikTok Ads', 'Shopee Ads', 'Tokopedia Ads'];
 const DEFAULT_CHANNELS_WITH_COLOR = [
@@ -688,6 +689,7 @@ export const SalesTab: React.FC = () => {
 
   // QR Code 2D Resi Modal state
   const [qrCodeModalOrder, setQrCodeModalOrder] = useState<SalesOrder | null>(null);
+  const [printingResiOrderId, setPrintingResiOrderId] = useState<string | null>(null);
 
   // Esc key listeners for modals
   useModalEsc(isChecklistOpen, () => setIsChecklistOpen(false));
@@ -2852,6 +2854,32 @@ export const SalesTab: React.FC = () => {
       window.alert(msg);
     } catch (e) {
       console.warn("window.alert blocked:", msg);
+    }
+  };
+
+  // Tombol QR resi: order iOPEN Mall / Shopee 蝦皮店到店 / Shopee 7-ELEVEN langsung cetak resi lewat
+  // extension KBI Auto 出貨; order lain tetap membuka QR Code nomor resi
+  const getOrderResi = (ord: SalesOrder) => (ord.shipment?.shippingNumber || (ord as any).shippingNumber || '').trim();
+  const getOrderPrintSection = (ord: SalesOrder) => getPrintSection(ord.orderNumber || '', getOrderResi(ord));
+  const handleQrOrPrintResi = async (ord: SalesOrder) => {
+    if (!getOrderResi(ord)) {
+      safeAlert('Nomor resi belum tersedia untuk orderan ini.');
+      return;
+    }
+    const section = getOrderPrintSection(ord);
+    if (!section) {
+      setQrCodeModalOrder(ord);
+      return;
+    }
+    setPrintingResiOrderId(ord.id);
+    try {
+      const result = await requestPrintLabels([{ orderNo: ord.orderNumber || '', section }]);
+      const { text, ok } = formatPrintResult(result);
+      if (!ok) safeAlert(text);
+    } catch (err: any) {
+      safeAlert(err.message || 'Gagal mencetak resi');
+    } finally {
+      setPrintingResiOrderId(null);
     }
   };
 
@@ -5658,14 +5686,7 @@ export const SalesTab: React.FC = () => {
               onPrintInvoice={(ord) => setPrintInvoiceOrder(ord)}
               onTogglePin={(ord) => handleTogglePin(ord)}
               onOpenRecommendations={(reco) => setRecoOrderData(reco)}
-              onOpenQrCode={(ord) => {
-                const resi = (ord.shipment?.shippingNumber || (ord as any).shippingNumber || '').trim();
-                if (!resi) {
-                  safeAlert('Nomor resi belum tersedia untuk orderan ini.');
-                  return;
-                }
-                setQrCodeModalOrder(ord);
-              }}
+              onOpenQrCode={(ord) => handleQrOrPrintResi(ord)}
               onDeleteOrder={(ord) => handleDeleteOrder(ord)}
               onRevertStatus={(ord) => {
                 let msg = '';
@@ -6109,26 +6130,23 @@ export const SalesTab: React.FC = () => {
                                     <Edit className="h-3.5 w-3.5" />
                                   </button>
                                 ) : (order.status === 'packed' || order.status === 'shipped' || order.status === 'confirmed') ? (() => {
-                                  const resi = (order.shipment?.shippingNumber || (order as any).shippingNumber || '').trim();
-                                  const hasResi = !!resi;
+                                  const hasResi = !!getOrderResi(order);
+                                  const canPrintResi = hasResi && !!getOrderPrintSection(order);
                                   return (
                                     <button
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        if (!hasResi) {
-                                          safeAlert('Nomor resi belum tersedia untuk orderan ini.');
-                                          return;
-                                        }
-                                        setQrCodeModalOrder(order);
+                                        handleQrOrPrintResi(order);
                                       }}
+                                      disabled={printingResiOrderId === order.id}
                                       className={`w-7 h-7 rounded-[7px] transition flex items-center justify-center ${!hasResi
                                         ? 'opacity-35 cursor-not-allowed text-[#9ca3af] bg-[#f3f4f6] dark:bg-neutral-800/60'
                                         : 'text-[#2b5a9e] dark:text-brand-400 hover:text-[#1e4275] hover:bg-[#eaf1fb] dark:hover:bg-neutral-800 cursor-pointer'
                                         }`}
-                                      title={hasResi ? "Lihat QR Code Resi" : "Nomor resi belum tersedia"}
+                                      title={!hasResi ? "Nomor resi belum tersedia" : canPrintResi ? "Print Resi (label pengiriman)" : "Lihat QR Code Resi"}
                                     >
-                                      <QrCode className="h-3.5 w-3.5" />
+                                      {printingResiOrderId === order.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}
                                     </button>
                                   );
                                 })() : (
