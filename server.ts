@@ -72,7 +72,7 @@ async function startServer() {
       },
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR !== 'true',
+        hmr: process.env.DISABLE_HMR === 'true' ? false : { port: Number(process.env.HMR_PORT) || 24678 },
         watch: process.env.DISABLE_HMR === 'true' ? null : {},
       },
       appType: 'spa',
