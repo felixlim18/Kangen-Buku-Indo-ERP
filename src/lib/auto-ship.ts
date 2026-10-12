@@ -79,7 +79,10 @@ export const requestTrackingNumber = async (platform: AutoShipPlatform, orderNo:
 
 /** Cetak label (Shopee 蝦皮店到店 & 7-ELEVEN, iOPEN Mall) untuk order-order ini. */
 export const requestPrintLabels = async (shopeeOrders: string[], iopenOrders: string[]): Promise<PrintLabelsResult> => {
-  const msg = await callExtension('PRINT_LABELS', { shopeeOrders, iopenOrders }, PRINT_TIMEOUT_MS, 'Timeout menunggu proses cetak');
+  // Area layar untuk menata jendela cetak (tiap platform di jendelanya sendiri, berjalan bersamaan)
+  const scr = window.screen as Screen & { availLeft?: number; availTop?: number };
+  const screen = { left: scr.availLeft ?? 0, top: scr.availTop ?? 0, width: scr.availWidth, height: scr.availHeight };
+  const msg = await callExtension('PRINT_LABELS', { shopeeOrders, iopenOrders, screen }, PRINT_TIMEOUT_MS, 'Timeout menunggu proses cetak');
   if (!msg.ok) throw new Error(msg.error || 'Gagal mencetak label');
   return { steps: msg.results || [], missing: msg.missing || [] };
 };
