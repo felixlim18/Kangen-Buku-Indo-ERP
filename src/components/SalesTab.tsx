@@ -39,7 +39,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { Book, SalesOrder, SalesOrderItem, InventoryRecord, OrderTypeConfig, ChannelConfig, PlatformOrderConfig, LogisticsConfig, BusinessPartner } from '../types';
-import { confirmSalesOrderTransaction, packSalesOrderTransaction, generateOrderCode, completeSalesOrderTransaction, reverseSalesOrderTransaction, revertCompletedSalesOrderToShipped, splitSalesOrderTransaction, processMarketplaceRefundTransaction, revertDiambilToReturned } from '../lib/db-helpers';
+import { confirmSalesOrderTransaction, packSalesOrderTransaction, isUnpaidTransferOrder, generateOrderCode, completeSalesOrderTransaction, reverseSalesOrderTransaction, revertCompletedSalesOrderToShipped, splitSalesOrderTransaction, processMarketplaceRefundTransaction, revertDiambilToReturned } from '../lib/db-helpers';
 import { formatNTD, formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
 import { getCurrentKontrolStokForBook, getPhysicalOnHandStockForBook } from "../lib/inventory-utils";
 import { useAuth } from '../lib/auth-context';
@@ -2859,8 +2859,14 @@ export const SalesTab: React.FC = () => {
     return Promise.resolve(true);
   };
 
+  const UNPAID_TRANSFER_KEMAS_MSG = 'Order Transfer ini belum lunas. Cek dan catat dulu di "Penerimaan Transfer" sebelum dikemas.';
+
   const handleConfirmKemas = async () => {
     if (!confirmingKemasOrder) return;
+    if (isUnpaidTransferOrder(confirmingKemasOrder)) {
+      safeAlert(UNPAID_TRANSFER_KEMAS_MSG);
+      return;
+    }
     if (isShippingDateFuture(confirmingKemasOrder.estimatedShippingDate)) {
       safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${confirmingKemasOrder.estimatedShippingDate?.replace(/-/g, '/')}`);
       setConfirmingKemasOrder(null);
@@ -5686,6 +5692,10 @@ export const SalesTab: React.FC = () => {
                   safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${ord.estimatedShippingDate?.replace(/-/g, '/')}`);
                   return;
                 }
+                if (isUnpaidTransferOrder(ord)) {
+                  safeAlert(UNPAID_TRANSFER_KEMAS_MSG);
+                  return;
+                }
                 if (ord.perluKonfirmasiSebelumKirim) {
                   setConfirmingCustomerPreKemasOrder(ord);
                 } else {
@@ -6239,6 +6249,8 @@ export const SalesTab: React.FC = () => {
                           {/* Main Status Action Button */}
                           {(order.status === 'draft' || !order.status) && isStaffValue ? (() => {
                             const isEstShippingInFuture = isShippingDateFuture(order.estimatedShippingDate);
+                            const isTransferUnpaid = isUnpaidTransferOrder(order);
+                            const isKemasBlocked = isEstShippingInFuture || isTransferUnpaid;
                             return (
                               <button
                                 type="button"
@@ -6248,14 +6260,18 @@ export const SalesTab: React.FC = () => {
                                     safeAlert(`Belum Waktunya Untuk Dikemas, Request Customer Adalah ${order.estimatedShippingDate?.replace(/-/g, '/')}`);
                                     return;
                                   }
+                                  if (isTransferUnpaid) {
+                                    safeAlert(UNPAID_TRANSFER_KEMAS_MSG);
+                                    return;
+                                  }
                                   if (order.perluKonfirmasiSebelumKirim) {
                                     setConfirmingCustomerPreKemasOrder(order);
                                   } else {
                                     setConfirmingKemasOrder(order);
                                   }
                                 }}
-                                title={isEstShippingInFuture ? `Belum waktunya dikemas, request customer: ${order.estimatedShippingDate?.replace(/-/g, '/')}` : undefined}
-                                className={`px-3.5 py-1.5 rounded-[7px] font-['Lexend'] font-semibold text-[12px] transition shadow-2xs select-none ml-1 ${isEstShippingInFuture
+                                title={isEstShippingInFuture ? `Belum waktunya dikemas, request customer: ${order.estimatedShippingDate?.replace(/-/g, '/')}` : isTransferUnpaid ? UNPAID_TRANSFER_KEMAS_MSG : undefined}
+                                className={`px-3.5 py-1.5 rounded-[7px] font-['Lexend'] font-semibold text-[12px] transition shadow-2xs select-none ml-1 ${isKemasBlocked
                                   ? 'bg-neutral-200 hover:bg-neutral-300 text-neutral-400 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:text-neutral-500 cursor-not-allowed border border-neutral-300 dark:border-neutral-700'
                                   : 'bg-[#6366f1] hover:bg-[#4f46e5] text-white cursor-pointer'
                                   }`}
@@ -8601,6 +8617,11 @@ export const SalesTab: React.FC = () => {
                     setConfirmingCustomerPreKemasOrder(null);
                     return;
                   }
+                  if (ord && isUnpaidTransferOrder(ord)) {
+                    safeAlert(UNPAID_TRANSFER_KEMAS_MSG);
+                    setConfirmingCustomerPreKemasOrder(null);
+                    return;
+                  }
                   setConfirmingCustomerPreKemasOrder(null);
                   setConfirmingKemasOrder(ord);
                 }}
@@ -8616,15 +8637,38 @@ export const SalesTab: React.FC = () => {
 
       {/* ================= MODAL: Konfirmasi Kemas Orderan ================= */}
       {confirmingKemasOrder && (() => {
-        const insufficientKemasItems: { name: string; stock: number; needed: number }[] = [];
-        for (const item of confirmingKemasOrder.items || []) {
-          if (item.markedTertinggal || item.markedRefund) continue;
-          const available = getPhysicalOnHandStockForBook(item.bookId, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords);
-          if (available < item.qty) {
-            insufficientKemasItems.push({ name: item.bookName, stock: available, needed: item.qty });
-          }
+        const kemasItems = (confirmingKemasOrder.items || []).filter(it => !it.markedTertinggal && !it.markedRefund);
+        const kemasBookIds = new Set(kemasItems.map(it => it.bookId));
+
+        // Stok digudang per buku (rumus sama dengan menu Stok & Value), sekali per buku.
+        const stockByBook = new Map<string, { name: string; stock: number; needed: number }>();
+        for (const item of kemasItems) {
+          const prev = stockByBook.get(item.bookId);
+          if (prev) { prev.needed += item.qty; continue; }
+          stockByBook.set(item.bookId, {
+            name: item.bookName,
+            stock: getPhysicalOnHandStockForBook(item.bookId, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords),
+            needed: item.qty
+          });
         }
+        const insufficientKemasItems = [...stockByBook.values()].filter(b => b.stock < b.needed);
         const hasStockError = insufficientKemasItems.length > 0;
+
+        // SO Pending yang tanggalnya lebih dulu dan memesan buku yang sama: ikut
+        // berebut stok yang sama, jadi ditampilkan supaya bisa dicek siapa didahulukan.
+        const kemasOrderMs = getOrderDateMs(confirmingKemasOrder);
+        const olderPendingOrders = orders
+          .filter(o =>
+            o.id !== confirmingKemasOrder.id &&
+            (o.status === 'draft' || !o.status) && !o.isDraft &&
+            getOrderDateMs(o) < kemasOrderMs &&
+            (o.items || []).some(it => kemasBookIds.has(it.bookId) && !it.markedTertinggal && !it.markedRefund)
+          )
+          .sort((a, b) => getOrderDateMs(a) - getOrderDateMs(b));
+        const fmtYmd = (ms: number) => {
+          const d = new Date(ms);
+          return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+        };
 
         return createPortal(
           <div
@@ -8635,70 +8679,158 @@ export const SalesTab: React.FC = () => {
             }}
             className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
           >
-            <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-[90%] p-5 space-y-4 animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
-              <div className="h-12 w-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
-                <Package className="h-6 w-6" />
-              </div>
-
-              <div className="text-center">
-                <h3 className="text-base font-bold text-neutral-900 dark:text-white">Tandai Sudah Dikemas?</h3>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                  Konfirmasi bahwa barang untuk orderan <strong className="text-neutral-800 dark:text-neutral-200">{confirmingKemasOrder.orderCode}</strong> ({confirmingKemasOrder.customerName || 'Tanpa Nama'}) telah selesai dikemas.
-                </p>
-              </div>
-
-              {hasStockError && (
-                <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-800 dark:text-amber-200 text-left space-y-1">
-                  <div className="font-semibold flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                    <span>Stok Gudang Tidak Mencukupi:</span>
-                  </div>
-                  <ul className="list-disc list-inside space-y-0.5 text-[11px] pl-1 font-medium">
-                    {insufficientKemasItems.map((it, idx) => (
-                      <li key={idx}>
-                        {it.name}: Stok <strong>{it.stock}</strong>, Dibutuhkan <strong>{it.needed}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-[10px] text-amber-600 dark:text-amber-400 pt-0.5">
-                    Proses pengemasan tidak dapat dilanjutkan sebelum stok gudang tersedia.
+            <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl w-[95%] max-w-4xl h-[85vh] flex flex-col overflow-hidden animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center gap-3 px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+                <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <Package className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-neutral-900 dark:text-white">Tandai Sudah Dikemas?</h3>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+                    <strong className="text-neutral-800 dark:text-neutral-200">{confirmingKemasOrder.orderCode}</strong>
+                    {' · '}{fmtYmd(kemasOrderMs)}{' · '}{confirmingKemasOrder.customerName || 'Tanpa Nama'}
                   </p>
                 </div>
-              )}
-
-              <div className="flex items-center justify-center gap-2.5 pt-2">
                 <button
                   type="button"
                   disabled={isKemasSubmitting}
                   onClick={() => setConfirmingKemasOrder(null)}
-                  className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition cursor-pointer"
+                  className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition cursor-pointer"
+                  title="Tutup"
                 >
-                  Batal
+                  <X className="h-4 w-4" />
                 </button>
-                {(confirmingKemasOrder.items?.length || 0) > 1 && (
+              </div>
+
+              {/* Body: dua kolom, masing-masing scroll sendiri (atas-bawah di HP) */}
+              <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] grid-rows-[minmax(0,1fr)_minmax(0,1fr)] md:grid-rows-1">
+                {/* Kiri: buku yang dikemas */}
+                <div className="min-h-0 overflow-y-auto p-4 space-y-2 bg-neutral-50 dark:bg-neutral-950/40 border-b md:border-b-0 md:border-r border-neutral-200 dark:border-neutral-800">
+                  <div className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">Buku yang dikemas ({kemasItems.length})</div>
+                  {kemasItems.map((it, idx) => (
+                    <div key={`${it.bookId}-${idx}`} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                      <span className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">{it.bookName}</span>
+                      <span className="text-xs text-neutral-500 shrink-0">x{it.qty}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Kanan: stok digudang + SO pending lebih lama */}
+                <div className="min-h-0 overflow-y-auto p-4 space-y-2">
+                  <div className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">Stok Digudang</div>
+                  <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-2 space-y-0.5">
+                    {[...stockByBook.values()].map((b, idx) => (
+                      <div key={idx} className="flex justify-between gap-3 text-xs">
+                        <span className="text-neutral-700 dark:text-neutral-200">{b.name}</span>
+                        <span className={`font-semibold shrink-0 ${b.stock < b.needed ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-900 dark:text-neutral-100'}`}>{b.stock}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 pt-2">SO Pending lebih lama yang memesan buku ini ({olderPendingOrders.length})</div>
+                  {olderPendingOrders.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-neutral-200 dark:border-neutral-800 px-3 py-4 text-center text-xs text-neutral-400">
+                      Tidak ada SO Pending lebih lama untuk buku-buku ini.
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 divide-y divide-neutral-200 dark:divide-neutral-800">
+                      {olderPendingOrders.map(o => (
+                        <div key={o.id} className="px-3 py-2.5">
+                          <div className="flex justify-between items-center gap-3 text-xs">
+                            <span className="flex items-center gap-2 min-w-0">
+                              <span className="font-semibold font-mono text-neutral-800 dark:text-neutral-100">{o.orderCode}</span>
+                              {(() => {
+                                const channelName = o.platformChannel || '-';
+                                const channelObj = resolvedChannels.find(c => (c.name || '').toLowerCase() === channelName.toLowerCase());
+                                const channelColor = getChannelColor(channelName, channelObj);
+                                return (
+                                  <span
+                                    className="text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded border truncate max-w-[110px]"
+                                    style={{
+                                      color: channelColor,
+                                      backgroundColor: channelColor.startsWith('#') ? `${channelColor}18` : '#3B82F618',
+                                      borderColor: channelColor.startsWith('#') ? `${channelColor}33` : '#3B82F633'
+                                    }}
+                                    title={channelName}
+                                  >
+                                    {channelName}
+                                  </span>
+                                );
+                              })()}
+                            </span>
+                            <span className="text-neutral-500 shrink-0">{fmtYmd(getOrderDateMs(o))}</span>
+                          </div>
+                          <div className="text-xs text-neutral-500">
+                            {o.customerName || 'Tanpa Nama'}
+                            {o.orderNumber && <span className="font-mono"> · {o.orderNumber}</span>}
+                          </div>
+                          {/* Semua buku di SO ini; yang sama dengan order yang dikemas ditebalkan */}
+                          {(o.items || [])
+                            .filter(it => !it.markedTertinggal && !it.markedRefund)
+                            .map((it, idx) => {
+                              const isShared = kemasBookIds.has(it.bookId);
+                              return (
+                                <div key={idx} className={`flex justify-between gap-3 text-xs mt-1 ${isShared ? 'font-semibold text-neutral-800 dark:text-neutral-100' : 'text-neutral-400 dark:text-neutral-500'}`}>
+                                  <span>{it.bookName}</span>
+                                  <span className="shrink-0">x{it.qty}</span>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-neutral-400">Urut dari tanggal paling lama. Hanya status Pending dengan tanggal sebelum {fmtYmd(kemasOrderMs)}. Buku yang sama dengan order ini ditebalkan.</p>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="shrink-0 border-t border-neutral-200 dark:border-neutral-800 px-5 py-3 space-y-2">
+                {hasStockError && (
+                  <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-800 dark:text-amber-200 flex items-start gap-1.5">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span>
+                      Stok gudang tidak mencukupi:{' '}
+                      {insufficientKemasItems.map(it => `${it.name} (stok ${it.stock}, dibutuhkan ${it.needed})`).join(', ')}.
+                      {' '}Pengemasan tidak dapat dilanjutkan sebelum stok tersedia.
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-end gap-2.5 flex-wrap">
                   <button
                     type="button"
                     disabled={isKemasSubmitting}
-                    onClick={() => {
-                      const ord = confirmingKemasOrder;
-                      setConfirmingKemasOrder(null);
-                      handleOpenSplitOrderModal(ord);
-                    }}
-                    className="px-3.5 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-300 rounded-xl border border-indigo-200 dark:border-indigo-800 transition cursor-pointer flex items-center gap-1.5"
+                    onClick={() => setConfirmingKemasOrder(null)}
+                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition cursor-pointer"
                   >
-                    <GitFork className="h-3.5 w-3.5" />
-                    <span>Kirim Sebagian</span>
+                    Batal
                   </button>
-                )}
-                <button
-                  type="button"
-                  disabled={isKemasSubmitting || hasStockError}
-                  onClick={handleConfirmKemas}
-                  className="px-4 py-2 text-xs font-bold text-white bg-[#6366f1] hover:bg-[#4f46e5] rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isKemasSubmitting && <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                  <span>Konfirmasi Kemas</span>
-                </button>
+                  {(confirmingKemasOrder.items?.length || 0) > 1 && (
+                    <button
+                      type="button"
+                      disabled={isKemasSubmitting}
+                      onClick={() => {
+                        const ord = confirmingKemasOrder;
+                        setConfirmingKemasOrder(null);
+                        handleOpenSplitOrderModal(ord);
+                      }}
+                      className="px-3.5 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-300 rounded-xl border border-indigo-200 dark:border-indigo-800 transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      <GitFork className="h-3.5 w-3.5" />
+                      <span>Kirim Sebagian</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={isKemasSubmitting || hasStockError}
+                    onClick={handleConfirmKemas}
+                    className="px-4 py-2 text-xs font-bold text-white bg-[#6366f1] hover:bg-[#4f46e5] rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isKemasSubmitting && <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                    <span>Konfirmasi Kemas</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>,

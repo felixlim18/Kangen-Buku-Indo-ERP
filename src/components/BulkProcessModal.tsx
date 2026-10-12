@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Eye, Undo2, Send, Copy, Save, Loader2, Check, ArrowUpDown } from 'lucide-react';
 import { SalesOrder } from '../types';
-import { confirmSalesOrderTransaction } from '../lib/db-helpers';
+import { confirmSalesOrderTransaction, isUnpaidTransferOrder } from '../lib/db-helpers';
 import { doc, updateDoc, Timestamp, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../lib/auth-context';
@@ -973,9 +973,29 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
 
                           {/* Nomor Order */}
                           <div className="flex items-center justify-between px-3.5 py-2 border-r border-[#dde4f0] relative h-full min-w-0">
-                            <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#173a6b]" title={row.orderNo}>
-                              {row.orderNo}
-                            </span>
+                            <div className="flex flex-col items-start gap-1 min-w-0">
+                              <span className="font-['IBM_Plex_Mono'] text-[13px] font-semibold text-[#173a6b]" title={row.orderNo}>
+                                {row.orderNo}
+                              </span>
+                              {/* Metode bayar - sama seperti daftar Sales Order (kosong = COD) */}
+                              {(() => {
+                                const method = row.order.paymentMethod || 'COD';
+                                const isTransfer = method === 'Transfer';
+                                const unpaid = isUnpaidTransferOrder(row.order);
+                                return (
+                                  <span className="flex items-center gap-1">
+                                    <span className={`text-[10px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded ${isTransfer ? 'bg-[#e0ecfa] text-[#2b5a9e]' : 'bg-[#f3f4f6] text-[#6b7280]'}`}>
+                                      {method}
+                                    </span>
+                                    {unpaid && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap bg-[#fbebea] text-[#b8433a]" title="Transfer belum tercatat lunas di Penerimaan Transfer">
+                                        Belum Lunas
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                             <button
                               type="button"
                               onClick={() => setActiveTooltip(activeTooltip === row.orderId ? null : row.orderId)}

@@ -530,6 +530,16 @@ export function getMovingAverageLandedCost(
 }
 
 /**
+ * Order Transfer dibayar di muka: belum boleh dikemas/diselesaikan sebelum
+ * penerimaannya tercatat lunas di tab "Penerimaan Transfer (Income)".
+ * Toleransi 5 sen sama seperti cek di completeSalesOrderTransaction.
+ */
+export function isUnpaidTransferOrder(order: Pick<SalesOrder, 'paymentMethod' | 'paymentStatus' | 'amountPaid' | 'totalPrice'>): boolean {
+  if (order.paymentMethod !== 'Transfer') return false;
+  return order.paymentStatus !== 'paid' && (order.amountPaid || 0) < (order.totalPrice || 0) - 5;
+}
+
+/**
  * Deducts physical stock when an order is packed ('packed' status).
  * Does NOT post any journal entry.
  */
@@ -548,6 +558,10 @@ export async function packSalesOrderTransaction(orderId: string, currentUserId: 
       const order = orderSnap.data() as SalesOrder;
       if (order.status && order.status !== 'draft') {
         throw new Error('Order is already packed or processed');
+      }
+
+      if (isUnpaidTransferOrder(order)) {
+        throw new Error(`Order ${order.orderCode} metode Transfer belum tercatat lunas. Catat penerimaan transfer dulu lewat tab "Penerimaan Transfer" sebelum dikemas.`);
       }
 
       if (order.estimatedShippingDate) {
@@ -931,8 +945,7 @@ export async function completeSalesOrderTransaction(
       const isUnpaid = order.paymentMethod !== 'Transfer';
 
       if (!isUnpaid) {
-        const isPaidEnough = order.paymentStatus === 'paid' || (order.amountPaid || 0) >= (order.totalPrice || 0) - 5;
-        if (!isPaidEnough) {
+        if (isUnpaidTransferOrder(order)) {
           throw new Error(`Order ${order.orderCode} metode Transfer belum tercatat lunas (status: ${order.paymentStatus || 'unpaid'}, dibayar ${((order.amountPaid || 0) / 100).toFixed(2)}/${((order.totalPrice || 0) / 100).toFixed(2)}). Catat penerimaan transfer dulu lewat tab "Penerimaan Transfer (Income)" sebelum menyelesaikan order ini.`);
         }
       }
