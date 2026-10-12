@@ -1,16 +1,20 @@
 // Jembatan antara halaman ERP (window.postMessage) dan service worker extension.
-document.documentElement.dataset.kbiAutoShipExt = '1';
+document.documentElement.dataset.kbiAutoShipExt = '2'; // versi protokol: 2 = AUTO_SHIP + PRINT_LABELS
+
+const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS'];
 
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
   const msg = event.data;
-  if (!msg || msg.source !== 'kbi-erp' || msg.type !== 'AUTO_SHIP') return;
-  chrome.runtime.sendMessage({ type: 'AUTO_SHIP', id: msg.id, platform: msg.platform, orderNo: msg.orderNo }).catch((err) => {
-    window.postMessage({ source: 'kbi-ext', type: 'AUTO_SHIP_RESULT', id: msg.id, ok: false, error: `Extension error: ${err.message}` }, '*');
+  if (!msg || msg.source !== 'kbi-erp' || !FORWARDED.includes(msg.type)) return;
+  const { source, ...payload } = msg;
+  chrome.runtime.sendMessage(payload).catch((err) => {
+    window.postMessage({ source: 'kbi-ext', type: 'KBI_RESULT', id: msg.id, ok: false, error: `Extension error: ${err.message}` }, '*');
   });
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type !== 'RESULT') return;
-  window.postMessage({ source: 'kbi-ext', type: 'AUTO_SHIP_RESULT', id: msg.id, ok: msg.ok, resi: msg.resi, error: msg.error }, '*');
+  const { type, ...result } = msg;
+  window.postMessage({ source: 'kbi-ext', type: 'KBI_RESULT', ...result }, '*');
 });

@@ -88,6 +88,59 @@ async function run(orderNo) {
   throw new Error('Halaman iOPEN Mall tidak dikenali. Pastikan sudah login 賣家中心.');
 }
 
+// ===== Cetak label: 訂單批次作業 (出貨中) → centang order → 列印超商標籤 → 列印寄件標籤(單排) =====
+async function printLabels(step) {
+  const action = new URLSearchParams(location.search).get('action');
+  document.documentElement.dataset.kbiSameTab = '1'; // halaman cetak dibuka di tab ini (lihat kbi-main.js)
+
+  if (action === 'order_delivery_print_pic') {
+    const single = await waitFor(() => [...document.querySelectorAll('button')].find((b) => text(b) === '列印寄件標籤(單排)'), 10000);
+    if (!single) throw new Error('Tombol 列印寄件標籤(單排) tidak ditemukan.');
+    single.click();
+    return null; // pindah ke halaman label
+  }
+
+  if (action !== 'order_control_batch_pic') throw new Error('Halaman iOPEN Mall tidak dikenali. Pastikan sudah login 賣家中心.');
+
+  const loaded = await waitFor(
+    () => document.querySelector('li.admweb-v2-orderlist__card') || document.querySelector('#pic-content .admweb-v2-NoData'),
+    15000
+  );
+  if (!loaded) throw new Error('Daftar 訂單批次作業 tidak termuat.');
+
+  const found = [];
+  for (const orderNo of step.orders) {
+    const cb = document.getElementById(orderNo);
+    if (cb?.classList.contains('js-admweb-v2--order-checkbox')) {
+      cb.checked = true;
+      found.push(orderNo);
+    }
+  }
+  if (found.length === 0) return 0;
+  chrome.runtime.sendMessage({ type: 'STEP_PROGRESS', selected: found.length, missing: step.orders.filter((o) => !found.includes(o)) });
+
+  const button = [...document.querySelectorAll('button')].find((b) => text(b) === '列印超商標籤');
+  if (!button) throw new Error('Tombol 列印超商標籤 tidak ditemukan.');
+  button.click();
+  return null; // pindah ke 多筆列印超商標籤
+}
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type !== 'PRINT_STEP' || msg.step?.site !== 'iopen') return;
+  printLabels(msg.step)
+    .then(async (count) => {
+      if (count === 0) {
+        chrome.runtime.sendMessage({ type: 'STEP_DONE', ok: true, printed: 0 });
+        return;
+      }
+      // Normalnya halaman pindah. Kalau masih di sini, iOPEN menampilkan pesan error (mis. 溫層 berbeda).
+      await sleep(20000);
+      const alertText = [...document.querySelectorAll('.modal, [class*="alert"], [class*="Alert"]')].map(text).find(Boolean);
+      chrome.runtime.sendMessage({ type: 'STEP_DONE', ok: false, error: `iOPEN tidak membuka halaman cetak${alertText ? `: ${alertText.slice(0, 120)}` : ''}.` });
+    })
+    .catch((err) => chrome.runtime.sendMessage({ type: 'STEP_DONE', ok: false, error: err.message }));
+});
+
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type !== 'RUN' || msg.platform !== 'iopen') return;
   run(msg.orderNo)

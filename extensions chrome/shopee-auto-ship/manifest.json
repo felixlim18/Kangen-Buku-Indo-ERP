@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "KBI Auto 出貨 (Shopee & iOPEN Mall)",
-  "version": "1.1.0",
-  "description": "Tombol Action di ERP KangenBukuIndo: otomatis 安排出貨 (Shopee) / 取寄件編號 (iOPEN Mall) lalu salin nomor resi ke ERP.",
+  "version": "1.2.0",
+  "description": "Tombol Action & Print Resi di ERP KangenBukuIndo: otomatis 安排出貨 / 取寄件編號, salin nomor resi ke ERP, dan cetak label.",
   "permissions": ["storage"],
-  "host_permissions": ["https://seller.shopee.tw/*", "https://sales.iopenmall.tw/*"],
+  "host_permissions": ["https://seller.shopee.tw/*", "https://sales.iopenmall.tw/*", "https://epayment.7-11.com.tw/*"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
@@ -23,9 +23,29 @@
       "run_at": "document_idle"
     },
     {
+      "matches": ["https://seller.shopee.tw/portal/sale/mass/ship*"],
+      "js": ["shopee-print.js"],
+      "run_at": "document_idle"
+    },
+    {
       "matches": ["https://sales.iopenmall.tw/*/admweb/admweb.main.php*"],
       "js": ["iopen.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://seller.shopee.tw/awbprint*",
+        "https://epayment.7-11.com.tw/C2C/C2CWeb/MultiplePrintC2CPinCode.aspx*",
+        "https://sales.iopenmall.tw/*/admweb/st711_c2c_od_print.php*"
+      ],
+      "js": ["print-page.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://seller.shopee.tw/portal/sale/mass/ship*", "https://sales.iopenmall.tw/*/admweb/admweb.main.php*"],
+      "js": ["kbi-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ]
 }

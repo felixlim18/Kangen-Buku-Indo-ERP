@@ -1,6 +1,6 @@
 # KBI Auto 出貨 (Shopee & iOPEN Mall)
 
-Extension Chrome untuk tombol **Action** di modal *Proses Massal Pesanan Dikemas*
+Extension Chrome untuk tombol **Action**, **Action Semua**, dan **Print Resi** di modal *Proses Massal Pesanan Dikemas*
 (baris platform **Shopee** dan **IopenMall**). Nomor resi yang didapat otomatis masuk kolom Nomor Resi dan tersimpan.
 
 ## Shopee (seller.shopee.tw)
@@ -14,6 +14,16 @@ Extension Chrome untuk tombol **Action** di modal *Proses Massal Pesanan Dikemas
 1. Buka 新訂單 (tab 待出貨) dengan pencarian 訂單編號 = nomor order.
 2. Klik 取寄件編號 → halaman 已成功產生寄件編號 → ambil nomor resinya.
 3. Kalau order sudah tidak ada di 待出貨 (nomor sudah pernah diambil), nomor resi dibaca dari tab 出貨中.
+
+## Print Resi (tombol di header modal)
+Mencetak label untuk order di modal yang Nomor Resi-nya sudah terisi. Dialog cetak Chrome tetap muncul:
+tekan **Print / Enter** di setiap dialog (extension tidak bisa menekan tombol itu).
+1. Shopee 蝦皮店到店: 批次出貨 → 下載出貨文件 → 已處理 · 出貨天數 全部 → centang order modal →
+   寄件單 + 熱感列印 → 下載所選文件 → 列印出貨文件.
+2. Shopee 7-ELEVEN: sama, tanpa 熱感列印 → halaman 7-11 交貨便服務單 → cetak.
+3. iOPEN Mall: 訂單批次作業 → 出貨中 → centang order modal → 列印超商標籤 → 列印寄件標籤(單排) → cetak.
+
+Halaman cetak dibuka di tab extension (bukan popup), jadi tidak perlu mengizinkan pop-up.
 
 ## Pasang / update
 1. Buka `chrome://extensions`, aktifkan **Developer mode**.

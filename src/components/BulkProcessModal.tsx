@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Eye, Undo2, Send, Copy, Save, Loader2, Check, ArrowUpDown, Zap } from 'lucide-react';
+import { X, Eye, Undo2, Send, Copy, Save, Loader2, Check, ArrowUpDown, Zap, Printer } from 'lucide-react';
 import { SalesOrder } from '../types';
 import { confirmSalesOrderTransaction, isUnpaidTransferOrder } from '../lib/db-helpers';
 import { doc, updateDoc, Timestamp, getDoc, setDoc } from 'firebase/firestore';
@@ -10,7 +10,7 @@ import { useSidebar } from '../lib/sidebar-context';
 import { ImagePreviewModal } from './ui/ImagePreviewModal';
 import { useModalEsc } from '../lib/use-modal-esc';
 import { getEffectiveOrderLogistics, sanitizeResiNumber } from '../lib/sales-logistics-utils';
-import { AUTO_SHIP_LABELS, getAutoShipPlatform, requestTrackingNumber, type AutoShipPlatform } from '../lib/auto-ship';
+import { AUTO_SHIP_LABELS, getAutoShipPlatform, requestPrintLabels, requestTrackingNumber, type AutoShipPlatform } from '../lib/auto-ship';
 
 interface BulkProcessModalProps {
   isOpen: boolean;
@@ -256,6 +256,8 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   // Order yang sedang diproses otomatis di Shopee / iOPEN Mall (tombol Action)
   const [autoShipIds, setAutoShipIds] = useState<Set<string>>(new Set());
   const [autoShipAllProgress, setAutoShipAllProgress] = useState<{ done: number; total: number } | null>(null);
+  const [isPrintingLabels, setIsPrintingLabels] = useState(false);
+  const [printMessage, setPrintMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [hoverPreview, setHoverPreview] = useState<{ url: string, x: number, y: number, width: number, align?: 'center' | 'right' } | null>(null);
 
   // Master checkbox element ref for indeterminate state
@@ -665,6 +667,29 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
     setAutoShipAllProgress(null);
   };
 
+  // Tombol "Print Resi": cetak label lewat extension untuk order di modal ini yang sudah punya resi
+  // (Shopee 蝦皮店到店 & 7-ELEVEN di 批次出貨, iOPEN Mall di 訂單批次作業)
+  const printTargets = rows.filter(r => r.status !== 'success' && r.resi.trim() && getAutoShipPlatform(r.orderNo));
+  const handlePrintLabels = async () => {
+    const shopeeOrders = printTargets.filter(r => getAutoShipPlatform(r.orderNo) === 'shopee').map(r => r.orderNo.trim().toUpperCase());
+    const iopenOrders = printTargets.filter(r => getAutoShipPlatform(r.orderNo) === 'iopen').map(r => r.orderNo.trim());
+    setIsPrintingLabels(true);
+    setPrintMessage(null);
+    try {
+      const results = await requestPrintLabels(shopeeOrders, iopenOrders);
+      const parts = results.map(r => (r.ok ? `${r.label}: ${r.printed}` : `${r.label}: gagal (${r.error})`));
+      const missing = results.flatMap(r => r.missing);
+      setPrintMessage({
+        text: (parts.length ? parts.join(' · ') : 'Tidak ada label untuk dicetak') + (missing.length ? ` · tidak ditemukan: ${missing.join(', ')}` : ''),
+        ok: results.every(r => r.ok),
+      });
+    } catch (err: any) {
+      setPrintMessage({ text: err.message || 'Gagal mencetak label', ok: false });
+    } finally {
+      setIsPrintingLabels(false);
+    }
+  };
+
   const handleRowRevert = async (rowIndex: number) => {
     const row = rows[rowIndex];
     try {
@@ -918,6 +943,21 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {printMessage && (
+                <span className={`max-w-[420px] text-[11.5px] font-semibold leading-tight ${printMessage.ok ? 'text-[#12876b]' : 'text-[#b8433a]'}`}>
+                  {printMessage.text}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handlePrintLabels}
+                disabled={isPrintingLabels || !!autoShipAllProgress || printTargets.length === 0}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white hover:bg-[#f1f6fc] border border-[#173a6b] text-[#173a6b] text-[12.5px] font-['Space_Grotesk'] font-semibold rounded-lg shadow-xs transition-all duration-200 cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+                title="Cetak label Shopee (蝦皮店到店 & 7-ELEVEN) dan iOPEN Mall untuk order yang Nomor Resi-nya sudah terisi. Tekan Print/Enter di setiap dialog cetak."
+              >
+                {isPrintingLabels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                {isPrintingLabels ? 'Mencetak...' : `Print Resi (${printTargets.length})`}
+              </button>
               <button
                 type="button"
                 onClick={handleAutoShipAll}
