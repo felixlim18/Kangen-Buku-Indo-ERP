@@ -2914,10 +2914,11 @@ export const SalesTab: React.FC = () => {
   };
 
   // ===== Auto Kemas =====
-  // Order Pending dikemas otomatis dari yang paling lama, dengan syarat sama seperti dialog Kemas:
-  // tidak ada SO Pending lebih lama yang memesan buku yang sama, stok cukup, bukan Transfer belum lunas,
-  // tanggal kirim bukan di masa depan, dan tidak perlu konfirmasi customer. Order yang dikemas di putaran
-  // ini tidak lagi dihitung Pending, jadi order berikutnya untuk buku yang sama ikut lolos selama stok cukup.
+  // Order Pending dikemas otomatis dari yang paling lama, hanya yang highlight hijau (stok digudang ready,
+  // tidak di-pin) dan lolos syarat dialog Kemas: tidak ada SO Pending lebih lama yang memesan buku yang sama,
+  // bukan Transfer belum lunas, tanggal kirim bukan di masa depan, tidak perlu konfirmasi customer.
+  // Order yang dikemas di putaran ini tidak lagi dihitung Pending, jadi order berikutnya untuk buku yang sama
+  // ikut lolos selama stok (dikurangi yang sudah dikemas di putaran ini) masih cukup.
   const isPendingOrder = (o: SalesOrder) => (o.status === 'draft' || !o.status) && !o.isDraft;
   const getKemasItems = (o: SalesOrder) => (o.items || []).filter(it => !it.markedTertinggal && !it.markedRefund);
 
@@ -2948,6 +2949,8 @@ export const SalesTab: React.FC = () => {
 
       let reason = '';
       if (items.length === 0) reason = 'tidak ada buku untuk dikemas';
+      else if (order.isPinned) reason = 'di-pin';
+      else if (!checkIsReadyStock(order)) reason = 'stok digudang belum ready (bukan highlight hijau)';
       else if (older) reason = `ada SO Pending lebih lama (${older.orderCode})`;
       else if (isUnpaidTransferOrder(order)) reason = 'Transfer belum lunas';
       else if (isShippingDateFuture(order.estimatedShippingDate)) reason = `request kirim ${order.estimatedShippingDate?.replace(/-/g, '/')}`;
@@ -5593,7 +5596,7 @@ export const SalesTab: React.FC = () => {
               onClick={handleAutoKemas}
               disabled={isAutoKemasRunning}
               className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-[8px] bg-[#6366f1] hover:bg-[#4f46e5] text-white font-['Lexend'] font-semibold text-[13px] transition cursor-pointer select-none shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
-              title="Kemas otomatis semua order Pending yang tidak punya SO Pending lebih lama untuk buku yang sama (stok cukup, bukan Transfer belum lunas, bukan request kirim nanti)"
+              title="Kemas otomatis order Pending highlight hijau (stok ready, tidak di-pin) yang tidak punya SO Pending lebih lama untuk buku yang sama"
             >
               {isAutoKemasRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
               {isAutoKemasRunning ? 'Mengemas...' : 'Auto Kemas'}
