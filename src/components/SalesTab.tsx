@@ -691,6 +691,9 @@ export const SalesTab: React.FC = () => {
   const [qrCodeModalOrder, setQrCodeModalOrder] = useState<SalesOrder | null>(null);
   const [printingResiOrderId, setPrintingResiOrderId] = useState<string | null>(null);
   const [isAutoKemasRunning, setIsAutoKemasRunning] = useState(false);
+  // Pop-up Auto Kemas: rencana (yang akan dikemas & yang dilewati), lalu hasilnya
+  const [autoKemasPlan, setAutoKemasPlan] = useState<{ toPack: SalesOrder[]; skipped: { order: SalesOrder; reason: string }[] } | null>(null);
+  const [autoKemasResult, setAutoKemasResult] = useState<{ packed: string[]; failed: string[] } | null>(null);
 
   // Esc key listeners for modals
   useModalEsc(isChecklistOpen, () => setIsChecklistOpen(false));
@@ -703,6 +706,7 @@ export const SalesTab: React.FC = () => {
   useModalEsc(!!splitOrderModalData, () => setSplitOrderModalData(null), isSplitSubmitting);
   useModalEsc(!!refundConfirmOrder, () => setRefundConfirmOrder(null), isRefundSubmitting);
   useModalEsc(!!qrCodeModalOrder, () => setQrCodeModalOrder(null));
+  useModalEsc(!!autoKemasPlan, () => { setAutoKemasPlan(null); setAutoKemasResult(null); }, isAutoKemasRunning);
 
   const handleOpenSplitOrderModal = (order: SalesOrder) => {
     // Determine default items to move to child SO (items that are NOT ready/sufficient in stock)
@@ -2968,28 +2972,25 @@ export const SalesTab: React.FC = () => {
     return { toPack, skipped };
   };
 
-  const handleAutoKemas = async () => {
-    const { toPack, skipped } = planAutoKemas();
-    const skippedText = skipped.slice(0, 10).map(s => `• ${s.order.orderCode}: ${s.reason}`).join('\n') + (skipped.length > 10 ? `\n… dan ${skipped.length - 10} lainnya` : '');
-    if (toPack.length === 0) {
-      safeAlert(`Tidak ada order Pending yang bisa dikemas otomatis.${skipped.length ? `\n\n${skippedText}` : ''}`);
-      return;
-    }
-    const packText = toPack.slice(0, 15).map(o => `• ${o.orderCode} · ${o.customerName || 'Tanpa Nama'}`).join('\n') + (toPack.length > 15 ? `\n… dan ${toPack.length - 15} lainnya` : '');
-    let confirmed = false;
-    try {
-      confirmed = window.confirm(`Auto Kemas akan mengemas ${toPack.length} order:\n${packText}\n\n${skipped.length} order Pending dilewati.\n\nLanjutkan?`);
-    } catch {
-      confirmed = false;
-    }
-    if (!confirmed) return;
+  const handleAutoKemas = () => {
+    setAutoKemasResult(null);
+    setAutoKemasPlan(planAutoKemas());
+  };
 
+  const closeAutoKemas = () => {
+    if (isAutoKemasRunning) return;
+    setAutoKemasPlan(null);
+    setAutoKemasResult(null);
+  };
+
+  const runAutoKemas = async () => {
+    if (!autoKemasPlan || autoKemasPlan.toPack.length === 0) return;
     setIsAutoKemasRunning(true);
     const packed: string[] = [];
     const failed: string[] = [];
     // Kalau satu order gagal dikemas, order sesudahnya yang memesan buku yang sama ikut dilewati (urutan tetap)
     const failedBooks = new Set<string>();
-    for (const order of toPack) {
+    for (const order of autoKemasPlan.toPack) {
       const items = getKemasItems(order);
       if (items.some(it => failedBooks.has(it.bookId))) {
         failed.push(`${order.orderCode}: SO lebih lama untuk buku yang sama gagal dikemas`);
@@ -3002,9 +3003,10 @@ export const SalesTab: React.FC = () => {
         items.forEach(it => failedBooks.add(it.bookId));
         failed.push(`${order.orderCode}: ${err.message || err}`);
       }
+      setAutoKemasResult({ packed: [...packed], failed: [...failed] });
     }
+    setAutoKemasResult({ packed, failed });
     setIsAutoKemasRunning(false);
-    safeAlert(`Auto Kemas selesai: ${packed.length} order dikemas.${failed.length ? `\n\nGagal:\n${failed.map(f => `• ${f}`).join('\n')}` : ''}`);
   };
 
   const handleTogglePin = async (order: SalesOrder) => {
@@ -8755,6 +8757,123 @@ export const SalesTab: React.FC = () => {
               >
                 Sudah
               </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ================= MODAL: Auto Kemas ================= */}
+      {autoKemasPlan && createPortal(
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) closeAutoKemas(); }}
+          className={getModalOverlayClass(sidebarHidden, MODAL_TIERS.DIALOG, '', false)}
+        >
+          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-2xl w-[95%] max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-scale-up my-auto" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+              <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                <Package className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-neutral-900 dark:text-white">Auto Kemas</h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Order Pending highlight hijau tanpa SO Pending lebih lama untuk buku yang sama
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={isAutoKemasRunning}
+                onClick={closeAutoKemas}
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Tutup"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+              {autoKemasResult && !isAutoKemasRunning && (
+                <div className={`px-4 py-3 rounded-xl border text-[13px] font-semibold ${autoKemasResult.failed.length ? 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900 dark:text-amber-300' : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-300'}`}>
+                  Selesai: {autoKemasResult.packed.length} order dikemas{autoKemasResult.failed.length ? `, ${autoKemasResult.failed.length} gagal` : ''}.
+                  {autoKemasResult.failed.length > 0 && (
+                    <ul className="mt-2 space-y-1 font-medium text-[12px]">
+                      {autoKemasResult.failed.map(f => <li key={f}>• {f}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
+                  Akan dikemas ({autoKemasPlan.toPack.length})
+                </div>
+                {autoKemasPlan.toPack.length === 0 ? (
+                  <div className="px-3 py-3 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 text-[12.5px] text-neutral-500">
+                    Tidak ada order Pending yang bisa dikemas otomatis.
+                  </div>
+                ) : autoKemasPlan.toPack.map(order => {
+                  const done = autoKemasResult?.packed.includes(order.orderCode);
+                  const fail = autoKemasResult?.failed.some(f => f.startsWith(`${order.orderCode}:`));
+                  return (
+                    <div key={order.id} className="flex items-start justify-between gap-3 px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">
+                          {order.orderCode} · {order.customerName || 'Tanpa Nama'}
+                        </div>
+                        <div className="text-[11.5px] text-neutral-500 dark:text-neutral-400 truncate">
+                          {getKemasItems(order).map(it => `${it.bookName} ×${it.qty}`).join(', ')}
+                        </div>
+                      </div>
+                      <span className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-md ${done ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : fail ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300' : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'}`}>
+                        {done ? 'Dikemas' : fail ? 'Gagal' : isAutoKemasRunning ? 'Menunggu' : 'Siap'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {autoKemasPlan.skipped.length > 0 && (
+                <details className="group">
+                  <summary className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 cursor-pointer select-none">
+                    Dilewati ({autoKemasPlan.skipped.length})
+                  </summary>
+                  <div className="mt-2 space-y-1.5">
+                    {autoKemasPlan.skipped.map(({ order, reason }) => (
+                      <div key={order.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-neutral-50 dark:bg-neutral-950/40 text-[12px]">
+                        <span className="font-semibold text-neutral-700 dark:text-neutral-200 shrink-0">{order.orderCode}</span>
+                        <span className="text-neutral-500 dark:text-neutral-400 text-right">{reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-neutral-200 dark:border-neutral-800 shrink-0">
+              <button
+                type="button"
+                onClick={closeAutoKemas}
+                disabled={isAutoKemasRunning}
+                className="px-4 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-[13px] font-semibold text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {autoKemasResult && !isAutoKemasRunning ? 'Tutup' : 'Batal'}
+              </button>
+              {!(autoKemasResult && !isAutoKemasRunning) && (
+                <button
+                  type="button"
+                  onClick={runAutoKemas}
+                  disabled={isAutoKemasRunning || autoKemasPlan.toPack.length === 0}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#6366f1] hover:bg-[#4f46e5] text-white text-[13px] font-semibold transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isAutoKemasRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-3.5 w-3.5" />}
+                  {isAutoKemasRunning
+                    ? `Mengemas ${autoKemasResult ? autoKemasResult.packed.length + autoKemasResult.failed.length : 0}/${autoKemasPlan.toPack.length}...`
+                    : `Kemas ${autoKemasPlan.toPack.length} Order`}
+                </button>
+              )}
             </div>
           </div>
         </div>,
