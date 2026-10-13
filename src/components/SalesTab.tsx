@@ -690,6 +690,7 @@ export const SalesTab: React.FC = () => {
   // QR Code 2D Resi Modal state
   const [qrCodeModalOrder, setQrCodeModalOrder] = useState<SalesOrder | null>(null);
   const [printingResiOrderId, setPrintingResiOrderId] = useState<string | null>(null);
+  const [isAutoKemasRunning, setIsAutoKemasRunning] = useState(false);
 
   // Esc key listeners for modals
   useModalEsc(isChecklistOpen, () => setIsChecklistOpen(false));
@@ -2910,6 +2911,97 @@ export const SalesTab: React.FC = () => {
     } finally {
       setIsKemasSubmitting(false);
     }
+  };
+
+  // ===== Auto Kemas =====
+  // Order Pending dikemas otomatis dari yang paling lama, dengan syarat sama seperti dialog Kemas:
+  // tidak ada SO Pending lebih lama yang memesan buku yang sama, stok cukup, bukan Transfer belum lunas,
+  // tanggal kirim bukan di masa depan, dan tidak perlu konfirmasi customer. Order yang dikemas di putaran
+  // ini tidak lagi dihitung Pending, jadi order berikutnya untuk buku yang sama ikut lolos selama stok cukup.
+  const isPendingOrder = (o: SalesOrder) => (o.status === 'draft' || !o.status) && !o.isDraft;
+  const getKemasItems = (o: SalesOrder) => (o.items || []).filter(it => !it.markedTertinggal && !it.markedRefund);
+
+  const planAutoKemas = () => {
+    const pending = orders.filter(isPendingOrder).sort((a, b) => getOrderDateMs(a) - getOrderDateMs(b));
+    const stillPending = new Set(pending.map(o => o.id));
+    const stock = new Map<string, number>();
+    const stockOf = (bookId: string) => {
+      if (!stock.has(bookId)) {
+        stock.set(bookId, getPhysicalOnHandStockForBook(bookId, inventories, ledgerEntries, purchaseOrders, orders, damagedRecords));
+      }
+      return stock.get(bookId)!;
+    };
+
+    const toPack: SalesOrder[] = [];
+    const skipped: { order: SalesOrder; reason: string }[] = [];
+    for (const order of pending) {
+      const items = getKemasItems(order);
+      const bookIds = new Set(items.map(it => it.bookId));
+      const orderMs = getOrderDateMs(order);
+      const older = pending.find(p =>
+        p.id !== order.id && stillPending.has(p.id) && getOrderDateMs(p) < orderMs &&
+        getKemasItems(p).some(it => bookIds.has(it.bookId))
+      );
+      const needed = new Map<string, number>();
+      items.forEach(it => needed.set(it.bookId, (needed.get(it.bookId) || 0) + it.qty));
+      const shortBookId = [...needed].find(([bookId, qty]) => stockOf(bookId) < qty)?.[0];
+
+      let reason = '';
+      if (items.length === 0) reason = 'tidak ada buku untuk dikemas';
+      else if (older) reason = `ada SO Pending lebih lama (${older.orderCode})`;
+      else if (isUnpaidTransferOrder(order)) reason = 'Transfer belum lunas';
+      else if (isShippingDateFuture(order.estimatedShippingDate)) reason = `request kirim ${order.estimatedShippingDate?.replace(/-/g, '/')}`;
+      else if (order.perluKonfirmasiSebelumKirim) reason = 'perlu konfirmasi customer sebelum kirim';
+      else if (shortBookId) reason = `stok kurang: ${items.find(it => it.bookId === shortBookId)?.bookName || shortBookId}`;
+
+      if (reason) {
+        skipped.push({ order, reason });
+        continue;
+      }
+      needed.forEach((qty, bookId) => stock.set(bookId, stockOf(bookId) - qty));
+      stillPending.delete(order.id);
+      toPack.push(order);
+    }
+    return { toPack, skipped };
+  };
+
+  const handleAutoKemas = async () => {
+    const { toPack, skipped } = planAutoKemas();
+    const skippedText = skipped.slice(0, 10).map(s => `• ${s.order.orderCode}: ${s.reason}`).join('\n') + (skipped.length > 10 ? `\n… dan ${skipped.length - 10} lainnya` : '');
+    if (toPack.length === 0) {
+      safeAlert(`Tidak ada order Pending yang bisa dikemas otomatis.${skipped.length ? `\n\n${skippedText}` : ''}`);
+      return;
+    }
+    const packText = toPack.slice(0, 15).map(o => `• ${o.orderCode} · ${o.customerName || 'Tanpa Nama'}`).join('\n') + (toPack.length > 15 ? `\n… dan ${toPack.length - 15} lainnya` : '');
+    let confirmed = false;
+    try {
+      confirmed = window.confirm(`Auto Kemas akan mengemas ${toPack.length} order:\n${packText}\n\n${skipped.length} order Pending dilewati.\n\nLanjutkan?`);
+    } catch {
+      confirmed = false;
+    }
+    if (!confirmed) return;
+
+    setIsAutoKemasRunning(true);
+    const packed: string[] = [];
+    const failed: string[] = [];
+    // Kalau satu order gagal dikemas, order sesudahnya yang memesan buku yang sama ikut dilewati (urutan tetap)
+    const failedBooks = new Set<string>();
+    for (const order of toPack) {
+      const items = getKemasItems(order);
+      if (items.some(it => failedBooks.has(it.bookId))) {
+        failed.push(`${order.orderCode}: SO lebih lama untuk buku yang sama gagal dikemas`);
+        continue;
+      }
+      try {
+        await packSalesOrderTransaction(order.id, user?.uid || 'anonymous');
+        packed.push(order.orderCode);
+      } catch (err: any) {
+        items.forEach(it => failedBooks.add(it.bookId));
+        failed.push(`${order.orderCode}: ${err.message || err}`);
+      }
+    }
+    setIsAutoKemasRunning(false);
+    safeAlert(`Auto Kemas selesai: ${packed.length} order dikemas.${failed.length ? `\n\nGagal:\n${failed.map(f => `• ${f}`).join('\n')}` : ''}`);
   };
 
   const handleTogglePin = async (order: SalesOrder) => {
@@ -5494,6 +5586,19 @@ export const SalesTab: React.FC = () => {
               className="w-full bg-transparent border-none outline-none font-['Lexend'] text-[13.5px] text-[#0d1117] dark:text-white placeholder-[#9ca3af]"
             />
           </div>
+
+          {isStaffValue && (
+            <button
+              type="button"
+              onClick={handleAutoKemas}
+              disabled={isAutoKemasRunning}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-[8px] bg-[#6366f1] hover:bg-[#4f46e5] text-white font-['Lexend'] font-semibold text-[13px] transition cursor-pointer select-none shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+              title="Kemas otomatis semua order Pending yang tidak punya SO Pending lebih lama untuk buku yang sama (stok cukup, bukan Transfer belum lunas, bukan request kirim nanti)"
+            >
+              {isAutoKemasRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
+              {isAutoKemasRunning ? 'Mengemas...' : 'Auto Kemas'}
+            </button>
+          )}
 
           <button
             type="button"
