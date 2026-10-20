@@ -2919,16 +2919,19 @@ export const SalesTab: React.FC = () => {
 
   // ===== Auto Kemas =====
   // Order Pending dikemas otomatis dari yang paling lama, hanya yang highlight hijau (stok digudang ready,
-  // tidak di-pin) dan lolos syarat dialog Kemas: tidak ada SO Pending lebih lama yang memesan buku yang sama,
-  // bukan Transfer belum lunas, tanggal kirim bukan di masa depan, tidak perlu konfirmasi customer.
-  // Order yang dikemas di putaran ini tidak lagi dihitung Pending, jadi order berikutnya untuk buku yang sama
-  // ikut lolos selama stok (dikurangi yang sudah dikemas di putaran ini) masih cukup.
+  // tidak di-pin) dan lolos syarat dialog Kemas: bukan Transfer belum lunas, tanggal kirim bukan di masa
+  // depan, tidak perlu konfirmasi customer.
+  //
+  // Penentunya STOK, bukan ada-tidaknya order lain untuk buku yang sama: stok 5 dan dua order Pending masing-
+  // masing 1 buku -> keduanya dikemas. Stok dihitung berjalan dari order terlama: yang dikemas di putaran ini
+  // mengurangi stok untuk order sesudahnya. Order lama yang sedang DITAHAN (di-pin, Transfer belum lunas,
+  // tanggal kirim nanti, perlu konfirmasi) tetap dijatahi stoknya, supaya pembeli yang pesan duluan tidak
+  // kehabisan buku karena order yang lebih baru.
   const isPendingOrder = (o: SalesOrder) => (o.status === 'draft' || !o.status) && !o.isDraft;
   const getKemasItems = (o: SalesOrder) => (o.items || []).filter(it => !it.markedTertinggal && !it.markedRefund);
 
   const planAutoKemas = () => {
     const pending = orders.filter(isPendingOrder).sort((a, b) => getOrderDateMs(a) - getOrderDateMs(b));
-    const stillPending = new Set(pending.map(o => o.id));
     const stock = new Map<string, number>();
     const stockOf = (bookId: string) => {
       if (!stock.has(bookId)) {
@@ -2936,37 +2939,47 @@ export const SalesTab: React.FC = () => {
       }
       return stock.get(bookId)!;
     };
+    // bookId -> kode SO lama yang sedang ditahan dan dijatahi stok buku itu
+    const reservedFor = new Map<string, string[]>();
 
     const toPack: SalesOrder[] = [];
     const skipped: { order: SalesOrder; reason: string }[] = [];
     for (const order of pending) {
       const items = getKemasItems(order);
-      const bookIds = new Set(items.map(it => it.bookId));
-      const orderMs = getOrderDateMs(order);
-      const older = pending.find(p =>
-        p.id !== order.id && stillPending.has(p.id) && getOrderDateMs(p) < orderMs &&
-        getKemasItems(p).some(it => bookIds.has(it.bookId))
-      );
       const needed = new Map<string, number>();
       items.forEach(it => needed.set(it.bookId, (needed.get(it.bookId) || 0) + it.qty));
       const shortBookId = [...needed].find(([bookId, qty]) => stockOf(bookId) < qty)?.[0];
 
+      // Ditahan: belum boleh dikemas sekarang, tapi tetap mendapat jatah stok
+      let holdReason = '';
+      if (order.isPinned) holdReason = 'di-pin';
+      else if (isUnpaidTransferOrder(order)) holdReason = 'Transfer belum lunas';
+      else if (isShippingDateFuture(order.estimatedShippingDate)) holdReason = `request kirim ${order.estimatedShippingDate?.replace(/-/g, '/')}`;
+      else if (order.perluKonfirmasiSebelumKirim) holdReason = 'perlu konfirmasi customer sebelum kirim';
+
       let reason = '';
       if (items.length === 0) reason = 'tidak ada buku untuk dikemas';
-      else if (order.isPinned) reason = 'di-pin';
       else if (!checkIsReadyStock(order)) reason = 'stok digudang belum ready (bukan highlight hijau)';
-      else if (older) reason = `ada SO Pending lebih lama (${older.orderCode})`;
-      else if (isUnpaidTransferOrder(order)) reason = 'Transfer belum lunas';
-      else if (isShippingDateFuture(order.estimatedShippingDate)) reason = `request kirim ${order.estimatedShippingDate?.replace(/-/g, '/')}`;
-      else if (order.perluKonfirmasiSebelumKirim) reason = 'perlu konfirmasi customer sebelum kirim';
-      else if (shortBookId) reason = `stok kurang: ${items.find(it => it.bookId === shortBookId)?.bookName || shortBookId}`;
+      else if (shortBookId) {
+        const holders = reservedFor.get(shortBookId);
+        const bookName = items.find(it => it.bookId === shortBookId)?.bookName || shortBookId;
+        reason = holders?.length
+          ? `stok kurang: ${bookName} (sisa dijatahkan untuk ${holders.join(', ')} yang lebih lama)`
+          : `stok kurang: ${bookName}`;
+      } else if (holdReason) {
+        reason = holdReason;
+        // Jatahkan stoknya untuk order lama ini
+        needed.forEach((qty, bookId) => {
+          stock.set(bookId, stockOf(bookId) - qty);
+          reservedFor.set(bookId, [...(reservedFor.get(bookId) || []), order.orderCode]);
+        });
+      }
 
       if (reason) {
         skipped.push({ order, reason });
         continue;
       }
       needed.forEach((qty, bookId) => stock.set(bookId, stockOf(bookId) - qty));
-      stillPending.delete(order.id);
       toPack.push(order);
     }
     return { toPack, skipped };
@@ -5598,7 +5611,7 @@ export const SalesTab: React.FC = () => {
               onClick={handleAutoKemas}
               disabled={isAutoKemasRunning}
               className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-[8px] bg-[#6366f1] hover:bg-[#4f46e5] text-white font-['Lexend'] font-semibold text-[13px] transition cursor-pointer select-none shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
-              title="Kemas otomatis order Pending highlight hijau (stok ready, tidak di-pin) yang tidak punya SO Pending lebih lama untuk buku yang sama"
+              title="Kemas otomatis order Pending highlight hijau (stok ready, tidak di-pin) dari yang terlama, selama stok buku masih cukup"
             >
               {isAutoKemasRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
               {isAutoKemasRunning ? 'Mengemas...' : 'Auto Kemas'}
@@ -8778,7 +8791,7 @@ export const SalesTab: React.FC = () => {
               <div className="flex-1 min-w-0">
                 <h3 className="text-base font-bold text-neutral-900 dark:text-white">Auto Kemas</h3>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Order Pending highlight hijau tanpa SO Pending lebih lama untuk buku yang sama
+                  Order Pending highlight hijau, dari yang terlama, selama stok bukunya masih cukup
                 </p>
               </div>
               <button
