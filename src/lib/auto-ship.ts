@@ -16,6 +16,15 @@ export const AUTO_SHIP_LABELS: Record<AutoShipPlatform, { site: string; action: 
 export const isAutoShipExtensionInstalled = (): boolean =>
   Number(document.documentElement.dataset.kbiAutoShipExt) >= PROTOCOL_VERSION;
 
+/**
+ * Jumlah order yang boleh diproses bersamaan oleh "Action Semua". Extension protokol 4 membuka satu tab
+ * per order secara paralel (MAX_PARALLEL_SHIP di background.js - samakan angkanya); versi lama memproses
+ * satu per satu, jadi permintaan yang dikirim sekaligus akan kena timeout saat mengantre.
+ */
+export const AUTO_SHIP_PARALLEL = 5;
+export const autoShipConcurrency = (): number =>
+  Number(document.documentElement.dataset.kbiAutoShipExt) >= 4 ? AUTO_SHIP_PARALLEL : 1;
+
 export interface PrintStepResult {
   label: string;
   ok: boolean;

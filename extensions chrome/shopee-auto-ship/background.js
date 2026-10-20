@@ -1,7 +1,9 @@
-// Antrian job, diproses satu per satu.
-// - ship : ambil nomor resi satu order (Shopee 安排出貨 / iOPEN Mall 取寄件編號) di tab kerja per platform
-// - print: cetak label order dari modal ERP. Shopee 蝦皮店到店, Shopee 7-ELEVEN, dan iOPEN Mall berjalan
-//          bersamaan, masing-masing di tab sendiri di jendela ERP (tidak saling menunggu).
+// Dua jenis job:
+// - ship : ambil nomor resi satu order (Shopee 安排出貨 / iOPEN Mall 取寄件編號). SETIAP order dibuka di tab
+//          latar belakangnya sendiri dan berjalan BERSAMAAN (maks MAX_PARALLEL_SHIP); tab ditutup setelah selesai.
+// - print: cetak label order dari modal ERP, satu job cetak dalam satu waktu. Di dalamnya Shopee 蝦皮店到店,
+//          Shopee 7-ELEVEN, dan iOPEN Mall berjalan bersamaan, masing-masing di tab sendiri di jendela ERP.
+//          Job cetak tidak menunggu job ship (dan sebaliknya).
 const IOPEN_ADMWEB = 'https://sales.iopenmall.tw/050497/admweb/admweb.main.php';
 const SHIP_TIMEOUT_MS = 60000;
 const PRINT_STEP_TIMEOUT_MS = 90000; // sampai dialog cetak muncul
@@ -24,12 +26,20 @@ const shopeeMassUrl = (method) =>
   `https://seller.shopee.tw/portal/sale/mass/ship?mass_shipment_tab=301&filter.shipping_method=${method}&filter.order_process_status=2&filter.pre_order=0`;
 const IOPEN_BATCH_URL = `${IOPEN_ADMWEB}?action=order_control_batch_pic&order_status=21#tab21`;
 
-const queue = [];
-let current = null;
+// ERP (src/lib/auto-ship.ts) juga membatasi jumlah permintaan bersamaan ke angka yang sama, sehingga
+// shipQueue normalnya kosong - antrean ini hanya cadangan kalau ERP mengirim lebih banyak.
+const MAX_PARALLEL_SHIP = 5;
+const shipJobs = new Map(); // tabId -> job ship yang sedang berjalan
+const shipQueue = [];
+let shipStarting = 0; // job yang tab-nya sedang dibuat (belum ada tabId)
+
+const printQueue = [];
+let current = null; // job print yang sedang berjalan
 
 // Chrome mematikan service worker yang menganggur ~30 detik, sehingga status job hilang (mis. saat user
 // lama di dialog cetak). Selama ada job, panggil API extension berkala supaya service worker tetap hidup.
 let keepAlive = null;
+const syncKeepAlive = () => setKeepAlive(Boolean(current) || shipJobs.size > 0 || shipStarting > 0 || shipQueue.length > 0);
 function setKeepAlive(on) {
   if (on && !keepAlive) keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
   if (!on && keepAlive) {
@@ -44,22 +54,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
 
   if (msg.type === 'AUTO_SHIP') {
-    queue.push({ kind: 'ship', id: msg.id, platform: msg.platform, orderNo: msg.orderNo, erpTabId: tabId });
-    runNext();
+    shipQueue.push({ kind: 'ship', id: msg.id, platform: msg.platform, orderNo: msg.orderNo, erpTabId: tabId, erpWindowId: sender.tab.windowId });
+    pumpShip();
     return;
   }
   if (msg.type === 'PRINT_LABELS') {
-    queue.push({ kind: 'print', id: msg.id, sections: msg.sections || {}, erpTabId: tabId, erpWindowId: sender.tab.windowId, erpIndex: sender.tab.index });
-    runNext();
+    printQueue.push({ kind: 'print', id: msg.id, sections: msg.sections || {}, erpTabId: tabId, erpWindowId: sender.tab.windowId, erpIndex: sender.tab.index });
+    runNextPrint();
     return;
   }
 
   // ----- ship -----
-  if (current?.kind === 'ship' && tabId === current.workerTabId) {
+  const shipJob = shipJobs.get(tabId);
+  if (shipJob) {
     if (msg.type === 'READY') {
-      chrome.tabs.sendMessage(tabId, { type: 'RUN', platform: current.platform, orderNo: current.orderNo });
+      chrome.tabs.sendMessage(tabId, { type: 'RUN', platform: shipJob.platform, orderNo: shipJob.orderNo });
     } else if (msg.type === 'DONE') {
-      finish({ ok: msg.ok, resi: msg.resi, error: msg.error });
+      finishShip(shipJob, { ok: msg.ok, resi: msg.resi, error: msg.error });
     }
     return;
   }
@@ -98,8 +109,13 @@ chrome.tabs.onCreated.addListener((tab) => {
   if (step) step.tabId = tab.id;
 });
 
-// Tab langkah ditutup user sebelum selesai
+// Tab ditutup user sebelum selesai
 chrome.tabs.onRemoved.addListener((tabId) => {
+  const shipJob = shipJobs.get(tabId);
+  if (shipJob) {
+    finishShip(shipJob, { ok: false, error: 'Tab ditutup sebelum resi didapat' }, { closeTab: false });
+    return;
+  }
   const step = stepOfTab(tabId);
   if (step) completeStep(step, { ok: false, error: 'Tab cetak ditutup sebelum selesai' });
 });
@@ -109,51 +125,62 @@ async function showTab(tabId) {
   await chrome.windows.update(tab.windowId, { focused: true });
 }
 
-// Pakai tab khusus milik extension, jangan mengambil alih tab yang sedang dipakai user
-async function openWorkerTab(site, url) {
-  const key = `workerTab_${site}`;
-  const { [key]: tabId } = await chrome.storage.session.get(key);
-  if (tabId) {
-    try {
-      await chrome.tabs.update(tabId, { url });
-      return tabId;
-    } catch {
-      // tab sudah ditutup user -> buat baru
-    }
+// ----- ship: satu tab per order, berjalan bersamaan -----
+function pumpShip() {
+  while (shipQueue.length > 0 && shipJobs.size + shipStarting < MAX_PARALLEL_SHIP) {
+    startShip(shipQueue.shift());
   }
-  const tab = await chrome.tabs.create({ url, active: false });
-  await chrome.storage.session.set({ [key]: tab.id });
-  return tab.id;
+  syncKeepAlive();
 }
 
-async function runNext() {
-  if (current) return;
-  if (queue.length === 0) {
-    setKeepAlive(false);
+async function startShip(job) {
+  if (!SHIP_URL[job.platform]) {
+    sendResult(job, { ok: false, error: `Platform tidak didukung: ${job.platform}` });
     return;
   }
-  setKeepAlive(true);
-  current = queue.shift();
-
-  if (current.kind === 'print') {
-    startPrint();
-    return;
-  }
-
-  if (!SHIP_URL[current.platform]) {
-    finish({ ok: false, error: `Platform tidak didukung: ${current.platform}` });
-    return;
-  }
-  current.timer = setTimeout(
-    () => finish({ ok: false, error: `Timeout. Pastikan ${SITES[current.platform].label} sudah login di Chrome ini.` }),
-    SHIP_TIMEOUT_MS
-  );
+  shipStarting++;
   try {
-    // Selalu muat ulang halaman supaya tidak ada dialog/pencarian sisa dari order sebelumnya
-    current.workerTabId = await openWorkerTab(current.platform, SHIP_URL[current.platform](current.orderNo));
+    // Tab latar belakang khusus order ini (bukan tab yang sedang dipakai user). Buka kosong dulu dan
+    // daftarkan id-nya, baru muat halaman, supaya pesan READY pertama sudah dikenali.
+    const tab = await chrome.tabs.create({ url: 'about:blank', active: false, windowId: job.erpWindowId });
+    job.tabId = tab.id;
+    shipJobs.set(tab.id, job);
+    job.timer = setTimeout(
+      () => finishShip(job, { ok: false, error: `Timeout. Pastikan ${SITES[job.platform].label} sudah login di Chrome ini.` }),
+      SHIP_TIMEOUT_MS
+    );
+    await chrome.tabs.update(tab.id, { url: SHIP_URL[job.platform](job.orderNo) });
   } catch (err) {
-    finish({ ok: false, error: `Gagal membuka tab ${SITES[current.platform].label}: ${err.message}` });
+    if (job.tabId != null) finishShip(job, { ok: false, error: `Gagal membuka tab ${SITES[job.platform].label}: ${err.message}` });
+    else sendResult(job, { ok: false, error: `Gagal membuka tab ${SITES[job.platform].label}: ${err.message}` });
+  } finally {
+    shipStarting--;
+    pumpShip();
   }
+}
+
+function finishShip(job, result, { closeTab = true } = {}) {
+  if (!shipJobs.has(job.tabId)) return; // sudah selesai (mis. timeout lalu DONE datang terlambat)
+  clearTimeout(job.timer);
+  shipJobs.delete(job.tabId);
+  if (closeTab) chrome.tabs.remove(job.tabId).catch(() => {});
+  sendResult(job, result);
+  pumpShip();
+}
+
+function sendResult(job, result) {
+  chrome.tabs.sendMessage(job.erpTabId, { type: 'RESULT', id: job.id, ...result }).catch(() => {});
+}
+
+// ----- print: satu job cetak dalam satu waktu -----
+function runNextPrint() {
+  if (current || printQueue.length === 0) {
+    syncKeepAlive();
+    return;
+  }
+  current = printQueue.shift();
+  syncKeepAlive();
+  startPrint();
 }
 
 async function startPrint() {
@@ -233,6 +260,6 @@ function finish(result) {
   if (!job) return;
   clearTimeout(job.timer);
   current = null;
-  chrome.tabs.sendMessage(job.erpTabId, { type: 'RESULT', id: job.id, ...result }).catch(() => {});
-  runNext();
+  sendResult(job, result);
+  runNextPrint();
 }

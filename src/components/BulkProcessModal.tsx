@@ -10,7 +10,7 @@ import { useSidebar } from '../lib/sidebar-context';
 import { ImagePreviewModal } from './ui/ImagePreviewModal';
 import { useModalEsc } from '../lib/use-modal-esc';
 import { getEffectiveOrderLogistics, sanitizeResiNumber } from '../lib/sales-logistics-utils';
-import { AUTO_SHIP_LABELS, PRINT_SECTION_LABELS, formatPrintResult, getAutoShipPlatform, getPrintSection, requestPrintLabels, requestTrackingNumber, type AutoShipPlatform, type PrintSection } from '../lib/auto-ship';
+import { AUTO_SHIP_LABELS, PRINT_SECTION_LABELS, autoShipConcurrency, formatPrintResult, getAutoShipPlatform, getPrintSection, requestPrintLabels, requestTrackingNumber, type AutoShipPlatform, type PrintSection } from '../lib/auto-ship';
 
 interface BulkProcessModalProps {
   isOpen: boolean;
@@ -657,15 +657,22 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
   };
 
   // Tombol "Action Semua": jalankan Action untuk semua order Shopee / iOPEN yang resinya masih kosong.
-  // Satu per satu, karena extension memproses antrian bergiliran dan tiap permintaan punya timeout sendiri.
+  // Bersamaan, satu tab per order di extension (maks autoShipConcurrency(); extension lama: satu per satu,
+  // karena tiap permintaan punya timeout sendiri dan akan habis kalau mengantre).
   const autoShipTargets = rows.filter(r => r.status !== 'success' && !r.resi.trim() && getAutoShipPlatform(r.orderNo));
   const handleAutoShipAll = async () => {
     const targets = autoShipTargets.map(r => ({ orderId: r.orderId, orderNo: r.orderNo, platform: getAutoShipPlatform(r.orderNo)! }));
-    setAutoShipAllProgress({ done: 0, total: targets.length });
-    for (const [i, t] of targets.entries()) {
-      await handleAutoShipAction(t.platform, t.orderId, t.orderNo);
-      setAutoShipAllProgress({ done: i + 1, total: targets.length });
-    }
+    let next = 0;
+    let done = 0;
+    setAutoShipAllProgress({ done, total: targets.length });
+    const worker = async () => {
+      while (next < targets.length) {
+        const t = targets[next++];
+        await handleAutoShipAction(t.platform, t.orderId, t.orderNo);
+        setAutoShipAllProgress({ done: ++done, total: targets.length });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(autoShipConcurrency(), targets.length) }, worker));
     setAutoShipAllProgress(null);
   };
 
