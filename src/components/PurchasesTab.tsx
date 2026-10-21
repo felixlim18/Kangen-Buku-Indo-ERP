@@ -65,7 +65,7 @@ import { Decimal } from 'decimal.js';
 import { Eye, Pencil, ChevronLeft, Edit2, LayoutGrid, PackageCheck, Package, X, Check, Search, Calendar, ChevronDown, ChevronUp, Trash2, Printer, Plus, SlidersHorizontal } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
-import { FileSpreadsheet, Download, Upload, CheckCircle2, BookOpen, Copy, Loader2, AlertTriangle, RefreshCw, RotateCcw, Scan, Truck, ChevronRight, AlertCircle, MessageSquareWarning, MoreHorizontal, Settings } from 'lucide-react';
+import { FileSpreadsheet, Download, Upload, CheckCircle2, BookOpen, Copy, Loader2, AlertTriangle, RefreshCw, RotateCcw, Scan, Truck, ChevronRight, AlertCircle, MessageSquareWarning, MoreHorizontal, Settings, History, Lock } from 'lucide-react';
 import { PurchaseOrderMobileFilter } from './purchases/PurchaseOrderMobileFilter';
 import { SellerShippedChecklist, type PoShippingMark, getPoShippingAlertRank, poShippingAlertCardClass } from './purchases/SellerShippedChecklist';
 import { PurchaseOrderMobileCard } from './purchases/PurchaseOrderMobileCard';
