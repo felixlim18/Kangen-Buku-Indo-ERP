@@ -3,14 +3,18 @@
 Extension Chrome untuk tombol **Action**, **Action Semua**, dan **Print Resi** di modal *Proses Massal Pesanan Dikemas*
 (baris platform **Shopee** dan **IopenMall**). Nomor resi yang didapat otomatis masuk kolom Nomor Resi dan tersimpan.
 
-## Action Semua: paralel, 1 tab per order
-Setiap nomor order dikerjakan di **tab latar belakangnya sendiri** dan berjalan **bersamaan** (maks 5 tab sekaligus;
-begitu satu selesai, order berikutnya langsung dimulai). Tab ditutup otomatis setelah nomor resi didapat.
-Batas 5 diatur di `MAX_PARALLEL_SHIP` (background.js) dan `AUTO_SHIP_PARALLEL` (ERP `src/lib/auto-ship.ts`) — ubah keduanya bersamaan.
+## Action Semua: satu per satu, tanpa refresh
+Order diproses **satu per satu** di **satu tab kerja per platform** (latar belakang) yang dipakai bergantian:
+- **Shopee**: order berikutnya langsung dicari di halaman 我的銷售 yang sudah terbuka, **tanpa refresh**.
+  Kalau pencarian di halaman itu gagal, halaman di-refresh sekali lalu dicoba lagi.
+- **iOPEN Mall**: halaman dimuat ulang per order (pencariannya lewat URL), tapi tab-nya tetap sama.
+- Kalau halaman selesai dimuat tapi bukan daftar order (mis. halaman login), order langsung dilaporkan gagal.
+- Pesan gagal menyertakan lama proses, mis. `[34 dtk, halaman dimuat 1x]` / `[12 dtk, tanpa refresh]`.
+- Tab kerja tertutup sendiri setelah 1 menit tidak dipakai.
 
 ## Shopee (seller.shopee.tw)
-1. Buka tab baru 我的銷售 → 全部 di latar belakang (satu tab per order).
-2. Isi 訂單編號 di kolom pencarian, klik hasil di dropdown.
+1. Buka 我的銷售 di tab kerja latar belakang (sekali; order berikutnya memakai halaman yang sama).
+2. Klik tab **全部** dulu, lalu isi 訂單編號 di kolom pencarian, klik hasil di dropdown.
 3. Klik 安排出貨 (atau 查看物流 kalau sudah pernah diatur).
 4. Kalau muncul dialog 申請寄件編號 → klik tombol itu (lalu 確認 bila ada).
 5. Ambil nomor resi dari dialog 查看寄件編號.

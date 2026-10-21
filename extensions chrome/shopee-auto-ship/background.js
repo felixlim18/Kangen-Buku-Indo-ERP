@@ -1,6 +1,8 @@
 // Dua jenis job:
-// - ship : ambil nomor resi satu order (Shopee 安排出貨 / iOPEN Mall 取寄件編號). SETIAP order dibuka di tab
-//          latar belakangnya sendiri dan berjalan BERSAMAAN (maks MAX_PARALLEL_SHIP); tab ditutup setelah selesai.
+// - ship : ambil nomor resi satu order (Shopee 安排出貨 / iOPEN Mall 取寄件編號), SATU PER SATU, di satu tab
+//          kerja per platform yang dipakai bergantian. Shopee: order berikutnya dicari langsung di halaman yang
+//          sudah terbuka TANPA refresh (refresh hanya kalau halaman belum siap / pencarian di tempat gagal).
+//          Tab kerja ditutup setelah 1 menit tidak dipakai.
 // - print: cetak label order dari modal ERP, satu job cetak dalam satu waktu. Di dalamnya Shopee 蝦皮店到店,
 //          Shopee 7-ELEVEN, dan iOPEN Mall berjalan bersamaan, masing-masing di tab sendiri di jendela ERP.
 //          Job cetak tidak menunggu job ship (dan sebaliknya).
@@ -26,12 +28,13 @@ const shopeeMassUrl = (method) =>
   `https://seller.shopee.tw/portal/sale/mass/ship?mass_shipment_tab=301&filter.shipping_method=${method}&filter.order_process_status=2&filter.pre_order=0`;
 const IOPEN_BATCH_URL = `${IOPEN_ADMWEB}?action=order_control_batch_pic&order_status=21#tab21`;
 
-// ERP (src/lib/auto-ship.ts) juga membatasi jumlah permintaan bersamaan ke angka yang sama, sehingga
-// shipQueue normalnya kosong - antrean ini hanya cadangan kalau ERP mengirim lebih banyak.
-const MAX_PARALLEL_SHIP = 5;
-const shipJobs = new Map(); // tabId -> job ship yang sedang berjalan
+// Satu order dalam satu waktu (erp-bridge.js mengumumkan protokol 3, ERP juga mengirim satu per satu).
+const WORKER_IDLE_CLOSE_MS = 60000;
+const LOGIN_CHECK_MS = 6000; // halaman selesai dimuat tapi skrip tidak aktif -> kemungkinan halaman login
+const workerTabs = { shopee: null, iopen: null }; // platform -> tabId tab kerja
 const shipQueue = [];
-let shipStarting = 0; // job yang tab-nya sedang dibuat (belum ada tabId)
+let shipCurrent = null; // job ship yang sedang berjalan
+let workerIdleTimer = null;
 
 const printQueue = [];
 let current = null; // job print yang sedang berjalan
@@ -39,7 +42,10 @@ let current = null; // job print yang sedang berjalan
 // Chrome mematikan service worker yang menganggur ~30 detik, sehingga status job hilang (mis. saat user
 // lama di dialog cetak). Selama ada job, panggil API extension berkala supaya service worker tetap hidup.
 let keepAlive = null;
-const syncKeepAlive = () => setKeepAlive(Boolean(current) || shipJobs.size > 0 || shipStarting > 0 || shipQueue.length > 0);
+// Tetap hidup juga selama tab kerja menunggu ditutup (timer idle hilang kalau service worker dimatikan)
+const hasWorkerTab = () => Object.values(workerTabs).some((t) => t != null);
+const syncKeepAlive = () => setKeepAlive(Boolean(current) || Boolean(shipCurrent) || shipQueue.length > 0 || hasWorkerTab());
+const shipJobOfTab = (tabId) => (shipCurrent && shipCurrent.tabId === tabId ? shipCurrent : null);
 function setKeepAlive(on) {
   if (on && !keepAlive) keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
   if (!on && keepAlive) {
@@ -65,11 +71,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   // ----- ship -----
-  const shipJob = shipJobs.get(tabId);
+  const shipJob = shipJobOfTab(tabId);
   if (shipJob) {
     if (msg.type === 'READY') {
+      shipJob.loading = false;
+      if (!shipJob.pageLoadedAt) shipJob.pageLoadedAt = Date.now();
       chrome.tabs.sendMessage(tabId, { type: 'RUN', platform: shipJob.platform, orderNo: shipJob.orderNo });
     } else if (msg.type === 'DONE') {
+      if (!msg.ok && shipJob.inPlace && !shipJob.retried) {
+        // Pencarian di halaman yang dipakai ulang gagal -> refresh sekali lalu coba lagi
+        shipJob.retried = true;
+        navigateWorker(shipJob);
+        return;
+      }
       finishShip(shipJob, { ok: msg.ok, resi: msg.resi, error: msg.error });
     }
     return;
@@ -111,9 +125,11 @@ chrome.tabs.onCreated.addListener((tab) => {
 
 // Tab ditutup user sebelum selesai
 chrome.tabs.onRemoved.addListener((tabId) => {
-  const shipJob = shipJobs.get(tabId);
+  for (const p of Object.keys(workerTabs)) if (workerTabs[p] === tabId) workerTabs[p] = null;
+  syncKeepAlive();
+  const shipJob = shipJobOfTab(tabId);
   if (shipJob) {
-    finishShip(shipJob, { ok: false, error: 'Tab ditutup sebelum resi didapat' }, { closeTab: false });
+    finishShip(shipJob, { ok: false, error: 'Tab ditutup sebelum resi didapat' });
     return;
   }
   const step = stepOfTab(tabId);
@@ -125,46 +141,95 @@ async function showTab(tabId) {
   await chrome.windows.update(tab.windowId, { focused: true });
 }
 
-// ----- ship: satu tab per order, berjalan bersamaan -----
+// ----- ship: satu per satu, tab kerja per platform dipakai ulang -----
+// Halaman selesai dimuat tapi skrip extension tidak mengirim READY -> bukan halaman order (mis. halaman login)
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  const job = shipJobOfTab(tabId);
+  if (!job || info.status !== 'complete' || !job.loading) return;
+  setTimeout(() => {
+    if (shipCurrent === job && job.loading) {
+      finishShip(job, { ok: false, error: `Halaman ${SITES[job.platform].label} tidak terbuka di daftar order. Pastikan sudah login di Chrome ini.` });
+    }
+  }, LOGIN_CHECK_MS);
+});
+
 function pumpShip() {
-  while (shipQueue.length > 0 && shipJobs.size + shipStarting < MAX_PARALLEL_SHIP) {
-    startShip(shipQueue.shift());
-  }
+  if (!shipCurrent && shipQueue.length > 0) startShip(shipQueue.shift());
   syncKeepAlive();
 }
 
+async function workerTab(job) {
+  const existing = workerTabs[job.platform];
+  if (existing != null) {
+    try {
+      await chrome.tabs.get(existing);
+      return existing;
+    } catch {
+      workerTabs[job.platform] = null;
+    }
+  }
+  const tab = await chrome.tabs.create({ url: 'about:blank', active: false, windowId: job.erpWindowId });
+  workerTabs[job.platform] = tab.id;
+  return tab.id;
+}
+
+function navigateWorker(job) {
+  job.inPlace = false;
+  job.loading = true;
+  job.navigations = (job.navigations || 0) + 1;
+  return chrome.tabs.update(job.tabId, { url: SHIP_URL[job.platform](job.orderNo) });
+}
+
 async function startShip(job) {
+  shipCurrent = job;
+  clearTimeout(workerIdleTimer);
+  syncKeepAlive();
   if (!SHIP_URL[job.platform]) {
-    sendResult(job, { ok: false, error: `Platform tidak didukung: ${job.platform}` });
+    finishShip(job, { ok: false, error: `Platform tidak didukung: ${job.platform}` });
     return;
   }
-  shipStarting++;
+  job.startedAt = Date.now();
+  job.timer = setTimeout(
+    () => finishShip(job, { ok: false, error: `Timeout. Pastikan ${SITES[job.platform].label} sudah login di Chrome ini.` }),
+    SHIP_TIMEOUT_MS
+  );
   try {
-    // Tab latar belakang khusus order ini (bukan tab yang sedang dipakai user). Buka kosong dulu dan
-    // daftarkan id-nya, baru muat halaman, supaya pesan READY pertama sudah dikenali.
-    const tab = await chrome.tabs.create({ url: 'about:blank', active: false, windowId: job.erpWindowId });
-    job.tabId = tab.id;
-    shipJobs.set(tab.id, job);
-    job.timer = setTimeout(
-      () => finishShip(job, { ok: false, error: `Timeout. Pastikan ${SITES[job.platform].label} sudah login di Chrome ini.` }),
-      SHIP_TIMEOUT_MS
-    );
-    await chrome.tabs.update(tab.id, { url: SHIP_URL[job.platform](job.orderNo) });
+    job.tabId = await workerTab(job);
+    if (job.platform === 'shopee') {
+      // Halaman order Shopee yang sudah terbuka dipakai langsung, tanpa refresh
+      const ping = await chrome.tabs.sendMessage(job.tabId, { type: 'PING' }).catch(() => null);
+      if (shipCurrent === job && ping?.ready) {
+        job.inPlace = true;
+        chrome.tabs.sendMessage(job.tabId, { type: 'RUN', platform: job.platform, orderNo: job.orderNo });
+        return;
+      }
+    }
+    await navigateWorker(job);
   } catch (err) {
-    if (job.tabId != null) finishShip(job, { ok: false, error: `Gagal membuka tab ${SITES[job.platform].label}: ${err.message}` });
-    else sendResult(job, { ok: false, error: `Gagal membuka tab ${SITES[job.platform].label}: ${err.message}` });
-  } finally {
-    shipStarting--;
-    pumpShip();
+    finishShip(job, { ok: false, error: `Gagal membuka tab ${SITES[job.platform].label}: ${err.message}` });
   }
 }
 
-function finishShip(job, result, { closeTab = true } = {}) {
-  if (!shipJobs.has(job.tabId)) return; // sudah selesai (mis. timeout lalu DONE datang terlambat)
+function finishShip(job, result) {
+  if (shipCurrent !== job) return; // sudah selesai (mis. timeout lalu DONE datang terlambat)
   clearTimeout(job.timer);
-  shipJobs.delete(job.tabId);
-  if (closeTab) chrome.tabs.remove(job.tabId).catch(() => {});
+  shipCurrent = null;
+  if (!result.ok && job.startedAt) {
+    const secs = Math.round((Date.now() - job.startedAt) / 1000);
+    const how = job.navigations ? `halaman dimuat ${job.navigations}x` : 'tanpa refresh';
+    result = { ...result, error: `${result.error} [${secs} dtk, ${how}]` };
+  }
   sendResult(job, result);
+  // Tab kerja dibiarkan terbuka untuk order berikutnya; ditutup kalau 1 menit tidak dipakai
+  clearTimeout(workerIdleTimer);
+  workerIdleTimer = setTimeout(() => {
+    if (shipCurrent || shipQueue.length) return;
+    for (const p of Object.keys(workerTabs)) {
+      if (workerTabs[p] != null) chrome.tabs.remove(workerTabs[p]).catch(() => {});
+      workerTabs[p] = null;
+    }
+    syncKeepAlive();
+  }, WORKER_IDLE_CLOSE_MS);
   pumpShip();
 }
 
