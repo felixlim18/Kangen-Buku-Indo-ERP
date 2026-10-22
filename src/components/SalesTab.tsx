@@ -3248,6 +3248,47 @@ export const SalesTab: React.FC = () => {
   };
 
   // Applied Advanced filters handling
+  // ===== Pilihan & pencocokan filter lanjutan =====
+  // Nilai di order tidak seragam ("IopenMall" vs "Iopen Mall", "Post Office" vs "郵局", "7-11" vs "7-Eleven"),
+  // dan Data Master tidak selalu memuat semua nilai yang dipakai order. Jadi pilihan disusun dari Data Master +
+  // nilai yang ada di order, digabung per kunci ternormalisasi, dan pencocokan memakai kunci yang sama.
+  const FILTER_ALIASES: Record<string, string> = {
+    '711': '7eleven', 'seveneleven': '7eleven', '統一超商': '7eleven',
+    '郵局': 'postoffice', '中華郵政': 'postoffice', 'chunghwapost': 'postoffice',
+    '全家': 'familymart', '萊爾富': 'hilife',
+    'shopeexpress': 'spx', 'shopeeexpress': 'spx', '蝦皮店到店': 'spx',
+  };
+  const filterKey = (v: any) => {
+    const k = String(v ?? '').toLowerCase().replace(/[\s\-_.()]+/g, '');
+    return FILTER_ALIASES[k] || k;
+  };
+  const buildFilterOptions = (...lists: Array<Array<string | undefined | null>>) => {
+    const byKey = new Map<string, string>();
+    lists.flat().forEach((v) => {
+      const name = String(v ?? '').trim();
+      const k = filterKey(name);
+      if (k && !byKey.has(k)) byKey.set(k, name);
+    });
+    return [...byKey.values()];
+  };
+  const orderCourier = (o: SalesOrder) => getEffectiveOrderLogistics(o, resolvedLogistics, '');
+  const filterPlatformOptions = useMemo(
+    () => buildFilterOptions(resolvedPlatforms.map((p) => p.name), orders.map((o) => o.platformOrder)),
+    [resolvedPlatforms, orders]
+  );
+  const filterChannelOptions = useMemo(
+    () => buildFilterOptions(resolvedChannels.map((c) => c.name), orders.map((o) => o.platformChannel)),
+    [resolvedChannels, orders]
+  );
+  const filterCampaignOptions = useMemo(
+    () => buildFilterOptions(resolvedOrderTypes.map((t) => t.name), orders.map((o) => o.orderType)),
+    [resolvedOrderTypes, orders]
+  );
+  const filterCourierOptions = useMemo(
+    () => buildFilterOptions(resolvedLogistics.map((l) => l.name), orders.map(orderCourier)),
+    [resolvedLogistics, orders]
+  );
+
   const handleApplyAdvancedFilters = () => {
     setAppliedPlatform(platformFilterInput);
     setAppliedSumber(sumberFilterInput);
@@ -3354,31 +3395,26 @@ export const SalesTab: React.FC = () => {
       }
     }
 
-    // Applied Platform Order
+    // Applied Platform Order (order Shopee menyimpan "Shopee" di platformChannel, platformOrder-nya kosong)
     if (appliedPlatform) {
-      const p = appliedPlatform.toLowerCase();
-      const matchPlatformOrder = order.platformOrder?.toLowerCase() === p;
-      const matchPlatformChannel = order.platformChannel?.toLowerCase() === p;
-      if (!matchPlatformOrder && !matchPlatformChannel) {
+      const p = filterKey(appliedPlatform);
+      if (filterKey(order.platformOrder) !== p && filterKey(order.platformChannel) !== p) {
         return false;
       }
     }
 
-    // Applied Sumber Order (Order Type / Campaign)
+    // Applied Sumber Order: sumber orderan (kolom SUMBER) atau kampanye iklan
     if (appliedSumber) {
-      const s = appliedSumber.toLowerCase();
-      const matchOrderType = order.orderType?.toLowerCase() === s;
-      const matchChannel = order.platformChannel?.toLowerCase() === s;
-      if (!matchOrderType && !matchChannel) {
+      const s = filterKey(appliedSumber);
+      if (filterKey(order.platformChannel) !== s && filterKey(order.orderType) !== s) {
         return false;
       }
     }
 
-    // Applied Courier / Opsi Pengiriman
+    // Applied Courier / Opsi Pengiriman: sama dengan kolom PENGIRIMAN (termasuk deteksi dari nomor resi)
     if (appliedCourier) {
-      const c = appliedCourier.toLowerCase();
-      const matchLogistics = order.pickupLogistics?.toLowerCase() === c;
-      if (!matchLogistics) {
+      const c = filterKey(appliedCourier);
+      if (filterKey(orderCourier(order)) !== c && filterKey(order.pickupLogistics) !== c) {
         return false;
       }
     }
@@ -5660,8 +5696,8 @@ export const SalesTab: React.FC = () => {
                 className="w-full px-3 py-1.5 text-xs bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-neutral-800 dark:text-white focus:outline-none"
               >
                 <option value="">Semua Platform</option>
-                {resolvedPlatforms.map((p) => (
-                  <option key={p.id || p.name} value={p.name}>{p.name}</option>
+                {filterPlatformOptions.map((name) => (
+                  <option key={name} value={name}>{name}</option>
                 ))}
               </select>
             </div>
@@ -5675,9 +5711,18 @@ export const SalesTab: React.FC = () => {
                 className="w-full px-3 py-1.5 text-xs bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-neutral-800 dark:text-white focus:outline-none"
               >
                 <option value="">Semua Sumber Order</option>
-                {resolvedOrderTypes.map((t) => (
-                  <option key={t.id || t.name} value={t.name}>{t.name}</option>
-                ))}
+                <optgroup label="Sumber orderan">
+                  {filterChannelOptions.map((name) => (
+                    <option key={`ch-${name}`} value={name}>{name}</option>
+                  ))}
+                </optgroup>
+                {filterCampaignOptions.length > 0 && (
+                  <optgroup label="Kampanye iklan">
+                    {filterCampaignOptions.map((name) => (
+                      <option key={`ad-${name}`} value={name}>{name}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
 
@@ -5690,8 +5735,8 @@ export const SalesTab: React.FC = () => {
                 className="w-full px-3 py-1.5 text-xs bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-neutral-800 dark:text-white focus:outline-none"
               >
                 <option value="">Semua Pengiriman</option>
-                {resolvedLogistics.map((l) => (
-                  <option key={l.id || l.name} value={l.name}>{l.name}</option>
+                {filterCourierOptions.map((name) => (
+                  <option key={name} value={name}>{name}</option>
                 ))}
               </select>
             </div>
@@ -5772,8 +5817,8 @@ export const SalesTab: React.FC = () => {
           setCourierInput(val);
           setAppliedCourier(val);
         }}
-        channelList={resolvedChannels}
-        logisticsList={resolvedLogistics}
+        channelList={filterChannelOptions.map((name) => resolvedChannels.find((c) => filterKey(c.name) === filterKey(name)) || { name })}
+        logisticsList={filterCourierOptions.map((name) => ({ name }))}
         onResetFilters={handleResetAdvancedFilters}
       />
 
