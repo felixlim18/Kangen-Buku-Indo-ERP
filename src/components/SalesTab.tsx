@@ -16,6 +16,7 @@ import {
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { DateRangePicker } from './ui/DateRangePicker';
+import { MultiSelectDropdown } from './ui/MultiSelectDropdown';
 import { useMediaQuery } from '../lib/use-media-query';
 import { BulkProcessModal } from './BulkProcessModal';
 import './SalesOrderForm.css';
@@ -1090,9 +1091,10 @@ export const SalesTab: React.FC = () => {
   }, []);
 
   // Advanced Filter Inputs
-  const [platformFilterInput, setPlatformFilterInput] = useState('');
-  const [sumberFilterInput, setSumberFilterInput] = useState('');
-  const [courierInput, setCourierInput] = useState('');
+  // Filter lanjutan bisa pilih lebih dari satu nilai (kosong = semua)
+  const [platformFilterInput, setPlatformFilterInput] = useState<string[]>([]);
+  const [sumberFilterInput, setSumberFilterInput] = useState<string[]>([]);
+  const [courierInput, setCourierInput] = useState<string[]>([]);
   const [detailsInput, setDetailsInput] = useState('');
 
   // Global Date Filter (Default: Semua Tanggal)
@@ -1101,9 +1103,9 @@ export const SalesTab: React.FC = () => {
   const [globalDateLabel, setGlobalDateLabel] = useState<string>('Semua');
 
   // Applied Advanced Filter values
-  const [appliedPlatform, setAppliedPlatform] = useState('');
-  const [appliedSumber, setAppliedSumber] = useState('');
-  const [appliedCourier, setAppliedCourier] = useState('');
+  const [appliedPlatform, setAppliedPlatform] = useState<string[]>([]);
+  const [appliedSumber, setAppliedSumber] = useState<string[]>([]);
+  const [appliedCourier, setAppliedCourier] = useState<string[]>([]);
   const [appliedDetails, setAppliedDetails] = useState('');
 
   // Row Stepper Expand State
@@ -3297,13 +3299,13 @@ export const SalesTab: React.FC = () => {
   };
 
   const handleResetAdvancedFilters = () => {
-    setPlatformFilterInput('');
-    setSumberFilterInput('');
-    setCourierInput('');
+    setPlatformFilterInput([]);
+    setSumberFilterInput([]);
+    setCourierInput([]);
     setDetailsInput('');
-    setAppliedPlatform('');
-    setAppliedSumber('');
-    setAppliedCourier('');
+    setAppliedPlatform([]);
+    setAppliedSumber([]);
+    setAppliedCourier([]);
     setAppliedDetails('');
   };
 
@@ -3395,28 +3397,25 @@ export const SalesTab: React.FC = () => {
       }
     }
 
+    // Tiap filter bisa berisi beberapa pilihan: order lolos kalau cocok dengan SALAH SATU pilihan
+    const matchesAny = (picked: string[], ...values: any[]) => {
+      const keys = new Set(values.map(filterKey).filter(Boolean));
+      return picked.some((v) => keys.has(filterKey(v)));
+    };
+
     // Applied Platform Order (order Shopee menyimpan "Shopee" di platformChannel, platformOrder-nya kosong)
-    if (appliedPlatform) {
-      const p = filterKey(appliedPlatform);
-      if (filterKey(order.platformOrder) !== p && filterKey(order.platformChannel) !== p) {
-        return false;
-      }
+    if (appliedPlatform.length && !matchesAny(appliedPlatform, order.platformOrder, order.platformChannel)) {
+      return false;
     }
 
     // Applied Sumber Order: sumber orderan (kolom SUMBER) atau kampanye iklan
-    if (appliedSumber) {
-      const s = filterKey(appliedSumber);
-      if (filterKey(order.platformChannel) !== s && filterKey(order.orderType) !== s) {
-        return false;
-      }
+    if (appliedSumber.length && !matchesAny(appliedSumber, order.platformChannel, order.orderType)) {
+      return false;
     }
 
     // Applied Courier / Opsi Pengiriman: sama dengan kolom PENGIRIMAN (termasuk deteksi dari nomor resi)
-    if (appliedCourier) {
-      const c = filterKey(appliedCourier);
-      if (filterKey(orderCourier(order)) !== c && filterKey(order.pickupLogistics) !== c) {
-        return false;
-      }
+    if (appliedCourier.length && !matchesAny(appliedCourier, orderCourier(order), order.pickupLogistics)) {
+      return false;
     }
 
     // Applied Details (Address / Comment, or any book name inside items)
@@ -5690,55 +5689,40 @@ export const SalesTab: React.FC = () => {
             {/* 1. Platform Order */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold capitalize text-neutral-500 tracking-wider">Platform Order</label>
-              <select
-                value={platformFilterInput}
-                onChange={(e) => setPlatformFilterInput(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-neutral-800 dark:text-white focus:outline-none"
-              >
-                <option value="">Semua Platform</option>
-                {filterPlatformOptions.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                ariaLabel="Filter Platform Order"
+                placeholder="Semua Platform"
+                groups={[{ options: filterPlatformOptions }]}
+                selected={platformFilterInput}
+                onChange={setPlatformFilterInput}
+              />
             </div>
 
             {/* 2. Sumber Order */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold capitalize text-neutral-500 tracking-wider">Sumber Order</label>
-              <select
-                value={sumberFilterInput}
-                onChange={(e) => setSumberFilterInput(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-neutral-800 dark:text-white focus:outline-none"
-              >
-                <option value="">Semua Sumber Order</option>
-                <optgroup label="Sumber orderan">
-                  {filterChannelOptions.map((name) => (
-                    <option key={`ch-${name}`} value={name}>{name}</option>
-                  ))}
-                </optgroup>
-                {filterCampaignOptions.length > 0 && (
-                  <optgroup label="Kampanye iklan">
-                    {filterCampaignOptions.map((name) => (
-                      <option key={`ad-${name}`} value={name}>{name}</option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
+              <MultiSelectDropdown
+                ariaLabel="Filter Sumber Order"
+                placeholder="Semua Sumber Order"
+                groups={[
+                  { label: 'Sumber orderan', options: filterChannelOptions },
+                  { label: 'Kampanye iklan', options: filterCampaignOptions },
+                ]}
+                selected={sumberFilterInput}
+                onChange={setSumberFilterInput}
+              />
             </div>
 
             {/* 3. Opsi Pengiriman */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold capitalize text-neutral-500 tracking-wider">Opsi Pengiriman</label>
-              <select
-                value={courierInput}
-                onChange={(e) => setCourierInput(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-neutral-800 dark:text-white focus:outline-none"
-              >
-                <option value="">Semua Pengiriman</option>
-                {filterCourierOptions.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                ariaLabel="Filter Opsi Pengiriman"
+                placeholder="Semua Pengiriman"
+                groups={[{ options: filterCourierOptions }]}
+                selected={courierInput}
+                onChange={setCourierInput}
+              />
             </div>
 
             {/* 4. Detail Alamat / Catatan */}
@@ -5806,16 +5790,17 @@ export const SalesTab: React.FC = () => {
           setGlobalEndDate(end ? new Date(end) : null);
           if (label) setGlobalDateLabel(label);
         }}
-        isAdvancedActive={!!(appliedPlatform || appliedSumber || appliedCourier || appliedDetails)}
-        selectedChannel={platformFilterInput}
+        isAdvancedActive={!!(appliedPlatform.length || appliedSumber.length || appliedCourier.length || appliedDetails)}
+        selectedChannel={platformFilterInput[0] || ''}
         setSelectedChannel={(val) => {
-          setPlatformFilterInput(val);
-          setAppliedPlatform(val);
+          // Filter mobile tetap pilih satu
+          setPlatformFilterInput(val ? [val] : []);
+          setAppliedPlatform(val ? [val] : []);
         }}
-        selectedLogistics={courierInput}
+        selectedLogistics={courierInput[0] || ''}
         setSelectedLogistics={(val) => {
-          setCourierInput(val);
-          setAppliedCourier(val);
+          setCourierInput(val ? [val] : []);
+          setAppliedCourier(val ? [val] : []);
         }}
         channelList={filterChannelOptions.map((name) => resolvedChannels.find((c) => filterKey(c.name) === filterKey(name)) || { name })}
         logisticsList={filterCourierOptions.map((name) => ({ name }))}
