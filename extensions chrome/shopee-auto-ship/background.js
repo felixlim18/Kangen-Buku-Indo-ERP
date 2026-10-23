@@ -88,6 +88,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       shipJob.loading = false;
       if (!shipJob.pageLoadedAt) shipJob.pageLoadedAt = Date.now();
       chrome.tabs.sendMessage(tabId, { type: 'RUN', action: shipJob.action, platform: shipJob.platform, orderNo: shipJob.orderNo });
+    } else if (msg.type === 'SHOW_TAB') {
+      // Konten lazy-load (mis. 進帳資訊 Shopee) tidak dimuat di tab latar belakang: tampilkan tab kerja sebentar
+      shipJob.shownTab = true;
+      showTab(tabId).then(() => setTimeout(() => sendResponse(true), 500), () => sendResponse(false));
+      return true;
     } else if (msg.type === 'DONE') {
       if (!msg.ok && shipJob.inPlace && !shipJob.retried) {
         // Pencarian di halaman yang dipakai ulang gagal -> refresh sekali lalu coba lagi
@@ -225,6 +230,13 @@ function finishShip(job, result) {
   if (shipCurrent !== job) return; // sudah selesai (mis. timeout lalu DONE datang terlambat)
   clearTimeout(job.timer);
   shipCurrent = null;
+  if (job.shownTab) {
+    // Kembali ke tab ERP setelah tab kerja ditampilkan
+    chrome.tabs
+      .update(job.erpTabId, { active: true })
+      .then((tab) => chrome.windows.update(tab.windowId, { focused: true }))
+      .catch(() => {});
+  }
   if (!result.ok && job.startedAt) {
     const secs = Math.round((Date.now() - job.startedAt) / 1000);
     const how = job.navigations ? `halaman dimuat ${job.navigations}x` : 'tanpa refresh';

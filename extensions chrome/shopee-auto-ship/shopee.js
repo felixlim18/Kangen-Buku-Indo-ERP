@@ -212,6 +212,59 @@ function matchAround(label, re, maxUp = 8) {
   return null;
 }
 
+const MONEY_RE = /^(-?)\s*(?:NT)?\$\s*(\d[\d,]*(?:\.\d+)?)$/;
+
+// Nominal 原始訂單進帳: angka uang yang sebaris dengan labelnya, di sebelah kanan. Dicocokkan lewat posisi,
+// bukan urutan teks, karena label dan angka bisa berada di dua kolom terpisah (teks gabungannya
+// "訂單金額 … 原始訂單進帳 NT$599 …" akan salah mengambil angka baris pertama).
+function incomeValue() {
+  const label = deepestWithText('原始訂單進帳');
+  if (!label) return null;
+  const lr = label.getBoundingClientRect();
+  const cy = lr.top + lr.height / 2;
+  const hits = [...document.querySelectorAll('body *')]
+    .filter((el) => MONEY_RE.test(text(el)) && isShown(el))
+    .map((el) => ({ el, r: el.getBoundingClientRect() }))
+    .filter(({ r }) => r.left >= lr.right - 2 && Math.abs(r.top + r.height / 2 - cy) < Math.max(lr.height, r.height) / 2 + 4)
+    .sort((a, b) => a.r.left - lr.right - (b.r.left - lr.right) || a.r.width * a.r.height - b.r.width * b.r.height);
+  return hits.length ? text(hits[0].el).match(MONEY_RE) : null;
+}
+
+// Gulir semua bagian halaman yang bisa di-scroll (window + kontainer overflow) sejauh `dy`
+function scrollPage(dy) {
+  window.scrollBy(0, dy);
+  for (const el of document.querySelectorAll('body *')) {
+    if (el.scrollHeight > el.clientHeight + 50) {
+      const oy = getComputedStyle(el).overflowY;
+      if (oy === 'auto' || oy === 'scroll') el.scrollTop += dy;
+    }
+  }
+  window.dispatchEvent(new Event('scroll'));
+  document.dispatchEvent(new Event('scroll'));
+}
+
+// 進帳資訊 baru dirender setelah halaman digulir ke bagian tengah (lazy-load). Gulir bertahap sampai
+// 原始訂單進帳 muncul; kalau tetap tidak muncul (Chrome tidak memuat konten lazy-load di tab latar belakang),
+// minta background menampilkan tab ini sebentar lalu gulir lagi.
+async function findIncome() {
+  let shown = false;
+  const start = Date.now();
+  while (Date.now() - start < 25000) {
+    const m = incomeValue();
+    if (m) return m;
+    const section = deepestWithText('進帳資訊');
+    if (section) section.scrollIntoView({ block: 'center' });
+    scrollPage(Math.round(window.innerHeight * 0.6));
+    if (!shown && Date.now() - start > 5000) {
+      shown = true;
+      await chrome.runtime.sendMessage({ type: 'SHOW_TAB' }).catch(() => {});
+      window.scrollTo(0, 0);
+    }
+    await sleep(700);
+  }
+  return null;
+}
+
 async function readPaymentDetail(orderNo) {
   // Tunggu halaman detail order ini selesai dirender (訂單歷史 selalu berisi 新訂單)
   const ready = await waitFor(
@@ -226,10 +279,7 @@ async function readPaymentDetail(orderNo) {
   if (!transfer) throw new Error('款項已完成轉帳 ada, tetapi tanggalnya tidak terbaca.');
   const paidDate = `${transfer[1]}-${transfer[2].padStart(2, '0')}-${transfer[3].padStart(2, '0')}`;
 
-  const income = await waitFor(
-    () => matchAround('原始訂單進帳', /原始訂單進帳\s*[:：]?\s*(-?)\s*(?:NT)?\$?\s*(\d[\d,]*(?:\.\d+)?)/),
-    8000
-  );
+  const income = await findIncome();
   if (!income) throw new Error('Nominal 原始訂單進帳 tidak ditemukan di halaman detail order.');
   const amount = Number(income[2].replace(/,/g, '')) * (income[1] ? -1 : 1);
   return { transferred: true, paidDate, amount };
