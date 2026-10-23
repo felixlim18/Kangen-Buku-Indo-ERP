@@ -114,7 +114,7 @@ const DEFAULT_CHANNELS_WITH_COLOR = [
 ];
 const DEFAULT_CHANNELS = DEFAULT_CHANNELS_WITH_COLOR.map(c => c.name);
 const DEFAULT_PLATFORMS = ['7-Eleven', 'IopenMall', 'Shopee', 'FamilyMart'];
-const DEFAULT_LOGISTICS = ['7-Eleven', 'FamilyMart', 'Alamat Rumah'];
+const DEFAULT_LOGISTICS = ['7-Eleven', 'FamilyMart', 'Post Office'];
 const DEFAULT_MARKETPLACES = ['Shopee', 'Tokopedia', 'TikTok Shop', 'Lazada', 'Lainnya'];
 
 const getChannelColor = (channelName: string, channelObj?: { color?: string }): string => {
@@ -1523,7 +1523,10 @@ export const SalesTab: React.FC = () => {
   const resolvedOrderTypes = (orderTypes.length > 0 || isConfigInitialized) ? orderTypes : DEFAULT_ORDER_TYPES.map((name, idx) => ({ id: `default_type_${idx}`, name }));
   const resolvedChannels = (channels.length > 0 || isConfigInitialized) ? channels : DEFAULT_CHANNELS_WITH_COLOR.map((item, idx) => ({ id: `default_channel_${idx}`, name: item.name, color: item.color }));
   const resolvedPlatforms = (platforms.length > 0 || isConfigInitialized) ? platforms : DEFAULT_PLATFORMS.map((name, idx) => ({ id: `default_platform_${idx}`, name }));
-  const resolvedLogistics = (logistics.length > 0 || isConfigInitialized) ? logistics : DEFAULT_LOGISTICS.map((name, idx) => ({ id: `default_logistik_${idx}`, name }));
+  // One entry per name: a duplicated master entry showed up twice in Opsi Pengiriman (FamilyMart).
+  const resolvedLogistics = (logistics.length > 0 || isConfigInitialized)
+    ? logistics.filter((l, idx) => logistics.findIndex(x => (x.name || '').trim().toLowerCase() === (l.name || '').trim().toLowerCase()) === idx)
+    : DEFAULT_LOGISTICS.map((name, idx) => ({ id: `default_logistik_${idx}`, name }));
   const resolvedMarketplaces = (marketplaces.length > 0 || isConfigInitialized) ? marketplaces : DEFAULT_MARKETPLACES.map((name, idx) => ({ id: `default_marketplace_${idx}`, name }));
 
   // Target category based on buyerType in Orderan Baru form
@@ -4585,6 +4588,8 @@ export const SalesTab: React.FC = () => {
     const orderNumberFormatted = o.orderNumber?.trim() || '–';
     const shippingNumberFormatted = o.shipment?.shippingNumber?.trim() || '–';
     const customerNoteFormatted = o.customerNote?.trim() || '–';
+    const rekeningPribadi = branding.rekeningPribadi?.trim() || '';
+    const showRekeningPribadi = !!rekeningPribadi && /post|郵局/i.test(logisticsFormatted);
 
     const lastUpdated = o.updatedAt
       ? formatUpdatedAt(o.updatedAt)
@@ -4826,6 +4831,23 @@ export const SalesTab: React.FC = () => {
                 <div className="k">Note dari Customer</div>
                 <div className={`v ${customerNoteFormatted === '–' ? 'muted' : ''}`}>{customerNoteFormatted}</div>
               </div>
+
+              {showRekeningPribadi && (
+                <div className="icell full-span">
+                  <div className="k">No. Rekening Pribadi</div>
+                  <div className="v inline-flex items-start gap-1.5">
+                    <span className="mono whitespace-pre-line">{rekeningPribadi}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(rekeningPribadi); }}
+                      className="p-1 text-neutral-400 hover:text-brand-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition cursor-pointer shrink-0"
+                      title="Salin No. Rekening"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

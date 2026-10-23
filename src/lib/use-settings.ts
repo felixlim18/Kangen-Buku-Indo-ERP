@@ -8,6 +8,8 @@ export interface BrandingSettings {
   namaUsaha: string;
   alamat: string;
   kontak: string;
+  // Shown in Rincian Sales Order for "Post Office" orders, so the buyer can be told where to transfer.
+  rekeningPribadi?: string;
 }
 
 export interface DataMasterItem {

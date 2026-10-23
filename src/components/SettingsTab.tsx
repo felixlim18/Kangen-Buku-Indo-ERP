@@ -27,6 +27,7 @@ export const SettingsTab: React.FC = () => {
   const [namaAkun, setNamaAkun] = useState(profile?.displayName || '');
   const [alamat, setAlamat] = useState(branding.alamat);
   const [kontak, setKontak] = useState(branding.kontak);
+  const [rekeningPribadi, setRekeningPribadi] = useState(branding.rekeningPribadi || '');
   const [brandingSaved, setBrandingSaved] = useState(false);
 
   // Sync state when loaded
@@ -36,6 +37,7 @@ export const SettingsTab: React.FC = () => {
     setNamaUsaha(branding.namaUsaha);
     setAlamat(branding.alamat);
     setKontak(branding.kontak);
+    setRekeningPribadi(branding.rekeningPribadi || '');
   }, [branding]);
 
   useEffect(() => {
@@ -141,7 +143,8 @@ export const SettingsTab: React.FC = () => {
       iconUrl,
       namaUsaha: namaUsaha.trim() || 'KangenBukuIndo',
       alamat: alamat.trim() || 'Taoyuan, Taiwan',
-      kontak: kontak.trim() || '+886 9xx xxx xxx'
+      kontak: kontak.trim() || '+886 9xx xxx xxx',
+      rekeningPribadi: rekeningPribadi.trim()
     };
     await saveBranding(updated);
     if (namaAkun.trim()) {
@@ -158,6 +161,7 @@ export const SettingsTab: React.FC = () => {
     setNamaAkun(profile?.displayName || '');
     setAlamat(branding.alamat);
     setKontak(branding.kontak);
+    setRekeningPribadi(branding.rekeningPribadi || '');
   };
 
   return (
@@ -452,6 +456,23 @@ export const SettingsTab: React.FC = () => {
                           className="w-full px-3.5 py-2.5 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white transition"
                         />
                       </div>
+                    </div>
+
+                    {/* Form Field: Rekening Pribadi */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                        No. Rekening Pribadi
+                      </label>
+                      <textarea
+                        value={rekeningPribadi}
+                        onChange={(e) => setRekeningPribadi(e.target.value)}
+                        rows={3}
+                        placeholder={'Contoh:\n中華郵政 (700) 0001234-5678901\na.n. Felix'}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white transition resize-y"
+                      />
+                      <p className="text-[10px] text-neutral-400 font-medium">
+                        Tampil di Rincian Sales Order khusus Opsi Pengiriman "Post Office".
+                      </p>
                     </div>
                   </div>
 

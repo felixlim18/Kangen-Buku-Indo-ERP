@@ -1,6 +1,6 @@
 import { SalesOrder } from '../types';
 
-export type DetectedLogisticsKey = '7-11' | 'FamilyMart' | 'OK Mart' | 'Shopee Express' | 'Post Office' | 'Unknown';
+export type DetectedLogisticsKey = '7-11' | 'FamilyMart' | 'OK Mart' | 'Shopee Express' | 'Post Office' | 'Hi-Life' | 'Unknown';
 
 /**
  * Sanitize raw tracking number:
@@ -25,8 +25,9 @@ export const detectLogisticsFromResi = (resiStr?: string | null): DetectedLogist
   const clean = sanitizeResiNumber(resiStr);
   if (!clean) return 'Unknown';
 
-  // 1. Shopee Express: Diawali "TW" diikuti digit angka atau diawali "SPX"
-  if (/^TW\d{10,18}$/i.test(clean) || /^SPX[A-Z0-9]{8,20}$/i.test(clean)) {
+  // 1. Shopee Express: Diawali "TW" diikuti digit angka (format baru ada 1 huruf di akhir,
+  //    contoh: TW269016898789P) atau diawali "SPX"
+  if (/^TW\d{10,18}[A-Z]?$/i.test(clean) || /^SPX[A-Z0-9]{8,20}$/i.test(clean)) {
     return 'Shopee Express';
   }
 
@@ -48,6 +49,11 @@ export const detectLogisticsFromResi = (resiStr?: string | null): DetectedLogist
   // 5. OK Mart: Diawali "OK"
   if (/^OK[A-Z0-9]{6,16}$/i.test(clean)) {
     return 'OK Mart';
+  }
+
+  // 6. Hi-Life (萊爾富): 1 angka + 3 huruf/angka + 8 angka, contoh: 6KMJ18583537, 6P7F17595633
+  if (/^\d[A-Z0-9]{3}\d{8}$/.test(clean) && /[A-Z]/.test(clean)) {
+    return 'Hi-Life';
   }
 
   return 'Unknown';
@@ -76,6 +82,9 @@ export const resolveLogisticsNameFromDataMaster = (
         return true;
       }
       if (detectedKey === 'OK Mart' && (name.includes('ok') || name.includes('ok mart') || name.includes('okmart') || name.includes('ok超商'))) {
+        return true;
+      }
+      if (detectedKey === 'Hi-Life' && (name.includes('hi-life') || name.includes('hilife') || name.includes('hi life') || name.includes('萊爾富'))) {
         return true;
       }
       if (detectedKey === 'Post Office' && (name.includes('post') || name.includes('pos') || name.includes('kantor pos') || name.includes('chunghwa') || name.includes('郵局'))) {
