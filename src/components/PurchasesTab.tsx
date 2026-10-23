@@ -1087,6 +1087,12 @@ export const PurchasesTab = () => {
     })();
     setClosePoNote(noteText);
     setClosePoOption('refund');
+    // Refund is booked at the PO's own rate (the field is locked), so prefill it — left empty, the
+    // refund converted to NT$ 0 and the whole cancelled value was booked as a loss.
+    setRefundRate(String(po.exchangeRate || (po.purchasePriceIDR ? FALLBACK_NTD_PER_IDR : po.purchasePriceUSD ? FALLBACK_NTD_PER_USD : 1)));
+    setRefundAmount('');
+    const now = new Date();
+    setRefundDate(`${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`);
     setIsClosePoModalOpen(true);
   };
   
@@ -3989,6 +3995,10 @@ export const PurchasesTab = () => {
       const numRefundAmount = parseFloat(cleanCommas(refundAmount)) || 0;
       const numRefundRate = parseFloat(refundRate) || 0;
       const calculatedNTD = numRefundAmount * numRefundRate;
+      if (numRefundRate <= 0 || !/^\d{4}\/\d{2}\/\d{2}$/.test(refundDate)) {
+        alert("Kurs atau tanggal refund belum terisi. Tutup form lalu buka lagi \"Tutup Sisa PO\".");
+        return;
+      }
 
       // Decrease transitStock in inventory
       for (const originalItem of poItems) {
@@ -5675,39 +5685,7 @@ export const PurchasesTab = () => {
                             <div className="mt-4 flex justify-end">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setClosingPo(po);
-                                  const items = po.items && po.items.length > 0 ? po.items : [{
-                                    bookId: po.bookId,
-                                    bookName: po.bookName,
-                                    qty: po.qty,
-                                    qtyReceived: po.qtyReceived || 0
-                                  }];
-                                  const noteText = (() => {
-                                    if (items.length === 1) {
-                                      const it = items[0];
-                                      const rec = it.qtyReceived || 0;
-                                      const cancelled = it.qty - rec;
-                                      return `${it.bookName} Diterima ${rec}, Sisanya ${cancelled} dibatalkan`;
-                                    } else {
-                                      const parts = [];
-                                      items.forEach((it: any) => {
-                                        const rec = it.qtyReceived || 0;
-                                        const cancelled = it.qty - rec;
-                                        if (rec > 0) {
-                                          parts.push(`${it.bookName} Diterima ${rec}`);
-                                        }
-                                        if (cancelled > 0) {
-                                          parts.push(`${it.bookName} sebanyak ${cancelled} dibatalkan`);
-                                        }
-                                      });
-                                      return parts.join(", ");
-                                    }
-                                  })();
-                                  setClosePoNote(noteText);
-                                  setClosePoOption('refund');
-                                  setIsClosePoModalOpen(true);
-                                }}
+                                onClick={() => handleOpenClosePoModal(po)}
                                 className="px-4 py-2 bg-[#A34A32] hover:bg-[#833a25] text-white rounded-xl text-xs font-bold uppercase transition shadow-sm cursor-pointer w-full md:w-auto text-center"
                               >
                                 Tutup Sisa PO
@@ -6383,39 +6361,7 @@ export const PurchasesTab = () => {
                               <div className="mt-4 flex justify-end">
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setClosingPo(po);
-                                    const items = po.items && po.items.length > 0 ? po.items : [{
-                                      bookId: po.bookId,
-                                      bookName: po.bookName,
-                                      qty: po.qty,
-                                      qtyReceived: po.qtyReceived || 0
-                                    }];
-                                    const noteText = (() => {
-                                      if (items.length === 1) {
-                                        const it = items[0];
-                                        const rec = it.qtyReceived || 0;
-                                        const cancelled = it.qty - rec;
-                                        return `${it.bookName} Diterima ${rec}, Sisanya ${cancelled} dibatalkan`;
-                                      } else {
-                                        const parts = [];
-                                        items.forEach((it: any) => {
-                                          const rec = it.qtyReceived || 0;
-                                          const cancelled = it.qty - rec;
-                                          if (rec > 0) {
-                                            parts.push(`${it.bookName} Diterima ${rec}`);
-                                          }
-                                          if (cancelled > 0) {
-                                            parts.push(`${it.bookName} sebanyak ${cancelled} dibatalkan`);
-                                          }
-                                        });
-                                        return parts.join(", ");
-                                      }
-                                    })();
-                                    setClosePoNote(noteText);
-                                    setClosePoOption('refund');
-                                    setIsClosePoModalOpen(true);
-                                  }}
+                                  onClick={() => handleOpenClosePoModal(po)}
                                   className="px-4 py-2 bg-[#f00505] hover:bg-[#d00404] text-white rounded-xl text-[12px] font-bold uppercase transition shadow-sm cursor-pointer w-full md:w-auto text-center"
                                 >
                                   Tutup Sisa PO
@@ -7885,7 +7831,13 @@ export const PurchasesTab = () => {
         const numRefundRate = parseFloat(refundRate) || 0;
         const calculatedNTD = numRefundAmount * numRefundRate;
         const selisihNTD = calculatedNTD - totalCancelledNTD;
+        const selisihPlat = numRefundAmount - totalCancelledPlat;
         const isUntung = selisihNTD >= 0;
+        const fmtPlat = (v: number) => currencyLabel === 'IDR'
+          ? Math.round(v).toLocaleString('en-US')
+          : new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+        // IDR rates are ~0.0018 NT$ per Rp, so 2 decimals rendered them as "0.00".
+        const fmtRate = (r: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: r < 1 ? 6 : 4 }).format(r || 0);
 
         const isIdrCurrency = currencyLabel === 'IDR';
         const cashAcc = getCashAccount(isIdrCurrency ? 'IDR' : 'NTD');
@@ -8053,7 +8005,7 @@ export const PurchasesTab = () => {
                       </div>
                     </div>
                     <p className="text-[10px] text-neutral-400 dark:text-neutral-500 leading-normal italic">
-                      Nilai ini ditarik langsung dari Inventory in Transit, dikunci pada kurs PO saat dibuat (1 {currencySymbol} ≈ NT$ {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(po.exchangeRate || 0)}) — tidak bisa diedit dari form ini.
+                      Nilai ini ditarik langsung dari Inventory in Transit, dikunci pada kurs PO saat dibuat (1 {currencySymbol} ≈ NT$ {fmtRate(po.exchangeRate)}) — tidak bisa diedit dari form ini.
                     </p>
                   </div>
 
@@ -8065,13 +8017,13 @@ export const PurchasesTab = () => {
                     </label>
                     <input
                       type="text"
-                      value={refundRate}
+                      value={refundRate ? `1 ${currencySymbol} = NT$ ${fmtRate(parseFloat(refundRate))}` : ''}
                       disabled={true}
                       readOnly={true}
                       className="w-full px-4 py-2.5 text-xs font-semibold border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-850 text-neutral-400 dark:text-neutral-500 rounded-xl focus:outline-none cursor-not-allowed font-numeric"
                     />
                     <p className="text-[10px] text-neutral-400 dark:text-neutral-500 leading-normal mt-1.5 italic">
-                      Kurs refund dikunci sesuai kurs PO awal (1 {currencySymbol} ≈ NT$ {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(po.exchangeRate || 0)}) — tidak dapat diedit.
+                      Kurs refund dikunci sesuai kurs PO awal (1 {currencySymbol} ≈ NT$ {fmtRate(po.exchangeRate)}) — tidak dapat diedit.
                     </p>
                   </div>
 
@@ -8101,7 +8053,7 @@ export const PurchasesTab = () => {
                     {/* Right Column: Selisih Box */}
                     <div>
                       <label className="block text-[10px] uppercase font-extrabold text-neutral-400 dark:text-neutral-500 tracking-wider mb-2">
-                        SELISIH (NTD)
+                        SELISIH ({currencyLabel})
                       </label>
                       <div className={`p-4 rounded-2xl border flex items-center justify-between h-[52px] ${
                         isUntung 
@@ -8113,7 +8065,12 @@ export const PurchasesTab = () => {
                             {isUntung ? 'UNTUNG' : 'RUGI'}
                           </span>
                           <span className={`text-sm font-black font-numeric ${isUntung ? 'text-emerald-900 dark:text-emerald-300' : 'text-rose-900 dark:text-rose-300'}`}>
-                            NT$ {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(selisihNTD))}
+                            {currencySymbol} {fmtPlat(Math.abs(selisihPlat))}
+                            {currencyLabel !== 'NTD' && (
+                              <span className="ml-1.5 text-[10px] font-semibold opacity-60">
+                                ≈ NT$ {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(selisihNTD))}
+                              </span>
+                            )}
                           </span>
                         </div>
                         <div className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg flex items-center gap-0.5 shadow-xs ${
