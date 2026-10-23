@@ -8,7 +8,8 @@ import { AUTO_ACCOUNTS, ensureAutoAccountExists, getLiveAutoAccounts, AutoAccoun
 import { formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
 import { isPeriodClosed, fetchCurrentExchangeRate } from '../lib/period-closing-utils';
 import { Receipt, Plus, X } from 'lucide-react';
-import { getAutoShipPlatform, isShopeePaymentCheckAvailable, requestShopeePayment } from '../lib/auto-ship';
+import { PAYMENT_PLATFORM_LABELS, PaymentPlatform, getAutoShipPlatform, isPaymentCheckAvailable, requestPlatformPayment } from '../lib/auto-ship';
+import { detectLogisticsFromResi, sanitizeResiNumber } from '../lib/sales-logistics-utils';
 import './PiutangTab.css';
 
 type Cell = { r: number; c: number };
@@ -368,33 +369,56 @@ export const PiutangTab: React.FC = () => {
     }
   };
 
-  // --- CEK PELUNASAN SHOPEE (extension KBI) ---
-  // Order Shopee berstatus Belum Dibayar: buka detail order di Shopee, kalau 訂單歷史 sudah 款項已完成轉帳 dan
-  // 原始訂單進帳 = sisa outstanding, posting pelunasan ke 1101 dengan tanggal 款項已完成轉帳.
-  type ShopeeCheck = { state: 'running' | 'posted' | 'skip' | 'error'; msg: string };
-  const [shopeeChecks, setShopeeChecks] = useState<Record<string, ShopeeCheck>>({});
-  const [shopeeBulk, setShopeeBulk] = useState<{ done: number; total: number } | null>(null);
+  // --- CEK PELUNASAN PLATFORM (extension KBI) ---
+  // Order Shopee / iOPEN Mall / FamilyMart berstatus Belum Dibayar, dicek di situsnya:
+  // - Shopee    : detail order, 訂單歷史 sudah 款項已完成轉帳, nominal 原始訂單進帳
+  // - iOPEN     : 對帳單 yang memuat order berstatus 匯款成功, nominal 撥款金額 di 對帳單詳情
+  // - FamilyMart: 店到店取貨付款 (resi 11 digit), 匯款狀態 匯款成功(tanggal), nominal 金額
+  // Kalau nominal = sisa outstanding, posting pelunasan ke 1101 dengan tanggal transfernya.
+  type PlatformCheck = { state: 'running' | 'posted' | 'skip' | 'error'; msg: string };
+  type PaymentScope = 'all' | PaymentPlatform;
+  const [platformChecks, setPlatformChecks] = useState<Record<string, PlatformCheck>>({});
+  const [platformBulk, setPlatformBulk] = useState<{ done: number; total: number } | null>(null);
+  const [paymentScope, setPaymentScope] = useState<PaymentScope>('all');
 
-  const isShopeeUnpaid = (o: any) =>
-    o.source === 'so' && getStatus(o).class === 'belum' && getAutoShipPlatform(o.orderNumber || '') === 'shopee';
+  // Platform yang bisa dicek pelunasannya, untuk order SO Belum Dibayar (null kalau tidak bisa).
+  // Shopee / iOPEN dari nomor order; selain itu FamilyMart kalau nomor resinya resi FamilyMart.
+  const fmResi = (o: any) => sanitizeResiNumber(o.shipment?.shippingNumber);
+  const unpaidPlatformOf = (o: any): PaymentPlatform | null => {
+    if (o.source !== 'so' || getStatus(o).class !== 'belum') return null;
+    const byOrderNo = getAutoShipPlatform(o.orderNumber || '');
+    if (byOrderNo) return byOrderNo;
+    return /^\d{11}$/.test(fmResi(o)) && detectLogisticsFromResi(fmResi(o)) === 'FamilyMart' ? 'familymart' : null;
+  };
+  const paymentKeyOf = (o: any, platform: PaymentPlatform) => (platform === 'familymart' ? fmResi(o) : o.orderNumber);
+  const paymentTargets = (scope: PaymentScope) =>
+    allPiutangItems.filter(o => {
+      const p = unpaidPlatformOf(o);
+      return p && (scope === 'all' || scope === p);
+    });
 
-  const checkShopeePayment = async (o: any) => {
-    const setCheck = (c: ShopeeCheck) => setShopeeChecks(prev => ({ ...prev, [o.id]: c }));
-    if (!isShopeePaymentCheckAvailable()) {
-      setCheck({ state: 'error', msg: 'Extension KBI Auto 出貨 v1.8.0 belum aktif: buka chrome://extensions, klik reload ↻, lalu refresh ERP (harus di Google Chrome).' });
+  const extensionHint = 'Extension KBI Auto 出貨 v1.10.0 belum aktif: buka chrome://extensions, klik reload ↻, lalu refresh ERP (harus di Google Chrome).';
+
+  const checkPlatformPayment = async (o: any) => {
+    const platform = unpaidPlatformOf(o);
+    if (!platform) return 'skip';
+    const site = PAYMENT_PLATFORM_LABELS[platform];
+    const setCheck = (c: PlatformCheck) => setPlatformChecks(prev => ({ ...prev, [o.id]: c }));
+    if (!isPaymentCheckAvailable(platform)) {
+      setCheck({ state: 'error', msg: extensionHint });
       return 'error';
     }
-    setCheck({ state: 'running', msg: 'Mengecek Shopee…' });
+    setCheck({ state: 'running', msg: `Mengecek ${site}…` });
     try {
-      const info = await requestShopeePayment(o.orderNumber);
+      const info = await requestPlatformPayment(platform, paymentKeyOf(o, platform));
       if (!info.transferred || !info.paidDate) {
-        setCheck({ state: 'skip', msg: 'Belum 款項已完成轉帳' });
+        setCheck({ state: 'skip', msg: info.status || (platform === 'shopee' ? 'Belum 款項已完成轉帳' : 'Belum 匯款成功') });
         return 'skip';
       }
-      const shopeeCents = Math.round((info.amount || 0) * 100);
+      const platformCents = Math.round((info.amount || 0) * 100);
       const outstanding = getOutstanding(o);
-      if (shopeeCents !== outstanding) {
-        setCheck({ state: 'skip', msg: `Selisih: Shopee NT$ ${(shopeeCents / 100).toLocaleString('en-US')} ≠ ERP NT$ ${(outstanding / 100).toLocaleString('en-US')}` });
+      if (platformCents !== outstanding) {
+        setCheck({ state: 'skip', msg: `Selisih: ${site} NT$ ${(platformCents / 100).toLocaleString('en-US')} ≠ ERP NT$ ${(outstanding / 100).toLocaleString('en-US')}` });
         return 'skip';
       }
       await postPayment(o, {
@@ -412,20 +436,21 @@ export const PiutangTab: React.FC = () => {
     }
   };
 
-  const checkAllShopeePayments = async () => {
-    const targets = allPiutangItems.filter(isShopeeUnpaid);
+  const checkAllPlatformPayments = async () => {
+    const targets = paymentTargets(paymentScope);
     if (targets.length === 0) return;
-    if (!isShopeePaymentCheckAvailable()) {
-      alert('Extension KBI Auto 出貨 v1.8.0 belum aktif.\n\nBuka chrome://extensions, klik reload ↻ di kartu KBI Auto 出貨, lalu refresh halaman ERP. Fitur ini hanya jalan di Google Chrome yang terpasang extension-nya.');
+    const platforms = Array.from(new Set(targets.map(o => unpaidPlatformOf(o)!)));
+    if (!platforms.every(isPaymentCheckAvailable)) {
+      alert('Extension KBI Auto 出貨 v1.10.0 belum aktif.\n\nBuka chrome://extensions, klik reload ↻ di kartu KBI Auto 出貨, lalu refresh halaman ERP. Fitur ini hanya jalan di Google Chrome yang terpasang extension-nya.');
       return;
     }
-    setShopeeBulk({ done: 0, total: targets.length });
-    // Satu per satu: extension memakai satu tab kerja Shopee
+    setPlatformBulk({ done: 0, total: targets.length });
+    // Satu per satu: extension memproses satu order dalam satu waktu (tab kerja per platform)
     for (let i = 0; i < targets.length; i++) {
-      await checkShopeePayment(targets[i]);
-      setShopeeBulk({ done: i + 1, total: targets.length });
+      await checkPlatformPayment(targets[i]);
+      setPlatformBulk({ done: i + 1, total: targets.length });
     }
-    setShopeeBulk(null);
+    setPlatformBulk(null);
   };
 
   // --- GRID LOGIC ---
@@ -881,24 +906,36 @@ export const PiutangTab: React.FC = () => {
               <Receipt className="h-5 w-5 text-indigo-500" /> Piutang Usaha
             </h2>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button className="btn-bulk" style={{ backgroundColor: 'transparent', color: 'var(--indigo, #4f46e5)', border: '1px solid var(--indigo, #4f46e5)' }} onClick={() => { resetManualForm(); setIsManualModalOpen(true); }}>
               <Plus className="h-4 w-4" />
               Tambah Piutang Manual
             </button>
-            {(
+            <div style={{ display: 'flex', alignItems: 'stretch' }}>
+              <select
+                value={paymentScope}
+                disabled={!!platformBulk}
+                onChange={(e) => setPaymentScope(e.target.value as PaymentScope)}
+                title="Platform yang dicek"
+                style={{ border: '1px solid #ee4d2d', borderRight: 'none', borderRadius: '8px 0 0 8px', padding: '0 8px', fontSize: 13, background: 'var(--surface, #fff)', color: 'inherit' }}
+              >
+                <option value="all">Semua ({paymentTargets('all').length})</option>
+                <option value="shopee">Shopee ({paymentTargets('shopee').length})</option>
+                <option value="iopen">iOPEN Mall ({paymentTargets('iopen').length})</option>
+                <option value="familymart">FamilyMart ({paymentTargets('familymart').length})</option>
+              </select>
               <button
                 className="btn-bulk"
-                style={{ backgroundColor: '#ee4d2d' }}
-                disabled={!!shopeeBulk}
-                onClick={checkAllShopeePayments}
-                title="Cek 款項已完成轉帳 di Shopee untuk semua order Shopee Belum Dibayar, lalu posting yang nominalnya cocok"
+                style={{ backgroundColor: '#ee4d2d', borderRadius: '0 8px 8px 0', whiteSpace: 'nowrap' }}
+                disabled={!!platformBulk || paymentTargets(paymentScope).length === 0}
+                onClick={checkAllPlatformPayments}
+                title="Shopee: cek 款項已完成轉帳 & 原始訂單進帳. iOPEN Mall: cek 對帳單 匯款成功 & 撥款金額. FamilyMart: cek 匯款成功 & 金額 (per nomor resi). Posting yang nominalnya cocok."
               >
-                {shopeeBulk
-                  ? `Mengecek Shopee ${shopeeBulk.done}/${shopeeBulk.total}…`
-                  : `Cek Semua Shopee (${allPiutangItems.filter(isShopeeUnpaid).length})`}
+                {platformBulk
+                  ? `Mengecek ${platformBulk.done}/${platformBulk.total}…`
+                  : `Cek Pelunasan (${paymentTargets(paymentScope).length})`}
               </button>
-            )}
+            </div>
             <button className="btn-bulk" onClick={() => setIsBulkModalOpen(true)}>
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
               Terima Semua Piutang
@@ -1006,15 +1043,19 @@ export const PiutangTab: React.FC = () => {
                       </td>
                       <td className="ta-r">
                         <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                          {isShopeeUnpaid(o) && (
+                          {unpaidPlatformOf(o) && (
                             <button
                               className="btn-row"
                               style={{ backgroundColor: '#ee4d2d' }}
-                              disabled={shopeeChecks[o.id]?.state === 'running' || !!shopeeBulk}
-                              onClick={() => checkShopeePayment(o)}
-                              title="Cek 款項已完成轉帳 & 原始訂單進帳 di Shopee, posting kalau cocok"
+                              disabled={platformChecks[o.id]?.state === 'running' || !!platformBulk}
+                              onClick={() => checkPlatformPayment(o)}
+                              title={{
+                                shopee: 'Cek 款項已完成轉帳 & 原始訂單進帳 di Shopee, posting kalau cocok',
+                                iopen: 'Cek 對帳單 匯款成功 & 撥款金額 di iOPEN Mall, posting kalau cocok',
+                                familymart: `Cek 匯款成功 & 金額 resi ${fmResi(o)} di FamilyMart, posting kalau cocok`,
+                              }[unpaidPlatformOf(o)!]}
                             >
-                              {shopeeChecks[o.id]?.state === 'running' ? 'Mengecek…' : 'Cek Shopee'}
+                              {platformChecks[o.id]?.state === 'running' ? 'Mengecek…' : `Cek ${{ shopee: 'Shopee', iopen: 'iOPEN', familymart: 'FamilyMart' }[unpaidPlatformOf(o)!]}`}
                             </button>
                           )}
                           <button 
@@ -1034,14 +1075,14 @@ export const PiutangTab: React.FC = () => {
                             </button>
                           )}
                         </div>
-                        {shopeeChecks[o.id] && shopeeChecks[o.id].state !== 'running' && (
+                        {platformChecks[o.id] && platformChecks[o.id].state !== 'running' && (
                           <div
                             style={{
                               marginTop: 4, fontSize: 11, maxWidth: 240, marginLeft: 'auto', textAlign: 'right',
-                              color: { posted: 'var(--green)', skip: 'var(--amber)', error: '#d93025' }[shopeeChecks[o.id].state as 'posted' | 'skip' | 'error'],
+                              color: { posted: 'var(--green)', skip: 'var(--amber)', error: '#d93025' }[platformChecks[o.id].state as 'posted' | 'skip' | 'error'],
                             }}
                           >
-                            {shopeeChecks[o.id].msg}
+                            {platformChecks[o.id].msg}
                           </div>
                         )}
                       </td>

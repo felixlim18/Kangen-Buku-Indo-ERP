@@ -1,6 +1,7 @@
 // Dua jenis job:
-// - ship : (action 'ship') ambil nomor resi satu order, atau (action 'payment') cek pelunasan Shopee satu order
-//          (款項已完成轉帳 + 原始訂單進帳 di halaman detail order).
+// - ship : (action 'ship') ambil nomor resi satu order, atau (action 'payment') cek pelunasan satu order:
+//          Shopee (款項已完成轉帳 + 原始訂單進帳 di halaman detail order) / iOPEN Mall (對帳單 匯款成功 + 撥款金額) /
+//          FamilyMart 店到店取貨付款 (訂單／匯款查詢: 匯款成功(tanggal) + 金額, dicari lewat nomor resi).
 //          Ambil nomor resi (Shopee 安排出貨 / iOPEN Mall 取寄件編號), SATU PER SATU, di satu tab
 //          kerja per platform yang dipakai bergantian. Shopee: order berikutnya dicari langsung di halaman yang
 //          sudah terbuka TANPA refresh (refresh hanya kalau halaman belum siap / pencarian di tempat gagal).
@@ -16,6 +17,17 @@ const PRINT_DIALOG_TIMEOUT_MS = 10 * 60000; // menunggu user menekan Print / Can
 const SITES = {
   shopee: { label: 'Shopee Seller Center' },
   iopen: { label: 'iOPEN Mall 賣家中心' },
+  familymart: { label: 'FamilyMart 取貨付款匯款查詢' },
+};
+
+// iOPEN: cek pelunasan dimulai dari 帳務管理 → 對帳單 (iopen.js mengisi pencarian 訂單編號)
+const IOPEN_STATEMENT_URL = `${IOPEN_ADMWEB}?action=account_statement_pic`;
+// FamilyMart: halaman ini memuat iframe www.fami.life/C2C (familymart.js) dengan sesi login
+const FAMILYMART_QUERY_URL = 'https://fmec.famiport.com.tw/FP_Entrance/QueryPay';
+const jobUrl = (job) => {
+  if (job.platform === 'familymart') return FAMILYMART_QUERY_URL;
+  if (job.platform === 'iopen' && job.action === 'payment') return IOPEN_STATEMENT_URL;
+  return SHIP_URL[job.platform](job.orderNo);
 };
 
 const SHIP_URL = {
@@ -33,7 +45,7 @@ const IOPEN_BATCH_URL = `${IOPEN_ADMWEB}?action=order_control_batch_pic&order_st
 // Satu order dalam satu waktu (erp-bridge.js mengumumkan protokol 3, ERP juga mengirim satu per satu).
 const WORKER_IDLE_CLOSE_MS = 60000;
 const LOGIN_CHECK_MS = 6000; // halaman selesai dimuat tapi skrip tidak aktif -> kemungkinan halaman login
-const workerTabs = { shopee: null, iopen: null }; // platform -> tabId tab kerja
+const workerTabs = { shopee: null, iopen: null, familymart: null }; // platform -> tabId tab kerja
 const shipQueue = [];
 let shipCurrent = null; // job ship yang sedang berjalan
 let workerIdleTimer = null;
@@ -56,18 +68,20 @@ function setKeepAlive(on) {
   }
 }
 
+const PAYMENT_PLATFORM = { SHOPEE_PAYMENT: 'shopee', IOPEN_PAYMENT: 'iopen', FAMILYMART_PAYMENT: 'familymart' };
+
 const stepOfTab = (tabId) => (current?.kind === 'print' ? current.steps.find((s) => s.tabId === tabId && !s.result) : null);
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
 
-  if (msg.type === 'AUTO_SHIP' || msg.type === 'SHOPEE_PAYMENT') {
-    const isPayment = msg.type === 'SHOPEE_PAYMENT';
+  if (msg.type === 'AUTO_SHIP' || PAYMENT_PLATFORM[msg.type]) {
+    const isPayment = msg.type !== 'AUTO_SHIP';
     shipQueue.push({
       kind: 'ship',
       action: isPayment ? 'payment' : 'ship',
       id: msg.id,
-      platform: isPayment ? 'shopee' : msg.platform,
+      platform: PAYMENT_PLATFORM[msg.type] || msg.platform,
       orderNo: msg.orderNo,
       erpTabId: tabId,
       erpWindowId: sender.tab.windowId,
@@ -164,7 +178,7 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
   if (!job || info.status !== 'complete' || !job.loading) return;
   setTimeout(() => {
     if (shipCurrent === job && job.loading) {
-      finishShip(job, { ok: false, error: `Halaman ${SITES[job.platform].label} tidak terbuka di daftar order. Pastikan sudah login di Chrome ini.` });
+      finishShip(job, { ok: false, error: `Halaman ${SITES[job.platform].label} tidak terbuka. Pastikan sudah login di Chrome ini.` });
     }
   }, LOGIN_CHECK_MS);
 });
@@ -193,14 +207,14 @@ function navigateWorker(job) {
   job.inPlace = false;
   job.loading = true;
   job.navigations = (job.navigations || 0) + 1;
-  return chrome.tabs.update(job.tabId, { url: SHIP_URL[job.platform](job.orderNo) });
+  return chrome.tabs.update(job.tabId, { url: jobUrl(job) });
 }
 
 async function startShip(job) {
   shipCurrent = job;
   clearTimeout(workerIdleTimer);
   syncKeepAlive();
-  if (!SHIP_URL[job.platform]) {
+  if (!SITES[job.platform] || (job.platform === 'familymart' && job.action !== 'payment')) {
     finishShip(job, { ok: false, error: `Platform tidak didukung: ${job.platform}` });
     return;
   }
@@ -211,8 +225,8 @@ async function startShip(job) {
   );
   try {
     job.tabId = await workerTab(job);
-    if (job.platform === 'shopee') {
-      // Halaman order Shopee yang sudah terbuka dipakai langsung, tanpa refresh
+    if (job.platform === 'shopee' || job.platform === 'familymart') {
+      // Halaman order Shopee / daftar FamilyMart yang sudah terbuka dipakai langsung, tanpa refresh
       const ping = await chrome.tabs.sendMessage(job.tabId, { type: 'PING' }).catch(() => null);
       if (shipCurrent === job && ping?.ready) {
         job.inPlace = true;

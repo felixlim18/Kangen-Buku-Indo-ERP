@@ -19,13 +19,34 @@ Order diproses **satu per satu** di **satu tab kerja per platform** (latar belak
 4. Kalau muncul dialog 申請寄件編號 → klik tombol itu (lalu 確認 bila ada).
 5. Ambil nomor resi dari dialog 查看寄件編號.
 
-## Cek pelunasan Shopee (halaman Piutang Usaha)
-Tombol **Cek Shopee** (per baris) dan **Cek Semua Shopee** (semua order Shopee berstatus *Belum Dibayar*):
+## Cek pelunasan (halaman Piutang Usaha)
+Tombol **Cek Shopee** / **Cek iOPEN** / **Cek FamilyMart** (per baris) dan **Cek Pelunasan** dengan pilihan
+Semua / Shopee / iOPEN Mall / FamilyMart
+(semua order platform itu yang berstatus *Belum Dibayar*). Kalau nominal sama dengan sisa outstanding ERP, ERP langsung
+memposting pelunasan (akun 1101 Cash: NTD); kalau berbeda, baris ditandai selisihnya dan tidak diposting.
+
+### Shopee
 1. Di tab kerja Shopee: 我的銷售 → 全部 → 訂單編號 = nomor order → buka detail order.
 2. 訂單歷史 harus berisi **款項已完成轉帳**. Kalau belum ada → berhenti, baris ditandai "Belum 款項已完成轉帳".
 3. Baca nominal **原始訂單進帳**. Kalau tidak sama dengan sisa outstanding ERP → tidak diposting, baris ditandai selisihnya.
 4. Kalau sama → ERP langsung memposting pelunasan (akun 1101 Cash: NTD) dengan tanggal 款項已完成轉帳.
-Order diproses satu per satu di tab kerja yang sama dengan Action (安排出貨).
+
+### iOPEN Mall
+1. Di tab kerja iOPEN: 帳務管理 → 對帳單 → 訂單編號 = nomor order, 對帳單日期 1 tahun ke belakang, tab 全部.
+2. Harus ada 對帳單 berstatus **匯款成功**. Kalau belum (匯款中 / belum masuk 對帳單) → baris ditandai statusnya.
+3. Klik 對帳單詳情 → baris order itu → **撥款金額** dibandingkan dengan sisa outstanding ERP.
+4. Tanggal posting = 匯款時間 對帳單.
+
+### FamilyMart 店到店取貨付款
+Order non-Shopee/iOPEN dengan resi FamilyMart (11 digit angka), dicari lewat nomor resi (寄件編號):
+1. Buka fmec.famiport.com.tw/FP_Entrance/QueryPay (harus sudah login); isinya iframe www.fami.life/C2C.
+2. 訂單／匯款查詢 → 多筆查詢 → 訂單成立日, 89 hari terakhir (batas situs 90 hari) → 搜尋.
+   Hasil pencarian dipakai ulang 5 menit, jadi Cek Semua hanya mencari sekali.
+3. Kartu dengan 寄件編號 = resi: 匯款狀態 harus **匯款成功(YYYY/MM/DD)** → tanggal posting.
+4. **金額** di 明細 dibandingkan dengan sisa outstanding ERP.
+Order yang 訂單成立日-nya lebih dari 90 hari lalu tidak ketemu (ditandai), cek manual.
+
+Order diproses satu per satu di tab kerja yang sama dengan Action (安排出貨 / 取寄件編號).
 
 ## iOPEN Mall (sales.iopenmall.tw, toko 050497)
 1. Buka 新訂單 (tab 待出貨) dengan pencarian 訂單編號 = nomor order.

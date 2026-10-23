@@ -141,8 +141,109 @@ chrome.runtime.onMessage.addListener((msg) => {
     .catch((err) => chrome.runtime.sendMessage({ type: 'STEP_DONE', ok: false, error: err.message }));
 });
 
+// ===== Cek pelunasan: 帳務管理 → 對帳單 → cari 訂單編號 → 對帳單 berstatus 匯款成功 → 對帳單詳情 → 撥款金額 =====
+// Pencarian 對帳單 berupa form POST, jadi halaman dimuat ulang. Penanda di sessionStorage membedakan
+// "belum dicari" dan "ini hasil pencarian order X" (berlaku sebentar, supaya sisa run lama tidak terbaca).
+const PAY_KEY = 'kbiIopenPaySearch';
+const PAY_FRESH_MS = 30000;
+const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const slashDate = (s) => {
+  const m = (s || '').match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : null;
+};
+const money = (s) => {
+  const m = (s || '').match(/^(-?)\s*\$\s*(\d[\d,]*(?:\.\d+)?)$/);
+  return m ? Number(m[2].replace(/,/g, '')) * (m[1] ? -1 : 1) : null;
+};
+
+async function paymentStatementList(orderNo) {
+  const form = await waitFor(() => document.forms.formSearch, 15000);
+  if (!form) throw new Error('Form pencarian 對帳單 iOPEN tidak ditemukan. Pastikan sudah login 賣家中心.');
+
+  let mark = null;
+  try {
+    mark = JSON.parse(sessionStorage.getItem(PAY_KEY) || 'null');
+  } catch {}
+  if (!mark || mark.orderNo !== orderNo || Date.now() - mark.at > PAY_FRESH_MS) {
+    // Cari 對帳單 yang memuat order ini, 1 tahun ke belakang (bawaan halaman hanya 3 bulan)
+    sessionStorage.setItem(PAY_KEY, JSON.stringify({ orderNo, at: Date.now() }));
+    const from = new Date();
+    from.setFullYear(from.getFullYear() - 1);
+    form.s_no_type.value = 'order_uid';
+    form.s_no.value = orderNo;
+    form.s_date_start.value = isoDate(from);
+    form.s_date_end.value = isoDate(new Date());
+    if (form.r_status) form.r_status.value = ''; // tab 全部
+    (document.getElementById('search-btn-short') || form.querySelector('button[type=submit]')).click();
+    return null; // halaman dimuat ulang, RUN berikutnya membaca hasilnya
+  }
+  sessionStorage.removeItem(PAY_KEY);
+
+  const loaded = await waitFor(
+    () => document.querySelector('li.admweb-v2-orderlist__card') || document.querySelector('#pic-content .admweb-v2-NoData'),
+    15000
+  );
+  if (!loaded) throw new Error('Daftar 對帳單 iOPEN tidak termuat.');
+  const cards = [...document.querySelectorAll('li.admweb-v2-orderlist__card')]
+    .map((card) => {
+      const cells = [...card.querySelectorAll('td')].map(text);
+      return { status: cells[4] || '', link: card.querySelector('a.admweb-v2-account__table_status-link') };
+    })
+    .filter((c) => c.link);
+  if (cards.length === 0) return { transferred: false, status: 'Belum masuk 對帳單' };
+
+  const paid = cards.filter((c) => c.status === '匯款成功');
+  if (paid.length === 0) return { transferred: false, status: `對帳單 ${cards.map((c) => c.status || '?').join(', ')}` };
+  if (paid.length > 1) throw new Error(`Order ada di ${paid.length} 對帳單 匯款成功, cek manual.`);
+  location.assign(paid[0].link.href);
+  return null; // pindah ke 對帳單詳情
+}
+
+async function paymentStatementDetail(orderNo) {
+  const tables = await waitFor(() => {
+    const t = [...document.querySelectorAll('table.admweb-v2-account__order-basic')];
+    return t.length ? t : null;
+  }, 15000);
+  if (!tables) throw new Error('對帳單詳情 iOPEN tidak termuat.');
+
+  const info = {};
+  for (const dt of document.querySelectorAll('dl.admweb-v2-account__info dt')) info[text(dt)] = text(dt.nextElementSibling);
+  if (info['匯款狀態'] !== '匯款成功') return { transferred: false, status: `對帳單 ${info['匯款狀態'] || '?'}` };
+  const paidDate = slashDate(info['匯款時間']);
+  if (!paidDate) throw new Error('匯款時間 di 對帳單詳情 tidak terbaca.');
+
+  for (const table of tables) {
+    const head = [...table.rows[0].cells].map(text);
+    const col = head.indexOf('撥款金額');
+    const orderCol = head.findIndex((h) => h.startsWith('訂單編號'));
+    for (const row of [...table.rows].slice(1)) {
+      if (!text(row.cells[orderCol]).split(' ').includes(orderNo)) continue;
+      const amount = money(text(row.cells[col]));
+      if (amount == null) throw new Error('撥款金額 order ini tidak terbaca.');
+      return { transferred: true, paidDate, amount, statementNo: info['對帳單編號'] };
+    }
+  }
+  throw new Error(`Order ${orderNo} tidak ada di 對帳單詳情 ${info['對帳單編號'] || ''}.`);
+}
+
+async function runPayment(orderNo) {
+  const action = new URLSearchParams(location.search).get('action');
+  if (action === 'account_statement_pic') return paymentStatementList(orderNo);
+  if (action === 'account_statement_detail_pic') return paymentStatementDetail(orderNo);
+  throw new Error('Halaman iOPEN Mall tidak dikenali. Pastikan sudah login 賣家中心.');
+}
+
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.type !== 'RUN' || msg.platform !== 'iopen') return;
+  if (msg?.type !== 'RUN' || msg.platform !== 'iopen' || msg.action !== 'payment') return;
+  runPayment(msg.orderNo)
+    .then((payment) => {
+      if (payment) chrome.runtime.sendMessage({ type: 'DONE', ok: true, payment });
+    })
+    .catch((err) => chrome.runtime.sendMessage({ type: 'DONE', ok: false, error: err.message }));
+});
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type !== 'RUN' || msg.platform !== 'iopen' || msg.action === 'payment') return;
   run(msg.orderNo)
     .then((resi) => {
       // null = halaman sedang pindah, RUN berikutnya datang dari halaman baru

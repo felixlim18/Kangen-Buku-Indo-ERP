@@ -129,21 +129,39 @@ export const formatPrintResult = ({ steps, missing }: PrintLabelsResult): { text
   };
 };
 
-export const isShopeePaymentCheckAvailable = (): boolean =>
-  isAutoShipExtensionInstalled() && document.documentElement.dataset.kbiShopeePayment === '1';
+/** Platform yang pelunasannya bisa dicek lewat extension (dataset diset erp-bridge.js) */
+export type PaymentPlatform = AutoShipPlatform | 'familymart';
 
-export interface ShopeePaymentInfo {
-  /** 訂單歷史 sudah berisi 款項已完成轉帳 */
+export const PAYMENT_PLATFORM_LABELS: Record<PaymentPlatform, string> = {
+  shopee: 'Shopee',
+  iopen: 'iOPEN Mall',
+  familymart: 'FamilyMart',
+};
+const PAYMENT_DATASET: Record<PaymentPlatform, string> = { shopee: 'kbiShopeePayment', iopen: 'kbiIopenPayment', familymart: 'kbiFamilymartPayment' };
+const PAYMENT_MESSAGE: Record<PaymentPlatform, string> = { shopee: 'SHOPEE_PAYMENT', iopen: 'IOPEN_PAYMENT', familymart: 'FAMILYMART_PAYMENT' };
+
+export const isPaymentCheckAvailable = (platform: PaymentPlatform): boolean =>
+  isAutoShipExtensionInstalled() && document.documentElement.dataset[PAYMENT_DATASET[platform]] === '1';
+
+export interface PlatformPaymentInfo {
+  /** Shopee: 訂單歷史 berisi 款項已完成轉帳 · iOPEN: 對帳單 berstatus 匯款成功 · FamilyMart: 匯款狀態 匯款成功 */
   transferred: boolean;
-  /** Tanggal 款項已完成轉帳, YYYY-MM-DD */
+  /** Tanggal 款項已完成轉帳 / 匯款時間 / 匯款成功(…), YYYY-MM-DD */
   paidDate?: string;
-  /** Nominal 原始訂單進帳 (NT$, bukan sen) */
+  /** Shopee 原始訂單進帳 / iOPEN 撥款金額 / FamilyMart 金額 (NT$, bukan sen) */
   amount?: number;
+  /** Status di situs kalau belum lunas (mis. 匯款中) */
+  status?: string;
 }
 
-/** Cek pelunasan order Shopee lewat extension: buka detail order, baca 訂單歷史 dan 原始訂單進帳. */
-export const requestShopeePayment = async (orderNo: string): Promise<ShopeePaymentInfo> => {
-  const msg = await callExtension('SHOPEE_PAYMENT', { orderNo: orderNo.trim().toUpperCase() }, SHIP_TIMEOUT_MS, 'Timeout menunggu Shopee');
+/**
+ * Cek pelunasan order lewat extension. Shopee: detail order (訂單歷史 + 原始訂單進帳).
+ * iOPEN Mall: 對帳單 yang memuat order, berstatus 匯款成功 → 對帳單詳情 → 撥款金額.
+ * FamilyMart: `orderNo` = nomor resi (寄件編號) → 訂單／匯款查詢 → 匯款狀態 + 金額.
+ */
+export const requestPlatformPayment = async (platform: PaymentPlatform, orderNo: string): Promise<PlatformPaymentInfo> => {
+  const site = PAYMENT_PLATFORM_LABELS[platform];
+  const msg = await callExtension(PAYMENT_MESSAGE[platform], { orderNo: orderNo.trim().toUpperCase() }, SHIP_TIMEOUT_MS, `Timeout menunggu ${site}`);
   if (msg.ok && msg.payment) return msg.payment;
-  throw new Error(msg.error || 'Gagal membaca detail order Shopee');
+  throw new Error(msg.error || `Gagal membaca pelunasan ${site}`);
 };
