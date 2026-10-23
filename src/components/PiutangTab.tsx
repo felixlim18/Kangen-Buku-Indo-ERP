@@ -31,6 +31,7 @@ export const PiutangTab: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [reverseModalData, setReverseModalData] = useState<any | null>(null);
   const [payAmount, setPayAmount] = useState('');
+  const savingPaymentRef = useRef(false);
   const [cashAccount, setCashAccount] = useState<'1101' | '1102'>('1101');
   const [payRate, setPayRate] = useState('');
   const [liveAccounts, setLiveAccounts] = useState<Record<string, AutoAccount>>(AUTO_ACCOUNTS);
@@ -60,6 +61,8 @@ export const PiutangTab: React.FC = () => {
 
   // Bulk Modal states
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const bulkProcessingRef = useRef(false);
   const [bulkDate, setBulkDate] = useState(payDate);
   const [bulkCashAccount, setBulkCashAccount] = useState<'1101'|'1102'>('1101');
   const [bulkPayRate, setBulkPayRate] = useState(String(FALLBACK_IDR_PER_NTD));
@@ -261,7 +264,7 @@ export const PiutangTab: React.FC = () => {
   };
 
   const handleSavePayment = async () => {
-    if (!selectedItem) return;
+    if (!selectedItem || savingPaymentRef.current) return;
 
     const parsedAmount = parseFloat(cleanCommas(payAmount));
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -277,12 +280,25 @@ export const PiutangTab: React.FC = () => {
       return;
     }
 
+    savingPaymentRef.current = true;
     try {
       await postPayment(selectedItem, { payAmountCents, parsedAmount, date: payDate, cashAccount, fxRate });
       handleClosePaymentModal();
     } catch (err: any) {
       console.error(err);
       alert(`Gagal memposting pembayaran: ${err.message}`);
+    } finally {
+      savingPaymentRef.current = false;
+    }
+  };
+
+  // Pengaman pembayaran ganda: dicek di dalam transaksi terhadap data terbaru, jadi klik ganda / dua tab yang
+  // memproses order yang sama tidak bisa mencatat pelunasan melebihi tagihan (lihat insiden 18/10/2026).
+  const assertNotOverpaid = (order: any, curPaid: number, addCents: number, label: string) => {
+    const total = order.totalPrice || 0;
+    if (curPaid + addCents > total + 10) {
+      const sisa = Math.max(0, total - curPaid);
+      throw new Error(`${label} sudah dibayar NT$ ${(curPaid / 100).toLocaleString('en-US')} dari tagihan NT$ ${(total / 100).toLocaleString('en-US')}; sisa hanya NT$ ${(sisa / 100).toLocaleString('en-US')}. Tidak diposting.`);
     }
   };
 
@@ -308,6 +324,7 @@ export const PiutangTab: React.FC = () => {
 
         const order = snap.data();
         const curPaid = order.amountPaid || 0;
+        assertNotOverpaid(order, curPaid, payAmountCents, order.orderCode || order.receivableCode || selectedItem.id);
         const nextPaid = curPaid + payAmountCents;
         const isFullyPaid = nextPaid >= (order.totalPrice || 0) - 5;
 
@@ -711,6 +728,7 @@ export const PiutangTab: React.FC = () => {
   };
 
   const handleProcessBulk = async () => {
+    if (bulkProcessingRef.current) return; // klik ganda saat proses masih berjalan
     const hasData = grid.some(r => r.code.trim() !== '');
     if (!hasData) {
       alert('Grid masih kosong.');
@@ -744,6 +762,8 @@ export const PiutangTab: React.FC = () => {
       return;
     }
 
+    bulkProcessingRef.current = true;
+    setIsBulkProcessing(true);
     try {
       await ensureAutoAccountExists({ code: '1110', name: 'Piutang Usaha', type: 'Assets', subType: 'Aset Lancar' });
       await ensureAutoAccountExists(bulkCashAccount === '1101' ? AUTO_ACCOUNTS.CASH_NTD : AUTO_ACCOUNTS.CASH_RUPIAH);
@@ -760,6 +780,7 @@ export const PiutangTab: React.FC = () => {
 
           const orderData = snap.data();
           const curPaid = orderData.amountPaid || 0;
+          assertNotOverpaid(orderData, curPaid, op.amountCents, orderData.orderCode || orderData.receivableCode || snap.id);
           const nextPaid = curPaid + op.amountCents;
           const isFullyPaid = nextPaid >= (orderData.totalPrice || 0) - 5;
 
@@ -815,6 +836,9 @@ export const PiutangTab: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       alert(`Gagal memposting bulk pelunasan: ${err.message}`);
+    } finally {
+      bulkProcessingRef.current = false;
+      setIsBulkProcessing(false);
     }
   };
 
@@ -1231,7 +1255,9 @@ export const PiutangTab: React.FC = () => {
                 </div>
                 <div className="modal-foot-actions">
                   <button className="btn-cancel" onClick={() => setIsBulkModalOpen(false)}>Batal</button>
-                  <button className="btn-process" onClick={handleProcessBulk}>Proses Pelunasan Massal</button>
+                  <button className="btn-process" onClick={handleProcessBulk} disabled={isBulkProcessing} style={isBulkProcessing ? { opacity: 0.6, cursor: 'wait' } : undefined}>
+                    {isBulkProcessing ? 'Memproses…' : 'Proses Pelunasan Massal'}
+                  </button>
                 </div>
               </div>
               

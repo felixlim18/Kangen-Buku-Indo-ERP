@@ -54,6 +54,8 @@ export const IncomeTab: React.FC = () => {
 
   // Bulk Modal states
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const bulkProcessingRef = useRef(false);
   const [bulkDate, setBulkDate] = useState(payDate);
   const [bulkCashAccount, setBulkCashAccount] = useState<'1101'|'1102'>('1101');
   const [bulkPayRate, setBulkPayRate] = useState(String(FALLBACK_IDR_PER_NTD));
@@ -293,6 +295,16 @@ export const IncomeTab: React.FC = () => {
   const rawCode = selectedItem ? (selectedItem.orderCode || selectedItem.id) : '';
   const orderCodeFormatted = rawCode.startsWith('#') ? rawCode : `#${rawCode}`;
 
+  // Pengaman pembayaran ganda: dicek di dalam transaksi terhadap data terbaru, jadi klik ganda / dua tab yang
+  // memproses order yang sama tidak bisa mencatat penerimaan melebihi total order.
+  const assertNotOverpaid = (order: any, curPaid: number, addCents: number, label: string) => {
+    const total = order.totalPrice || 0;
+    if (curPaid + addCents > total + 10) {
+      const sisa = Math.max(0, total - curPaid);
+      throw new Error(`${label} sudah diterima NT$ ${(curPaid / 100).toLocaleString('en-US')} dari total NT$ ${(total / 100).toLocaleString('en-US')}; sisa hanya NT$ ${(sisa / 100).toLocaleString('en-US')}. Tidak diposting.`);
+    }
+  };
+
   const handleSavePayment = () => {
     if (!selectedItem) return;
 
@@ -471,6 +483,7 @@ export const IncomeTab: React.FC = () => {
 
         const order = snap.data();
         const curPaid = order.amountPaid || 0;
+        assertNotOverpaid(order, curPaid, payAmountCents, order.orderCode || selectedItem.id);
         const nextPaid = curPaid + payAmountCents;
         const isFullyPaid = nextPaid >= (order.totalPrice || 0) - 5;
 
@@ -663,6 +676,7 @@ export const IncomeTab: React.FC = () => {
   };
 
   const handleProcessBulk = async () => {
+    if (bulkProcessingRef.current) return; // klik ganda saat proses masih berjalan
     const hasData = grid.some(r => r.code.trim() !== '');
     if (!hasData) {
       alert('Grid masih kosong.');
@@ -701,6 +715,8 @@ export const IncomeTab: React.FC = () => {
       return;
     }
 
+    bulkProcessingRef.current = true;
+    setIsBulkProcessing(true);
     try {
       await ensureAutoAccountExists({ code: '2110', name: 'Pendapatan Diterima di Muka', type: 'Liabilities', subType: 'Kewajiban Lancar' });
       await ensureAutoAccountExists(bulkCashAccount === '1101' ? AUTO_ACCOUNTS.CASH_NTD : AUTO_ACCOUNTS.CASH_RUPIAH);
@@ -716,6 +732,7 @@ export const IncomeTab: React.FC = () => {
           
           const orderData = snap.data();
           const curPaid = orderData.amountPaid || 0;
+          assertNotOverpaid(orderData, curPaid, op.amountCents, orderData.orderCode || snap.id);
           const nextPaid = curPaid + op.amountCents;
           const isFullyPaid = nextPaid >= (orderData.totalPrice || 0) - 5;
           
@@ -768,6 +785,9 @@ export const IncomeTab: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       alert(`Gagal memposting bulk penerimaan: ${err.message}`);
+    } finally {
+      bulkProcessingRef.current = false;
+      setIsBulkProcessing(false);
     }
   };
 
@@ -1075,7 +1095,9 @@ export const IncomeTab: React.FC = () => {
                 </div>
                 <div className="modal-foot-actions">
                   <button className="btn-cancel" onClick={() => setIsBulkModalOpen(false)}>Batal</button>
-                  <button className="btn-process" onClick={handleProcessBulk}>Proses Penerimaan Massal</button>
+                  <button className="btn-process" onClick={handleProcessBulk} disabled={isBulkProcessing} style={isBulkProcessing ? { opacity: 0.6, cursor: 'wait' } : undefined}>
+                    {isBulkProcessing ? 'Memproses…' : 'Proses Penerimaan Massal'}
+                  </button>
                 </div>
               </div>
               
