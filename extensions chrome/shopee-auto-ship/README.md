@@ -19,6 +19,14 @@ Order diproses **satu per satu** di **satu tab kerja per platform** (latar belak
 4. Kalau muncul dialog 申請寄件編號 → klik tombol itu (lalu 確認 bila ada).
 5. Ambil nomor resi dari dialog 查看寄件編號.
 
+## Cek pelunasan Shopee (halaman Piutang Usaha)
+Tombol **Cek Shopee** (per baris) dan **Cek Semua Shopee** (semua order Shopee berstatus *Belum Dibayar*):
+1. Di tab kerja Shopee: 我的銷售 → 全部 → 訂單編號 = nomor order → buka detail order.
+2. 訂單歷史 harus berisi **款項已完成轉帳**. Kalau belum ada → berhenti, baris ditandai "Belum 款項已完成轉帳".
+3. Baca nominal **原始訂單進帳**. Kalau tidak sama dengan sisa outstanding ERP → tidak diposting, baris ditandai selisihnya.
+4. Kalau sama → ERP langsung memposting pelunasan (akun 1101 Cash: NTD) dengan tanggal 款項已完成轉帳.
+Order diproses satu per satu di tab kerja yang sama dengan Action (安排出貨).
+
 ## iOPEN Mall (sales.iopenmall.tw, toko 050497)
 1. Buka 新訂單 (tab 待出貨) dengan pencarian 訂單編號 = nomor order.
 2. Klik 取寄件編號 → halaman 已成功產生寄件編號 → ambil nomor resinya.

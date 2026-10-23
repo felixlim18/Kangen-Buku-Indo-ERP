@@ -1,7 +1,9 @@
 // Jembatan antara halaman ERP (window.postMessage) dan service worker extension.
 document.documentElement.dataset.kbiAutoShipExt = '3'; // versi protokol: 3 = PRINT_LABELS per bagian, AUTO_SHIP satu per satu (4 = paralel, saat ini tidak dipakai)
 
-const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS'];
+document.documentElement.dataset.kbiShopeePayment = '1'; // cek pelunasan Shopee (款項已完成轉帳 + 原始訂單進帳) tersedia
+
+const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS', 'SHOPEE_PAYMENT'];
 
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;

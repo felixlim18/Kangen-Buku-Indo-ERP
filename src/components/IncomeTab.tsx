@@ -870,7 +870,10 @@ export const IncomeTab: React.FC = () => {
                   
                   return (
                     <tr key={o.id}>
-                      <td><span className="order-code">{o.orderCode || o.id}</span></td>
+                      <td>
+                        <span className="order-code">{o.orderCode || o.id}</span>
+                        {o.orderNumber?.trim() && o.orderNumber.trim().replace(/^#/, '') !== (o.orderCode || o.id).replace(/^#/, '') && <span className="cust-sub num">{o.orderNumber.trim()}</span>}
+                      </td>
                       <td>
                         <span className="cust-name">{o.customerName}</span>
                         <span className="cust-sub">{o.orderType || '-'} · {o.platformChannel || '-'}</span>

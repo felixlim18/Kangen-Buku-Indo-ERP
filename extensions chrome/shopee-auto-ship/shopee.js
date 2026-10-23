@@ -1,4 +1,6 @@
-// Otomatisasi di halaman 我的銷售: klik tab 全部 -> cari 訂單編號 -> 安排出貨 -> ambil nomor resi (寄件編號).
+// Otomatisasi di halaman 我的銷售: klik tab 全部 -> cari 訂單編號, lalu
+// - action 'ship'   : 安排出貨 -> ambil nomor resi (寄件編號)
+// - action 'payment': buka detail order -> cek 訂單歷史 款項已完成轉帳 (+ tanggal) dan nominal 原始訂單進帳
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const text = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
 
@@ -190,15 +192,79 @@ async function getTrackingNumber(orderNo) {
   throw new Error(`Nomor resi tidak muncul dalam 40 detik${dialogs.length ? ` (dialog: ${dialogs.join(', ')})` : ''}.`);
 }
 
+// ----- cek pelunasan (halaman detail order) -----
+const DETAIL_PATH = /^\/portal\/sale\/order\/\d+/;
+const isListPage = () => /^\/portal\/sale\/order\/?$/.test(location.pathname);
+
+// Elemen terdalam yang teksnya memuat `label`
+const deepestWithText = (label) =>
+  [...document.querySelectorAll('body *')].find(
+    (el) => isShown(el) && text(el).includes(label) && ![...el.children].some((c) => text(c).includes(label))
+  );
+
+// Naik dari elemen label sampai teks leluhurnya cocok `re` (mis. label + tanggal / nominal di sampingnya)
+function matchAround(label, re, maxUp = 8) {
+  let el = deepestWithText(label);
+  for (let i = 0; el && i < maxUp; i++, el = el.parentElement) {
+    const m = text(el).match(re);
+    if (m) return m;
+  }
+  return null;
+}
+
+async function readPaymentDetail(orderNo) {
+  // Tunggu halaman detail order ini selesai dirender (訂單歷史 selalu berisi 新訂單)
+  const ready = await waitFor(
+    () => document.body.innerText.includes(orderNo) && deepestWithText('訂單歷史') && deepestWithText('新訂單'),
+    25000
+  );
+  if (!ready) throw new Error(`Halaman detail order ${orderNo} tidak termuat (訂單歷史 tidak ditemukan).`);
+  await sleep(1000); // bagian 進帳資訊 kadang dirender sesudah 訂單歷史
+
+  const transfer = matchAround('款項已完成轉帳', /款項已完成轉帳[\s\S]*?(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (!deepestWithText('款項已完成轉帳')) return { transferred: false };
+  if (!transfer) throw new Error('款項已完成轉帳 ada, tetapi tanggalnya tidak terbaca.');
+  const paidDate = `${transfer[1]}-${transfer[2].padStart(2, '0')}-${transfer[3].padStart(2, '0')}`;
+
+  const income = await waitFor(
+    () => matchAround('原始訂單進帳', /原始訂單進帳\s*[:：]?\s*(-?)\s*(?:NT)?\$?\s*(\d[\d,]*(?:\.\d+)?)/),
+    8000
+  );
+  if (!income) throw new Error('Nominal 原始訂單進帳 tidak ditemukan di halaman detail order.');
+  const amount = Number(income[2].replace(/,/g, '')) * (income[1] ? -1 : 1);
+  return { transferred: true, paidDate, amount };
+}
+
+async function getPaymentInfo(orderNo) {
+  if (DETAIL_PATH.test(location.pathname)) return readPaymentDetail(orderNo);
+  closeLeftoverModals();
+  const card = await searchOrder(orderNo);
+  if (card.href) {
+    // Muat halaman detail; skrip di halaman itu menerima RUN lagi (setelah READY) dan membaca detailnya
+    location.assign(card.href);
+    return new Promise(() => {});
+  }
+  card.click();
+  await waitFor(() => DETAIL_PATH.test(location.pathname), 15000);
+  return readPaymentDetail(orderNo);
+}
+
 let running = false;
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Background bertanya: apakah halaman ini bisa langsung dipakai untuk order berikutnya (tanpa refresh)?
   if (msg?.type === 'PING') {
-    sendResponse({ ready: !running && location.pathname.startsWith('/portal/sale/order') });
+    sendResponse({ ready: !running && isListPage() });
     return;
   }
   if (msg?.type !== 'RUN' || msg.platform !== 'shopee') return;
   running = true;
+  if (msg.action === 'payment') {
+    getPaymentInfo(msg.orderNo)
+      .then((payment) => chrome.runtime.sendMessage({ type: 'DONE', ok: true, payment }))
+      .catch((err) => chrome.runtime.sendMessage({ type: 'DONE', ok: false, error: err.message }))
+      .finally(() => { running = false; });
+    return;
+  }
   getTrackingNumber(msg.orderNo)
     .then((resi) => chrome.runtime.sendMessage({ type: 'DONE', ok: true, resi }))
     .catch((err) => chrome.runtime.sendMessage({ type: 'DONE', ok: false, error: err.message }))

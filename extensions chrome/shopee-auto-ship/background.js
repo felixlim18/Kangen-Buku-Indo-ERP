@@ -1,5 +1,7 @@
 // Dua jenis job:
-// - ship : ambil nomor resi satu order (Shopee 安排出貨 / iOPEN Mall 取寄件編號), SATU PER SATU, di satu tab
+// - ship : (action 'ship') ambil nomor resi satu order, atau (action 'payment') cek pelunasan Shopee satu order
+//          (款項已完成轉帳 + 原始訂單進帳 di halaman detail order).
+//          Ambil nomor resi (Shopee 安排出貨 / iOPEN Mall 取寄件編號), SATU PER SATU, di satu tab
 //          kerja per platform yang dipakai bergantian. Shopee: order berikutnya dicari langsung di halaman yang
 //          sudah terbuka TANPA refresh (refresh hanya kalau halaman belum siap / pencarian di tempat gagal).
 //          Tab kerja ditutup setelah 1 menit tidak dipakai.
@@ -7,7 +9,7 @@
 //          Shopee 7-ELEVEN, dan iOPEN Mall berjalan bersamaan, masing-masing di tab sendiri di jendela ERP.
 //          Job cetak tidak menunggu job ship (dan sebaliknya).
 const IOPEN_ADMWEB = 'https://sales.iopenmall.tw/050497/admweb/admweb.main.php';
-const SHIP_TIMEOUT_MS = 60000;
+const SHIP_TIMEOUT_MS = 60000; // per order, juga untuk cek pelunasan Shopee
 const PRINT_STEP_TIMEOUT_MS = 90000; // sampai dialog cetak muncul
 const PRINT_DIALOG_TIMEOUT_MS = 10 * 60000; // menunggu user menekan Print / Cancel
 
@@ -59,8 +61,17 @@ const stepOfTab = (tabId) => (current?.kind === 'print' ? current.steps.find((s)
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
 
-  if (msg.type === 'AUTO_SHIP') {
-    shipQueue.push({ kind: 'ship', id: msg.id, platform: msg.platform, orderNo: msg.orderNo, erpTabId: tabId, erpWindowId: sender.tab.windowId });
+  if (msg.type === 'AUTO_SHIP' || msg.type === 'SHOPEE_PAYMENT') {
+    const isPayment = msg.type === 'SHOPEE_PAYMENT';
+    shipQueue.push({
+      kind: 'ship',
+      action: isPayment ? 'payment' : 'ship',
+      id: msg.id,
+      platform: isPayment ? 'shopee' : msg.platform,
+      orderNo: msg.orderNo,
+      erpTabId: tabId,
+      erpWindowId: sender.tab.windowId,
+    });
     pumpShip();
     return;
   }
@@ -76,7 +87,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'READY') {
       shipJob.loading = false;
       if (!shipJob.pageLoadedAt) shipJob.pageLoadedAt = Date.now();
-      chrome.tabs.sendMessage(tabId, { type: 'RUN', platform: shipJob.platform, orderNo: shipJob.orderNo });
+      chrome.tabs.sendMessage(tabId, { type: 'RUN', action: shipJob.action, platform: shipJob.platform, orderNo: shipJob.orderNo });
     } else if (msg.type === 'DONE') {
       if (!msg.ok && shipJob.inPlace && !shipJob.retried) {
         // Pencarian di halaman yang dipakai ulang gagal -> refresh sekali lalu coba lagi
@@ -84,7 +95,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         navigateWorker(shipJob);
         return;
       }
-      finishShip(shipJob, { ok: msg.ok, resi: msg.resi, error: msg.error });
+      finishShip(shipJob, { ok: msg.ok, resi: msg.resi, payment: msg.payment, error: msg.error });
     }
     return;
   }
@@ -200,7 +211,7 @@ async function startShip(job) {
       const ping = await chrome.tabs.sendMessage(job.tabId, { type: 'PING' }).catch(() => null);
       if (shipCurrent === job && ping?.ready) {
         job.inPlace = true;
-        chrome.tabs.sendMessage(job.tabId, { type: 'RUN', platform: job.platform, orderNo: job.orderNo });
+        chrome.tabs.sendMessage(job.tabId, { type: 'RUN', action: job.action, platform: job.platform, orderNo: job.orderNo });
         return;
       }
     }

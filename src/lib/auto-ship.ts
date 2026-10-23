@@ -128,3 +128,22 @@ export const formatPrintResult = ({ steps, missing }: PrintLabelsResult): { text
     ok: steps.every(r => r.ok) && missing.length === 0,
   };
 };
+
+export const isShopeePaymentCheckAvailable = (): boolean =>
+  isAutoShipExtensionInstalled() && document.documentElement.dataset.kbiShopeePayment === '1';
+
+export interface ShopeePaymentInfo {
+  /** 訂單歷史 sudah berisi 款項已完成轉帳 */
+  transferred: boolean;
+  /** Tanggal 款項已完成轉帳, YYYY-MM-DD */
+  paidDate?: string;
+  /** Nominal 原始訂單進帳 (NT$, bukan sen) */
+  amount?: number;
+}
+
+/** Cek pelunasan order Shopee lewat extension: buka detail order, baca 訂單歷史 dan 原始訂單進帳. */
+export const requestShopeePayment = async (orderNo: string): Promise<ShopeePaymentInfo> => {
+  const msg = await callExtension('SHOPEE_PAYMENT', { orderNo: orderNo.trim().toUpperCase() }, SHIP_TIMEOUT_MS, 'Timeout menunggu Shopee');
+  if (msg.ok && msg.payment) return msg.payment;
+  throw new Error(msg.error || 'Gagal membaca detail order Shopee');
+};

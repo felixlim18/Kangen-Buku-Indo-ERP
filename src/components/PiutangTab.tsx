@@ -8,6 +8,7 @@ import { AUTO_ACCOUNTS, ensureAutoAccountExists, getLiveAutoAccounts, AutoAccoun
 import { formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
 import { isPeriodClosed, fetchCurrentExchangeRate } from '../lib/period-closing-utils';
 import { Receipt, Plus, X } from 'lucide-react';
+import { getAutoShipPlatform, isShopeePaymentCheckAvailable, requestShopeePayment } from '../lib/auto-ship';
 import './PiutangTab.css';
 
 type Cell = { r: number; c: number };
@@ -277,6 +278,22 @@ export const PiutangTab: React.FC = () => {
     }
 
     try {
+      await postPayment(selectedItem, { payAmountCents, parsedAmount, date: payDate, cashAccount, fxRate });
+      handleClosePaymentModal();
+    } catch (err: any) {
+      console.error(err);
+      alert(`Gagal memposting pembayaran: ${err.message}`);
+    }
+  };
+
+  // Posting pelunasan satu piutang: update order + jurnal (Kas / Piutang Usaha) + arus kas
+  const postPayment = async (
+    item: any,
+    { payAmountCents, parsedAmount, date: payDate, cashAccount, fxRate }:
+      { payAmountCents: number; parsedAmount: number; date: string; cashAccount: '1101' | '1102'; fxRate: number }
+  ) => {
+    const selectedItem = item;
+    {
       const isManual = selectedItem.source === 'manual';
       const orderRef = doc(db, isManual ? 'manualReceivables' : 'salesOrders', selectedItem.id);
       const journalId = await getNextJournalId(payDate);
@@ -331,12 +348,67 @@ export const PiutangTab: React.FC = () => {
           refId: selectedItem.id
         });
       });
-
-      handleClosePaymentModal();
-    } catch (err: any) {
-      console.error(err);
-      alert(`Gagal memposting pembayaran: ${err.message}`);
     }
+  };
+
+  // --- CEK PELUNASAN SHOPEE (extension KBI) ---
+  // Order Shopee berstatus Belum Dibayar: buka detail order di Shopee, kalau 訂單歷史 sudah 款項已完成轉帳 dan
+  // 原始訂單進帳 = sisa outstanding, posting pelunasan ke 1101 dengan tanggal 款項已完成轉帳.
+  type ShopeeCheck = { state: 'running' | 'posted' | 'skip' | 'error'; msg: string };
+  const [shopeeChecks, setShopeeChecks] = useState<Record<string, ShopeeCheck>>({});
+  const [shopeeBulk, setShopeeBulk] = useState<{ done: number; total: number } | null>(null);
+
+  const isShopeeUnpaid = (o: any) =>
+    o.source === 'so' && getStatus(o).class === 'belum' && getAutoShipPlatform(o.orderNumber || '') === 'shopee';
+
+  const checkShopeePayment = async (o: any) => {
+    const setCheck = (c: ShopeeCheck) => setShopeeChecks(prev => ({ ...prev, [o.id]: c }));
+    if (!isShopeePaymentCheckAvailable()) {
+      setCheck({ state: 'error', msg: 'Extension KBI Auto 出貨 v1.8.0 belum aktif: buka chrome://extensions, klik reload ↻, lalu refresh ERP (harus di Google Chrome).' });
+      return 'error';
+    }
+    setCheck({ state: 'running', msg: 'Mengecek Shopee…' });
+    try {
+      const info = await requestShopeePayment(o.orderNumber);
+      if (!info.transferred || !info.paidDate) {
+        setCheck({ state: 'skip', msg: 'Belum 款項已完成轉帳' });
+        return 'skip';
+      }
+      const shopeeCents = Math.round((info.amount || 0) * 100);
+      const outstanding = getOutstanding(o);
+      if (shopeeCents !== outstanding) {
+        setCheck({ state: 'skip', msg: `Selisih: Shopee NT$ ${(shopeeCents / 100).toLocaleString('en-US')} ≠ ERP NT$ ${(outstanding / 100).toLocaleString('en-US')}` });
+        return 'skip';
+      }
+      await postPayment(o, {
+        payAmountCents: outstanding,
+        parsedAmount: outstanding / 100,
+        date: info.paidDate,
+        cashAccount: '1101',
+        fxRate: liveExchangeRate || FALLBACK_IDR_PER_NTD,
+      });
+      setCheck({ state: 'posted', msg: `Lunas · diposting ${info.paidDate}` });
+      return 'posted';
+    } catch (err: any) {
+      setCheck({ state: 'error', msg: err.message || String(err) });
+      return 'error';
+    }
+  };
+
+  const checkAllShopeePayments = async () => {
+    const targets = allPiutangItems.filter(isShopeeUnpaid);
+    if (targets.length === 0) return;
+    if (!isShopeePaymentCheckAvailable()) {
+      alert('Extension KBI Auto 出貨 v1.8.0 belum aktif.\n\nBuka chrome://extensions, klik reload ↻ di kartu KBI Auto 出貨, lalu refresh halaman ERP. Fitur ini hanya jalan di Google Chrome yang terpasang extension-nya.');
+      return;
+    }
+    setShopeeBulk({ done: 0, total: targets.length });
+    // Satu per satu: extension memakai satu tab kerja Shopee
+    for (let i = 0; i < targets.length; i++) {
+      await checkShopeePayment(targets[i]);
+      setShopeeBulk({ done: i + 1, total: targets.length });
+    }
+    setShopeeBulk(null);
   };
 
   // --- GRID LOGIC ---
@@ -790,6 +862,19 @@ export const PiutangTab: React.FC = () => {
               <Plus className="h-4 w-4" />
               Tambah Piutang Manual
             </button>
+            {(
+              <button
+                className="btn-bulk"
+                style={{ backgroundColor: '#ee4d2d' }}
+                disabled={!!shopeeBulk}
+                onClick={checkAllShopeePayments}
+                title="Cek 款項已完成轉帳 di Shopee untuk semua order Shopee Belum Dibayar, lalu posting yang nominalnya cocok"
+              >
+                {shopeeBulk
+                  ? `Mengecek Shopee ${shopeeBulk.done}/${shopeeBulk.total}…`
+                  : `Cek Semua Shopee (${allPiutangItems.filter(isShopeeUnpaid).length})`}
+              </button>
+            )}
             <button className="btn-bulk" onClick={() => setIsBulkModalOpen(true)}>
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
               Terima Semua Piutang
@@ -897,6 +982,17 @@ export const PiutangTab: React.FC = () => {
                       </td>
                       <td className="ta-r">
                         <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                          {isShopeeUnpaid(o) && (
+                            <button
+                              className="btn-row"
+                              style={{ backgroundColor: '#ee4d2d' }}
+                              disabled={shopeeChecks[o.id]?.state === 'running' || !!shopeeBulk}
+                              onClick={() => checkShopeePayment(o)}
+                              title="Cek 款項已完成轉帳 & 原始訂單進帳 di Shopee, posting kalau cocok"
+                            >
+                              {shopeeChecks[o.id]?.state === 'running' ? 'Mengecek…' : 'Cek Shopee'}
+                            </button>
+                          )}
                           <button 
                             className="btn-row" 
                             disabled={sisa <= 0}
@@ -914,6 +1010,16 @@ export const PiutangTab: React.FC = () => {
                             </button>
                           )}
                         </div>
+                        {shopeeChecks[o.id] && shopeeChecks[o.id].state !== 'running' && (
+                          <div
+                            style={{
+                              marginTop: 4, fontSize: 11, maxWidth: 240, marginLeft: 'auto', textAlign: 'right',
+                              color: { posted: 'var(--green)', skip: 'var(--amber)', error: '#d93025' }[shopeeChecks[o.id].state as 'posted' | 'skip' | 'error'],
+                            }}
+                          >
+                            {shopeeChecks[o.id].msg}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )
