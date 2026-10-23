@@ -28,8 +28,10 @@ export const buildAdjustmentJournalLines = (type: AdjustmentType, totalAmount: n
         { account: 'Inventory On Hand', accountCode: '1201', debit: 0, credit: totalAmount }
       ]
     : [
+        // Barang lebih = pendapatan lain-lain (4104). Dulu dikredit ke 5500 Beban Lain-lain sehingga beban
+        // bersaldo negatif, padahal deskripsi jurnal & UI menyebut "Pendapatan Lain-lain".
         { account: 'Inventory On Hand', accountCode: '1201', debit: totalAmount, credit: 0 },
-        { account: 'Beban Lain-lain', accountCode: '5500', debit: 0, credit: totalAmount }
+        { account: 'Pendapatan Lain-lain', accountCode: '4104', debit: 0, credit: totalAmount }
       ];
 
 export interface PostStockAdjustmentParams {
@@ -48,7 +50,7 @@ export interface PostStockAdjustmentParams {
 
 /**
  * Posting satu penyesuaian stok dalam satu batch: inventory, inventoryLedger,
- * damagedStock (muncul di sub-tab Penyesuaian) dan jurnal 1201 <-> 5500.
+ * damagedStock (muncul di sub-tab Penyesuaian) dan jurnal 1201 <-> 5500 (kurang/rusak) / 4104 (lebih).
  */
 export async function postStockAdjustment(p: PostStockAdjustmentParams): Promise<{ id: string; journalId: string }> {
   await ensureAutoAccountExists({
@@ -56,6 +58,12 @@ export async function postStockAdjustment(p: PostStockAdjustmentParams): Promise
     name: 'Beban Lain-lain',
     type: 'Expenses',
     subType: 'Biaya Umum dan Administrasi'
+  });
+  await ensureAutoAccountExists({
+    code: '4104',
+    name: 'Pendapatan Lain-lain',
+    type: 'Revenue',
+    subType: 'Pendapatan Non-Operasional'
   });
   await ensureAutoAccountExists({
     code: '1201',

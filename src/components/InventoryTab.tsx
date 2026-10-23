@@ -19,7 +19,7 @@ import { Book, InventoryRecord, InventoryLedgerEntry, DamagedStock, JournalEntry
 import { formatNTD, formatNTDExact } from '../lib/decimal-utils';
 import { getCurrentKontrolStokForBook, getPhysicalOnHandStockForBook, getAllBooksStockData } from '../lib/inventory-utils';
 import { ensureAutoAccountExists } from '../lib/journalAuto';
-import { postStockAdjustment, isStockReduction, buildAdjustmentJournalDescription, type AdjustmentType } from '../lib/stock-adjustment';
+import { postStockAdjustment, isStockReduction, buildAdjustmentJournalDescription, buildAdjustmentJournalLines, type AdjustmentType } from '../lib/stock-adjustment';
 import { useAuth } from '../lib/auth-context';
 import { isPeriodClosed, getYearMonth } from '../lib/period-closing-utils';
 import { getCached, cacheKey, invalidateCollections } from '../lib/firestore-cache';
@@ -713,13 +713,7 @@ export const InventoryTab: React.FC = () => {
         : `Pendapatan Lain-lain - ${adjustmentType} - ${targetBookName} ${rawQty} pcs`;
       const journalDescription = `${baseDesc}${damageNotes ? ' - ' + damageNotes : ''}`;
 
-      const journalLines = isDamage ? [
-        { account: 'Beban Lain-lain', accountCode: '5500', debit: totalAmount, credit: 0 },
-        { account: 'Inventory On Hand', accountCode: '1201', debit: 0, credit: totalAmount }
-      ] : [
-        { account: 'Inventory On Hand', accountCode: '1201', debit: totalAmount, credit: 0 },
-        { account: 'Beban Lain-lain', accountCode: '5500', debit: 0, credit: totalAmount }
-      ];
+      const journalLines = buildAdjustmentJournalLines(adjustmentType as AdjustmentType, totalAmount);
 
       const journalRef = doc(db, 'journalEntries', newJournalId);
       batch.set(journalRef, {
@@ -1986,7 +1980,7 @@ export const InventoryTab: React.FC = () => {
                   <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400 font-numeric">{totalSurplusCount} Transaksi</span>
                   <span className="text-xs font-bold text-neutral-500">({formatNTD(totalSurplusValue)})</span>
                 </div>
-                <span className="text-xs text-neutral-500 block mt-0.5">Pendapatan Lain-lain (5500)</span>
+                <span className="text-xs text-neutral-500 block mt-0.5">Pendapatan Lain-lain (4104)</span>
               </div>
             </div>
           </div>

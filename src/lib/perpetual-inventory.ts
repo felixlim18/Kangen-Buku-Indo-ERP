@@ -645,6 +645,17 @@ export function buildPerpetualIndex(data: PerpetualData, nowMs: number = Date.no
     });
   }
 
+  // Barang lebih (stock opname): jurnalnya mendebit 1201 sebesar qty x unitCost di baris ledger ini.
+  // Dulu diabaikan, sehingga laporan lebih kecil dari GL (selisih NT$5.290,53 opname 28/09/2026).
+  for (const e of ledgerEntries) {
+    if (e.type !== 'stock_surplus' || e.reversed === true || !e.bookId) continue;
+    const qty = Math.abs(e.qtyDelta || 0);
+    push(eventsByBook, e.bookId, {
+      type: 'purchase_received', timeMs: parseEventDate(e.timestamp).getTime(),
+      qtyDelta: qty, cost: qty * (e.unitCost || 0),
+    });
+  }
+
   // -- urutkan sekali per buku --------------------------------------------
   for (const evs of eventsByBook.values()) {
     evs.sort((a, b) => (a.timeMs !== b.timeMs ? a.timeMs - b.timeMs : ORDER[a.type] - ORDER[b.type]));
@@ -658,10 +669,14 @@ export function buildPerpetualIndex(data: PerpetualData, nowMs: number = Date.no
     if (m) bump(stokMasukByBookMonth, `${e.bookId}|${m}`, e.qtyDelta || 0);
   }
 
+  // damagedStock berisi barang rusak/kurang DAN barang lebih: barang lebih masuk kolom Stok Masuk,
+  // bukan Rusak, supaya stok awal + masuk - keluar - rusak = stok akhir.
   const rusakByBookMonth = new Map<string, number>();
   for (const rec of damagedRecords) {
     if (!rec.bookId || !rec.date) continue;
-    bump(rusakByBookMonth, `${rec.bookId}|${String(rec.date).slice(0, 7)}`, rec.qty || 0);
+    const k = `${rec.bookId}|${String(rec.date).slice(0, 7)}`;
+    const isSurplus = rec.adjustmentType === 'Barang Lebih' || rec.type === 'surplus';
+    bump(isSurplus ? stokMasukByBookMonth : rusakByBookMonth, k, Math.abs(rec.qty || 0));
   }
 
   return { initialStockByBook, eventsByBook, stokMasukByBookMonth, stokKeluarByBookMonth, rusakByBookMonth };
