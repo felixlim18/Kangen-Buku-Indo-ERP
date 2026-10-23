@@ -386,7 +386,18 @@ export const OngkosKirimTab: React.FC<OngkosKirimTabProps> = ({ setTab }) => {
               createdAt: Timestamp.now()
             };
 
-            await setDoc(doc(db, 'ongkosKirim', entryId), newAutoEntry);
+            // Cek ke database, bukan ke state `entries`: kalau data SO tiba sebelum daftar ongkir selesai dimuat,
+            // `entries` masih kosong dan setDoc dulu menimpa catatan yang sudah dibayar menjadi nominal 0 /
+            // Belum Dibayar (23/10/2026: 56 catatan tertimpa, 11 di antaranya sudah lunas). Buat hanya kalau belum ada.
+            const entryRef = doc(db, 'ongkosKirim', entryId);
+            await runTransaction(db, async (tx) => {
+              const existing = await tx.get(entryRef);
+              if (existing.exists()) {
+                if (so.status && existing.data().soStatus !== so.status) tx.update(entryRef, { soStatus: so.status });
+                return;
+              }
+              tx.set(entryRef, newAutoEntry);
+            });
           } catch (err) {
             console.error("Error auto creating ongkosKirim entry:", err);
           }
