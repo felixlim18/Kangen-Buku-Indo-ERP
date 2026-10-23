@@ -367,6 +367,9 @@ export const PurchasesTab = () => {
   const [freightInList, setFreightInList] = useState<any[]>([]);
   const [journalEntries, setJournalEntries] = useState<any[]>([]);
   const [isSubmittingPo, setIsSubmittingPo] = useState(false);
+  // Kunci sinkron: state isSubmittingPo baru menonaktifkan tombol setelah render ulang, jadi klik ganda yang
+  // cepat sempat menyimpan dua kali dan mencatat jurnal "Pemesanan Barang" kembar (insiden Agustus 2026).
+  const savingPoRef = useRef(false);
   const [toastNotification, setToastNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const triggerToast = (msg: string, type: 'success' | 'error' = 'success') => {
@@ -3032,6 +3035,8 @@ export const PurchasesTab = () => {
       return;
     }
 
+    if (savingPoRef.current) return;
+    savingPoRef.current = true;
     setIsSubmittingPo(true);
     try {
       let poId = doc(collection(db, 'purchaseOrders')).id;
@@ -3511,6 +3516,7 @@ export const PurchasesTab = () => {
     } catch (err: any) {
       alert("Error saving Purchase Order: " + err.message);
     } finally {
+      savingPoRef.current = false;
       setIsSubmittingPo(false);
     }
   };
