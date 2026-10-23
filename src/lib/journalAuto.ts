@@ -33,7 +33,8 @@ export const AUTO_ACCOUNTS_TEMPLATE: Record<string, AutoAccount> = {
   PARTNER_PROFIT_SHARE: { code: '5130', name: 'Beban Komisi Reseller', type: 'Expenses', subType: 'Beban Kemitraan', systemKey: 'partner_profit_share' },
   FREIGHT_IN: { code: '1120', name: 'Freight-in Dalam Kapitalisasi', type: 'Assets', subType: 'Aset Lancar', systemKey: 'freight_in_capitalization' },
   BEBAN_HADIAH_PELANGGAN: { code: '5310', name: 'Beban Hadiah Pelanggan', type: 'Expenses', subType: 'Beban Operasional', systemKey: 'beban_hadiah_pelanggan' },
-  BEBAN_PLATFORM: { code: '5320', name: 'Biaya Platform', type: 'Expenses', subType: 'Beban Operasional', systemKey: 'beban_platform' },
+  // 5330 di COA. Dulu 5320, yang di COA adalah "Beban Komisi Penjualan" (dipakai komisi partner).
+  BEBAN_PLATFORM: { code: '5330', name: 'Beban Biaya Platform', type: 'Expenses', subType: 'Beban Penjualan / Pemasaran', systemKey: 'beban_platform' },
   BEBAN_IKLAN: { code: '5300', name: 'Beban Iklan', type: 'Expenses', subType: 'Beban Operasional', systemKey: 'beban_iklan' },
   BEBAN_ONGKIR: { code: '5230', name: 'Beban Ongkos Kirim', type: 'Expenses', subType: 'Beban Operasional', systemKey: 'beban_ongkir' },
   PIUTANG_USAHA: { code: '1110', name: 'Piutang Usaha', type: 'Assets', subType: 'Aset Lancar', systemKey: 'piutang_usaha' },
