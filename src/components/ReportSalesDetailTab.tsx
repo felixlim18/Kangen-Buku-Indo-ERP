@@ -87,15 +87,27 @@ export const ReportSalesDetailTab: React.FC = () => {
   // --------------------------------------------------------
   // 2. Resolve Active List of Configurations
   // --------------------------------------------------------
+  // Orders are matched to a config by name, so two configs with the same name would each count
+  // the same orders (e.g. Shopee shown twice). Keep one card per name.
+  const uniqueByName = <T extends { name: string }>(list: T[]) => {
+    const seen = new Set<string>();
+    return list.filter(it => {
+      const key = (it.name || '').toLowerCase().trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
   const resolvedChannels = useMemo(() => {
     return channels.length > 0 
-      ? channels 
+      ? uniqueByName(channels) 
       : DEFAULT_CHANNELS.map((name, idx) => ({ id: `default_channel_${idx}`, name }));
   }, [channels]);
 
   const resolvedOrderTypes = useMemo(() => {
     return orderTypes.length > 0 
-      ? orderTypes 
+      ? uniqueByName(orderTypes) 
       : DEFAULT_ORDER_TYPES.map((name, idx) => ({ id: `default_type_${idx}`, name }));
   }, [orderTypes]);
 

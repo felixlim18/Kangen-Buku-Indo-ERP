@@ -378,6 +378,11 @@ export const DataMasterManager: React.FC = () => {
   const handleAddItem = async () => {
     if (!newItemName.trim()) return;
     const name = newItemName.trim();
+    // Reports group orders by name, so two entries with the same name double-count the same orders.
+    if (activeList.some((it: any) => (it.name || '').trim().toLowerCase() === name.toLowerCase())) {
+      alert(`${label} "${name}" sudah ada.`);
+      return;
+    }
     const color = newItemColor || '#3B82F6';
     const currency = isPO ? newItemCurrency : undefined;
 
@@ -452,6 +457,10 @@ export const DataMasterManager: React.FC = () => {
   const handleSaveEdit = async () => {
     if (!editingId || !editName.trim()) return;
     const name = editName.trim();
+    if (activeList.some((it: any) => it.id !== editingId && (it.name || '').trim().toLowerCase() === name.toLowerCase())) {
+      alert(`${label} "${name}" sudah ada.`);
+      return;
+    }
     const color = editColor || '#3B82F6';
 
     try {
