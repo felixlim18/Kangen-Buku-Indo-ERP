@@ -565,14 +565,20 @@ export const SalesOrderDetailDrawer: React.FC<SalesOrderDetailDrawerProps> = ({
               )}
 
               {!!order.platformFee && order.platformFee > 0 && (
-                <div className="flex items-center justify-between text-neutral-500">
-                  <span>Admin Platform Fee</span>
-                  <span className="font-mono">−{formatNTD(order.platformFee)}</span>
-                </div>
+                <>
+                  <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400">
+                    <span>Dibayar Pembeli</span>
+                    <span className="font-mono font-semibold text-neutral-800 dark:text-neutral-200">{formatNTD(order.totalPrice + order.platformFee)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-amber-600">
+                    <span>Biaya Platform</span>
+                    <span className="font-mono">−{formatNTD(order.platformFee)}</span>
+                  </div>
+                </>
               )}
 
               <div className="border-t border-neutral-200 dark:border-neutral-800 pt-2 flex items-center justify-between text-sm font-bold">
-                <span className="text-neutral-900 dark:text-white">Total Tagihan</span>
+                <span className="text-neutral-900 dark:text-white">{order.platformFee ? 'Masuk ke Rekening / Piutang' : 'Total Tagihan'}</span>
                 <span className="font-mono text-base font-black text-brand-600 dark:text-brand-400">
                   {formatNTD(order.totalPrice)}
                 </span>

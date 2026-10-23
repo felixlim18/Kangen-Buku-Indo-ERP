@@ -4942,13 +4942,19 @@ export const SalesTab: React.FC = () => {
                         <span className="v n">−{formatNTD(o.discount || 0)}</span>
                       </div>
                       {o.platformFee ? (
-                        <div className="srow" style={{ color: '#d97706' }}>
-                          <span className="k">Biaya Platform</span>
-                          <span className="v n">−{formatNTD(o.platformFee)}</span>
-                        </div>
+                        <>
+                          <div className="srow">
+                            <span className="k">Dibayar Pembeli</span>
+                            <span className="v n">{formatNTD(o.totalPrice + o.platformFee)}</span>
+                          </div>
+                          <div className="srow" style={{ color: '#d97706' }}>
+                            <span className="k">Biaya Platform</span>
+                            <span className="v n">−{formatNTD(o.platformFee)}</span>
+                          </div>
+                        </>
                       ) : null}
                       <div className="srow grand">
-                        <span className="k">Total Akhir (TWD)</span>
+                        <span className="k">{o.platformFee ? 'Masuk ke Rekening / Piutang' : 'Total Akhir (TWD)'}</span>
                         <span className="v n">{formatNTD(o.totalPrice)}</span>
                       </div>
                     </>
@@ -6244,6 +6250,11 @@ export const SalesTab: React.FC = () => {
                             <div className={`font-['Inter'] text-[11px] mt-0.5 ${order.discount ? 'text-[#a8323b]' : 'text-[#9ca3af]'}`}>
                               {order.discount ? `−${formatNTD(order.discount)}` : 'tanpa diskon'}
                             </div>
+                            {!!order.platformFee && (
+                              <div className="font-['Inter'] text-[11px] mt-0.5 text-[#d97706]" title={`Biaya platform −${formatNTD(order.platformFee)}`}>
+                                Pembeli bayar {formatNTD(order.totalPrice + order.platformFee)}
+                              </div>
+                            )}
                           </>
                         ) : (
                           <div className="font-['Inter'] text-[13.5px] text-[#9ca3af]">—</div>
@@ -7975,6 +7986,9 @@ export const SalesTab: React.FC = () => {
                   style={{ color: '#ec003f' }}
                 />
               </div>
+              {platformFeeCents > 0 && (
+                <div className="kbi-so-summary-row"><span>Dibayar Pembeli</span><span className="val">{formatNTD(Math.max(0, cartSubtotal - discountCents))}</span></div>
+              )}
               <div className="kbi-so-summary-row" style={{ color: '#d97706' }}>
                 <span>Biaya Platform</span>
                 <input
@@ -7997,7 +8011,7 @@ export const SalesTab: React.FC = () => {
                 </div>
               )}
               <div className="kbi-so-grand-total-row">
-                <span className="kbi-so-grand-total-label">Grand Total (TWD)</span>
+                <span className="kbi-so-grand-total-label">{platformFeeCents > 0 ? 'Masuk ke Rekening (TWD)' : 'Grand Total (TWD)'}</span>
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-bold text-[#2B5A9E] dark:text-[#818cf8]">NT$</span>
                   <input
@@ -8020,7 +8034,8 @@ export const SalesTab: React.FC = () => {
                       } else {
                         const parsedGt = parseFloat(cleanVal);
                         if (!isNaN(parsedGt)) {
-                          const subtotalTwd = cartSubtotal / 100;
+                          // Grand Total = subtotal - diskon - biaya platform, jadi biaya platform tidak ikut jadi diskon
+                          const subtotalTwd = (cartSubtotal - platformFeeCents) / 100;
                           const calcDiscount = Math.max(0, subtotalTwd - parsedGt);
                           setDiscountInput(String(Math.round(calcDiscount * 100) / 100));
                         }

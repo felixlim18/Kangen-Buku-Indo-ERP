@@ -1049,8 +1049,12 @@ export async function completeSalesOrderTransaction(
       let journalALines: any[] = [];
       let journalADesc = '';
       
+      // totalPrice sudah NETO (subtotal - diskon - biaya platform) = yang masuk ke rekening / piutang.
+      // Revenue diakui sebesar yang dibayar pembeli (totalPrice + biaya platform); biaya platform jadi beban 5320.
+      // Contoh iOPEN: pembeli bayar 470, fee 38 -> D Piutang 432, D Biaya Platform 38, K Revenue 470.
       const platformFee = order.platformFee || 0;
-      const netToReceivable = order.totalPrice - platformFee;
+      const netToReceivable = order.totalPrice;
+      const buyerPaid = order.totalPrice + platformFee;
 
       if (isUnpaid) {
         // Option 1: Masuk Piutang
@@ -1058,7 +1062,7 @@ export async function completeSalesOrderTransaction(
           journalALines = [
             { account: 'Piutang Usaha', accountCode: '1110', debit: netToReceivable, credit: 0 },
             { account: 'Biaya Platform', accountCode: '5320', debit: platformFee, credit: 0 },
-            { account: 'Revenue', accountCode: '4100', debit: 0, credit: order.totalPrice }
+            { account: 'Revenue', accountCode: '4100', debit: 0, credit: buyerPaid }
           ];
         } else {
           journalALines = [
@@ -1073,7 +1077,7 @@ export async function completeSalesOrderTransaction(
           journalALines = [
             { account: 'Pendapatan Diterima di Muka', accountCode: '2110', debit: netToReceivable, credit: 0 },
             { account: 'Biaya Platform', accountCode: '5320', debit: platformFee, credit: 0 },
-            { account: 'Revenue', accountCode: '4100', debit: 0, credit: order.totalPrice }
+            { account: 'Revenue', accountCode: '4100', debit: 0, credit: buyerPaid }
           ];
         } else {
           journalALines = [

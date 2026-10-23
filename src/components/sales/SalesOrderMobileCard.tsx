@@ -320,8 +320,13 @@ export const SalesOrderMobileCard: React.FC<SalesOrderMobileCardProps> = React.m
             </div>
 
             {canViewAmount && (
-              <div className="font-mono text-sm font-black text-brand-600 dark:text-brand-400">
-                {formatNTD(order.totalPrice)}
+              <div className="text-right">
+                <div className="font-mono text-sm font-black text-brand-600 dark:text-brand-400">
+                  {formatNTD(order.totalPrice)}
+                </div>
+                {!!order.platformFee && (
+                  <div className="text-[10px] text-amber-600">Pembeli bayar {formatNTD(order.totalPrice + order.platformFee)}</div>
+                )}
               </div>
             )}
           </div>
