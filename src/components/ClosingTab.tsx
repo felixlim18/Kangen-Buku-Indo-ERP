@@ -228,13 +228,13 @@ export const ClosingTab: React.FC = () => {
     try {
       const batch = writeBatch(db);
 
-      // 1. Ensure "Laba/Rugi Selisih Kurs" COA account exists (code: 4201)
-      const coaExists = accounts.some(a => a.code === '4201' || a.name === 'Laba/Rugi Selisih Kurs');
+      // 1. Ensure "Laba/Rugi Selisih Kurs" COA account exists (code: 4210, sama dengan COA & revaluasi Bank & Kas)
+      const coaExists = accounts.some(a => a.code === '4210' || a.name === 'Laba/Rugi Selisih Kurs');
       if (!coaExists) {
-        const coaRef = doc(collection(db, 'coa'), 'COA-4201');
+        const coaRef = doc(collection(db, 'coa'), 'COA-4210');
         batch.set(coaRef, {
-          id: 'COA-4201',
-          code: '4201',
+          id: 'COA-4210',
+          code: '4210',
           name: 'Laba/Rugi Selisih Kurs',
           type: 'Revenue',
           subType: 'Pendapatan Lainnya',
@@ -279,7 +279,7 @@ export const ClosingTab: React.FC = () => {
         if (offsetCents !== 0) {
           journalLines.push({
             account: 'Laba/Rugi Selisih Kurs',
-            accountCode: '4201',
+            accountCode: '4210',
             debit: offsetCents < 0 ? Math.abs(offsetCents) : 0,
             credit: offsetCents > 0 ? offsetCents : 0
           });

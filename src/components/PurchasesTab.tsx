@@ -4092,7 +4092,7 @@ export const PurchasesTab = () => {
         let lines = [];
         if (selisihCents > 0) {
           // Untung: Debit Cash, Kredit Pendapatan Lain-lain
-          await ensureAutoAccountExists({ code: '4201', name: 'Pendapatan Lain-lain', type: 'Revenue', subType: 'Pendapatan Non-Operasional' });
+          await ensureAutoAccountExists({ code: '4104', name: 'Pendapatan Lain-lain', type: 'Revenue', subType: 'Pendapatan Non-Operasional' });
           lines = [
             {
               account: cashAcc.name,
@@ -4107,7 +4107,7 @@ export const PurchasesTab = () => {
             },
             {
               account: 'Pendapatan Lain-lain',
-              accountCode: '4201',
+              accountCode: '4104',
               debit: 0,
               credit: selisihCents,
               ...(isIdrCurrency ? {

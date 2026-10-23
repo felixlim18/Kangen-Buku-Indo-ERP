@@ -1133,7 +1133,7 @@ export const InventoryTab: React.FC = () => {
 
       let lines = [];
       if (diffCents > 0) {
-        // Fisik > Ledger -> Debit 1201 (Penambahan Inventory On Hand), Credit 4201 (Laba/Rugi Selisih Kurs / Rounding)
+        // Fisik > Ledger -> Debit 1201 (Penambahan Inventory On Hand), Credit 4210 (Laba/Rugi Selisih Kurs / Rounding)
         lines = [
           {
             accountCode: '1201',
@@ -1142,17 +1142,17 @@ export const InventoryTab: React.FC = () => {
             credit: 0
           },
           {
-            accountCode: '4201',
+            accountCode: '4210',
             account: 'Laba/Rugi Selisih Kurs',
             debit: 0,
             credit: absDiffCents
           }
         ];
       } else {
-        // Fisik < Ledger -> Debit 4201, Credit 1201
+        // Fisik < Ledger -> Debit 4210, Credit 1201
         lines = [
           {
-            accountCode: '4201',
+            accountCode: '4210',
             account: 'Laba/Rugi Selisih Kurs',
             debit: absDiffCents,
             credit: 0
