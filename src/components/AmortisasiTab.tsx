@@ -371,8 +371,8 @@ export const AmortisasiTab: React.FC = () => {
 
       const dateStr = formTanggal || new Date().toISOString().split('T')[0];
       
-      const tglDateStr = formTanggal ? formTanggal + '-28' : new Date().toISOString().split('T')[0];
-    const journalId = await getNextJournalId(tglDateStr);
+      // Nomor jurnal mengikuti tanggal perolehan (formTanggal sudah YYYY-MM-DD)
+      const journalId = await getNextJournalId(formTanggal || new Date().toISOString().split('T')[0]);
       const journalDesc = `${docCode}\nBiaya Dibayar Dimuka - ${formName.trim()}`;
 
       // Create Acquisition Journal
@@ -453,8 +453,8 @@ export const AmortisasiTab: React.FC = () => {
     const monthlyAmountNTD = Math.round(item.nilaiPerolehanNTD / item.usefulLifeMonths);
     
           
-          const tglDateStr = formTanggal ? formTanggal + '-28' : new Date().toISOString().split('T')[0];
-    const journalId = await getNextJournalId(tglDateStr);
+    // Nomor jurnal mengikuti tanggal jurnalnya (tanggal 28 periode amortisasi)
+    const journalId = await getNextJournalId(`${period}-28`);
     const journalDesc = `${item.docCode}\nAmortisasi Bulanan - Periode ${period}`;
 
     const prepaidAcc = coaAccounts.find((a) => a.code === item.prepaidAccountCode) || { code: item.prepaidAccountCode, name: 'Biaya Dibayar Dimuka' };
@@ -583,7 +583,7 @@ export const AmortisasiTab: React.FC = () => {
             if (isPeriodClosed(period, closedPeriods)) continue;
 
             const monthlyAmountNTD = Math.round(item.nilaiPerolehanNTD / item.usefulLifeMonths);
-            const journalId = `JRN_AM_POST_${item.id}_M${nextMonthNum}`;
+            const journalId = await getNextJournalId(`${period}-28`);
             const journalDesc = `${item.docCode}\nAmortisasi Bulanan - Periode ${period}`;
 
             const prepaidAcc = coaAccounts.find((a) => a.code === item.prepaidAccountCode) || { code: item.prepaidAccountCode, name: 'Biaya Dibayar Dimuka' };
