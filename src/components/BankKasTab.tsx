@@ -375,7 +375,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
             refType: j.refType || 'Jurnal Umum',
             refId: j.refId || '-',
             accountCode: is1101 ? (liveAccounts.CASH_NTD?.code || '1101') : (liveAccounts.CASH_RUPIAH?.code || '1102'),
-            accountName: is1101 ? 'Cash NTD' : 'Cash Rupiah',
+            accountName: is1101 ? 'Cash: NTD' : 'Cash: Rupiah',
             isDebit,
             amountCentsNTD: Math.abs(netNTD),
             amountIDR: is1102 ? idrVal : undefined,
@@ -613,8 +613,8 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
 
     try {
       const journalId = await getNextJournalId(transferDate);
-      const fromName = transferFromAccount === '1101' ? 'Cash NTD' : 'Cash Rupiah';
-      const toName = transferToAccount === '1101' ? 'Cash NTD' : 'Cash Rupiah';
+      const fromName = transferFromAccount === '1101' ? 'Cash: NTD' : 'Cash: Rupiah';
+      const toName = transferToAccount === '1101' ? 'Cash: NTD' : 'Cash: Rupiah';
 
       // Calculated exchange rate (IDR / NTD)
       const calculatedRate = transferFromAccount === '1101'
@@ -633,7 +633,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
         const idrWhole = Math.round(numTo);
 
         lines.push({
-          account: 'Cash Rupiah',
+          account: 'Cash: Rupiah',
           accountCode: '1102',
           debit: ntdCents,
           credit: 0,
@@ -643,7 +643,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
         });
 
         lines.push({
-          account: 'Cash:NTD',
+          account: 'Cash: NTD',
           accountCode: '1101',
           debit: 0,
           credit: ntdCents,
@@ -656,7 +656,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
         const idrWhole = Math.round(numFrom);
 
         lines.push({
-          account: 'Cash:NTD',
+          account: 'Cash: NTD',
           accountCode: '1101',
           debit: ntdCents,
           credit: 0,
@@ -664,7 +664,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
         });
 
         lines.push({
-          account: 'Cash Rupiah',
+          account: 'Cash: Rupiah',
           accountCode: '1102',
           debit: 0,
           credit: ntdCents,
@@ -733,7 +733,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
       if (diffNtdCents > 0) {
         // Gain (Laba Selisih Kurs): Dr. 1102 Cash Rupiah | Cr. 4210 Laba/Rugi Selisih Kurs
         lines.push({
-          account: 'Cash Rupiah',
+          account: 'Cash: Rupiah',
           accountCode: '1102',
           debit: diffNtdCents,
           credit: 0
@@ -754,7 +754,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
           credit: 0
         });
         lines.push({
-          account: 'Cash Rupiah',
+          account: 'Cash: Rupiah',
           accountCode: '1102',
           debit: 0,
           credit: lossAbs
@@ -1226,7 +1226,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-              <span>Riwayat — {selectedAccountFilter === '1101' ? 'Cash NTD' : selectedAccountFilter === '1102' ? 'Cash Rupiah' : 'Semua Kas'}</span>
+              <span>Riwayat — {selectedAccountFilter === '1101' ? 'Cash: NTD' : selectedAccountFilter === '1102' ? 'Cash: Rupiah' : 'Semua Kas'}</span>
               <span className="text-xs font-normal text-neutral-400">({filteredTransactions.length} Transaksi)</span>
             </h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">

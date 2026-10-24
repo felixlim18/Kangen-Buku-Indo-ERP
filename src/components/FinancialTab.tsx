@@ -262,7 +262,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
       const bebanGajiName = bebanGajiAccountObj?.name || 'Beban Gaji';
 
       const cashAccountCode = payCurrency === 'NTD' ? AUTO_ACCOUNTS.CASH_NTD?.code || '1101' : AUTO_ACCOUNTS.CASH_RUPIAH?.code || '1102';
-      const cashAccountName = payCurrency === 'NTD' ? 'Cash:NTD' : 'Cash Rupiah';
+      const cashAccountName = payCurrency === 'NTD' ? 'Cash: NTD' : 'Cash: Rupiah';
 
       // Setup references
       const payrollRef = doc(db, 'payroll', pId);

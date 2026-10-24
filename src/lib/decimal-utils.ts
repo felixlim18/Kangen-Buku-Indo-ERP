@@ -96,10 +96,13 @@ export function getAccountDebitCreditForPeriod(
       const lineAccountName = line.account ? line.account.trim().toLowerCase() : '';
       const lineAccountCode = line.accountCode ? line.accountCode.trim().toLowerCase() : '';
       
-      const matchName = lineAccountName === account.name.trim().toLowerCase();
-      const matchCode = lineAccountCode && lineAccountCode === account.code.trim().toLowerCase();
+      // Kode akun yang menentukan. Nama hanya untuk baris lama tanpa kode: dulu nama ATAU kode, sehingga baris
+      // berkode 1101 yang kebetulan bernama seperti akun lain ikut terhitung di dua akun sekaligus.
+      const matches = lineAccountCode
+        ? lineAccountCode === account.code.trim().toLowerCase()
+        : lineAccountName === account.name.trim().toLowerCase();
 
-      if (matchName || matchCode) {
+      if (matches) {
         debitCents += line.debit || 0;
         creditCents += line.credit || 0;
       }
@@ -151,10 +154,9 @@ export function hasAccountPostings(
     entry.lines && entry.lines.some(line => {
       const lineAccountName = line.account ? line.account.trim().toLowerCase() : '';
       const lineAccountCode = line.accountCode ? line.accountCode.trim().toLowerCase() : '';
-      return (
-        lineAccountName === account.name.trim().toLowerCase() ||
-        (lineAccountCode && lineAccountCode === account.code.trim().toLowerCase())
-      );
+      return lineAccountCode
+        ? lineAccountCode === account.code.trim().toLowerCase()
+        : lineAccountName === account.name.trim().toLowerCase();
     })
   );
 }

@@ -3693,7 +3693,7 @@ export const PurchasesTab = () => {
             direction: 'inflow',
             category: 'wholesale_purchase_cancellation_refund',
             amount: cancelVal,
-            amountNTD: Math.round(item.priceNTDTotal / 100),
+            amountNTD: Math.round(item.priceNTDTotal), // sen (seragam dengan cashFlow lain)
             fxRateUsed: selectedPo.exchangeRate,
             refType: 'purchase_order',
             refId: selectedPo.id,
@@ -3805,7 +3805,7 @@ export const PurchasesTab = () => {
                 direction: 'outflow',
                 category: 'wholesale_purchase',
                 amount: recValPlat,
-                amountNTD: Math.round((qtyRecNum * item.pricePerItem) / 100),
+                amountNTD: Math.round(qtyRecNum * item.pricePerItem), // sen
                 fxRateUsed: selectedPo.exchangeRate,
                 refType: 'purchase_order',
                 refId: selectedPo.id,
@@ -4184,7 +4184,7 @@ export const PurchasesTab = () => {
         direction: 'inflow',
         category: 'wholesale_purchase_cancellation_refund',
         amount: numRefundAmount,
-        amountNTD: Math.round(calculatedNTD),
+        amountNTD: Math.round(calculatedNTD * 100), // sen
         fxRateUsed: numRefundRate,
         refType: 'purchase_order',
         refId: po.id,
@@ -4348,7 +4348,7 @@ export const PurchasesTab = () => {
             direction: 'inflow',
             category: 'wholesale_purchase_cancellation_refund',
             amount: isIdrCurrency ? cancelValPlat : Math.round(totalCancelledCents / 100),
-            amountNTD: Math.round(totalCancelledCents / 100),
+            amountNTD: Math.round(totalCancelledCents), // sen
             fxRateUsed: po.exchangeRate,
             refType: 'purchase_order',
             refId: po.id,

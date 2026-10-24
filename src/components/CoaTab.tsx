@@ -35,8 +35,8 @@ import { DateRangePicker } from './ui/DateRangePicker';
 
 // Default CoA Accounts as fallback & initialization seed per instructions
 const DEFAULT_COA_ACCOUNTS: Omit<CoaAccount, 'id' | 'createdAt'>[] = [
-  { code: '1101', name: 'Cash:NTD', type: 'Assets', subType: 'Aset Lancar', isActive: true, systemKey: 'cash_ntd' },
-  { code: '1102', name: 'Cash Rupiah', type: 'Assets', subType: 'Aset Lancar', isActive: true, systemKey: 'cash_idr' },
+  { code: '1101', name: 'Cash: NTD', type: 'Assets', subType: 'Aset Lancar', isActive: true, systemKey: 'cash_ntd' },
+  { code: '1102', name: 'Cash: Rupiah', type: 'Assets', subType: 'Aset Lancar', isActive: true, systemKey: 'cash_idr' },
   { code: '1103', name: 'Cash:COD', type: 'Assets', subType: 'Aset Lancar', isActive: true },
   { code: '1110', name: 'Piutang Usaha', type: 'Assets', subType: 'Aset Lancar', isActive: true, systemKey: 'piutang_usaha' },
   { code: '1120', name: 'Freight-in Dalam Kapitalisasi', type: 'Assets', subType: 'Aset Lancar', isActive: true, systemKey: 'freight_in_capitalization' },
@@ -50,7 +50,7 @@ const DEFAULT_COA_ACCOUNTS: Omit<CoaAccount, 'id' | 'createdAt'>[] = [
   { code: '2110', name: 'Pendapatan Diterima di Muka', type: 'Liabilities', subType: 'Kewajiban Lancar', isActive: true },
   { code: '3100', name: 'Modal Awal', type: 'Equity', subType: 'Ekuitas Pemilik', isActive: true, systemKey: 'modal_awal' },
   { code: '4100', name: 'Revenue', type: 'Revenue', subType: 'Pendapatan Usaha', isActive: true, systemKey: 'revenue' },
-  { code: '5100', name: 'COGS', type: 'Expenses', subType: 'Harga Pokok Penjualan', isActive: true, systemKey: 'cogs' },
+  { code: '5100', name: 'Harga Pokok Penjualan', type: 'Expenses', subType: 'Harga Pokok Penjualan', isActive: true, systemKey: 'cogs' },
   { code: '5120', name: 'Beban Gaji', type: 'Expenses', subType: 'Beban Operasional', isActive: true },
   { code: '5130', name: 'Beban Komisi Reseller', type: 'Expenses', subType: 'Beban Kemitraan', isActive: true },
   { code: '5140', name: 'Beban Barang Rusak', type: 'Expenses', subType: 'Biaya Umum dan Administrasi', isActive: true },
@@ -381,7 +381,7 @@ export const CoaTab: React.FC = () => {
         journalsSnap.docs.forEach((docSnap) => {
           const jData = docSnap.data() as JournalEntry;
           if (jData.lines && Array.isArray(jData.lines)) {
-            const hasLegacyLine = jData.lines.some(l => l.account === 'Cash:IDR' || l.account === 'Freight-in');
+            const hasLegacyLine = jData.lines.some(l => l.account === 'Cash: Rupiah' || l.account === 'Freight-in');
             if (hasLegacyLine) {
               hasLegacyJournals = true;
             }

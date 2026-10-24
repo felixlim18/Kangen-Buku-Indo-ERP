@@ -704,7 +704,7 @@ export default function FreightInTab() {
               originalCreditIDR: 0
             },
             {
-              account: 'Cash Rupiah',
+              account: 'Cash: Rupiah',
               accountCode: '1102',
               debit: 0,
               credit: amountNTDCents,
@@ -918,7 +918,7 @@ export default function FreightInTab() {
                 originalCreditIDR: 0
               },
               {
-                account: 'Cash Rupiah',
+                account: 'Cash: Rupiah',
                 accountCode: '1102',
                 debit: 0,
                 credit: amountNTDCents,

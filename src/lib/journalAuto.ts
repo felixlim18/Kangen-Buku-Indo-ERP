@@ -14,8 +14,8 @@ export interface AutoAccount {
 
 // Map of 4-digit consolidated account keys
 export const AUTO_ACCOUNTS_TEMPLATE: Record<string, AutoAccount> = {
-  CASH_NTD: { code: '1101', name: 'Cash:NTD', type: 'Assets', subType: 'Aset Lancar', systemKey: 'cash_ntd' },
-  CASH_RUPIAH: { code: '1102', name: 'Cash Rupiah', type: 'Assets', subType: 'Aset Lancar', systemKey: 'cash_idr' },
+  CASH_NTD: { code: '1101', name: 'Cash: NTD', type: 'Assets', subType: 'Aset Lancar', systemKey: 'cash_ntd' },
+  CASH_RUPIAH: { code: '1102', name: 'Cash: Rupiah', type: 'Assets', subType: 'Aset Lancar', systemKey: 'cash_idr' },
   CASH_COD: { code: '1103', name: 'Cash:COD', type: 'Assets', subType: 'Aset Lancar', systemKey: 'cash_cod' },
   AR_PLATFORM: { code: '1125', name: 'AR:Platform', type: 'Assets', subType: 'Aset Lancar', systemKey: 'ar_platform' },
   INVENTORY: { code: '1200', name: 'Inventory', type: 'Assets', subType: 'Aset Persediaan', systemKey: 'inventory_parent' },
@@ -28,7 +28,7 @@ export const AUTO_ACCOUNTS_TEMPLATE: Record<string, AutoAccount> = {
   PRIVE: { code: '3102', name: 'Prive', type: 'Equity', subType: 'Ekuitas Pemilik', accountRole: 'prive', systemKey: 'prive' },
   SETORAN_MODAL: { code: '3101', name: 'Setoran Modal Tambahan', type: 'Equity', subType: 'Ekuitas Pemilik', accountRole: 'setoran_modal', systemKey: 'setoran_modal' },
   REVENUE: { code: '4100', name: 'Revenue', type: 'Revenue', subType: 'Pendapatan Usaha', systemKey: 'revenue' },
-  COGS: { code: '5100', name: 'COGS', type: 'Expenses', subType: 'Harga Pokok Penjualan', systemKey: 'cogs' },
+  COGS: { code: '5100', name: 'Harga Pokok Penjualan', type: 'Expenses', subType: 'Harga Pokok Penjualan', systemKey: 'cogs' },
   BEBAN_GAJI: { code: '5120', name: 'Beban Gaji', type: 'Expenses', subType: 'Beban Operasional', accountRole: 'beban_gaji', systemKey: 'beban_gaji' },
   PARTNER_PROFIT_SHARE: { code: '5130', name: 'Beban Komisi Reseller', type: 'Expenses', subType: 'Beban Kemitraan', systemKey: 'partner_profit_share' },
   FREIGHT_IN: { code: '1120', name: 'Freight-in Dalam Kapitalisasi', type: 'Assets', subType: 'Aset Lancar', systemKey: 'freight_in_capitalization' },

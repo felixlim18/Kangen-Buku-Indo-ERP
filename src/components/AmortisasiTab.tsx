@@ -366,7 +366,7 @@ export const AmortisasiTab: React.FC = () => {
       const docCode = `AM${yymm}${String(countThisMonth + 1).padStart(4, '0')}`;
 
       // Resolve account objects for journal
-      const paidAcc = coaAccounts.find((a) => a.code === formBayarVia) || { code: formBayarVia, name: formBayarVia === '1102' ? 'Cash Rupiah' : 'Cash:NTD' };
+      const paidAcc = coaAccounts.find((a) => a.code === formBayarVia) || { code: formBayarVia, name: formBayarVia === '1102' ? 'Cash: Rupiah' : 'Cash: NTD' };
       const prepaidAcc = coaAccounts.find((a) => a.code === formPrepaidAccount) || { code: formPrepaidAccount, name: 'Biaya Dibayar Dimuka' };
 
       const dateStr = formTanggal || new Date().toISOString().split('T')[0];

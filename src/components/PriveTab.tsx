@@ -281,7 +281,7 @@ export const PriveTab: React.FC = () => {
 
       // Live resolve account names from CoA
       const cashAccountObj = coaAccounts.find(a => a.code === formCashAccount);
-      const cashAccountName = cashAccountObj?.name || (formCashAccount === '1101' ? (AUTO_ACCOUNTS.CASH_NTD?.name || 'Cash:NTD') : (AUTO_ACCOUNTS.CASH_RUPIAH?.name || 'Cash Rupiah'));
+      const cashAccountName = cashAccountObj?.name || (formCashAccount === '1101' ? (AUTO_ACCOUNTS.CASH_NTD?.name || 'Cash: NTD') : (AUTO_ACCOUNTS.CASH_RUPIAH?.name || 'Cash: Rupiah'));
 
       const equityRole = isPriveType ? 'prive' : 'setoran_modal';
       const equityAccountObj = findAccountByRole(coaAccounts, equityRole);
@@ -584,7 +584,7 @@ export const PriveTab: React.FC = () => {
                           </td>
                           <td className="p-4">
                             <span className="bg-navy-bg dark:bg-neutral-800 px-2.5 py-1 rounded-md text-[10px] font-semibold text-navy dark:text-neutral-350 border border-line dark:border-neutral-700">
-                              {coaAccounts.find(a => a.code === p.cashAccountCode)?.name || (p.cashAccountCode === '1101' ? (AUTO_ACCOUNTS.CASH_NTD?.name || 'Cash:NTD') : (AUTO_ACCOUNTS.CASH_RUPIAH?.name || 'Cash Rupiah'))}
+                              {coaAccounts.find(a => a.code === p.cashAccountCode)?.name || (p.cashAccountCode === '1101' ? (AUTO_ACCOUNTS.CASH_NTD?.name || 'Cash: NTD') : (AUTO_ACCOUNTS.CASH_RUPIAH?.name || 'Cash: Rupiah'))}
                             </span>
                           </td>
                           <td className="p-4 max-w-xs truncate text-ink-soft dark:text-neutral-400 font-medium" title={p.description}>
@@ -673,7 +673,7 @@ export const PriveTab: React.FC = () => {
                           </td>
                           <td className="p-4">
                             <span className="bg-navy-bg dark:bg-neutral-800 px-2.5 py-1 rounded-md text-[10px] font-semibold text-navy dark:text-neutral-350 border border-line dark:border-neutral-700">
-                              {coaAccounts.find(a => a.code === s.cashAccountCode)?.name || (s.cashAccountCode === '1101' ? (AUTO_ACCOUNTS.CASH_NTD?.name || 'Cash:NTD') : (AUTO_ACCOUNTS.CASH_RUPIAH?.name || 'Cash Rupiah'))}
+                              {coaAccounts.find(a => a.code === s.cashAccountCode)?.name || (s.cashAccountCode === '1101' ? (AUTO_ACCOUNTS.CASH_NTD?.name || 'Cash: NTD') : (AUTO_ACCOUNTS.CASH_RUPIAH?.name || 'Cash: Rupiah'))}
                             </span>
                           </td>
                           <td className="p-4 max-w-xs truncate text-ink-soft dark:text-neutral-400 font-medium" title={s.description}>

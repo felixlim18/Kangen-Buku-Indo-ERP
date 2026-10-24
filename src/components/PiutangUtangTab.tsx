@@ -462,7 +462,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
             direction: 'inflow',
             category: 'sales_payment',
             amount: isRupiah ? paidRupiahWhole : payAmountCents,
-            amountNTD: Math.round(payAmountCents / 100),
+            amountNTD: payAmountCents, // sen, sama seperti cashFlow lain (dulu NT$ utuh)
             fxRateUsed: fxRate,
             refType: 'sales_order',
             refId: selectedItem.id,
@@ -574,7 +574,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
             direction: 'outflow',
             category: isLoan ? 'loan_repayment' : 'wholesale_purchase',
             amount: isRupiah ? paidRupiahWhole : payAmountCents,
-            amountNTD: Math.round(payAmountCents / 100),
+            amountNTD: payAmountCents, // sen, sama seperti cashFlow lain (dulu NT$ utuh)
             fxRateUsed: fxRate,
             refType: isLoan ? 'loan' : 'purchase_order',
             refId: selectedItem.id,
@@ -747,7 +747,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
           direction: 'inflow',
           category: 'loan_disbursement',
           amount: isRupiah ? (amountIDRWhole || Math.round((amountNTDCents / 100) * fxRate)) : amountNTDCents,
-          amountNTD: Math.round(amountNTDCents / 100),
+          amountNTD: amountNTDCents, // sen, sama seperti cashFlow lain (dulu NT$ utuh)
           fxRateUsed: fxRate,
           refType: 'loan',
           refId: loanId,
@@ -1369,8 +1369,8 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
                     onChange={(e) => setCashAccount(e.target.value as any)}
                     className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 rounded-lg text-xs"
                   >
-                    <option value="1101">{liveAccounts.CASH_NTD?.code || '1101'} - {liveAccounts.CASH_NTD?.name || 'Cash:NTD'}</option>
-                    <option value="1102">{liveAccounts.CASH_RUPIAH?.code || '1102'} - {liveAccounts.CASH_RUPIAH?.name || 'Cash Rupiah'}</option>
+                    <option value="1101">{liveAccounts.CASH_NTD?.code || '1101'} - {liveAccounts.CASH_NTD?.name || 'Cash: NTD'}</option>
+                    <option value="1102">{liveAccounts.CASH_RUPIAH?.code || '1102'} - {liveAccounts.CASH_RUPIAH?.name || 'Cash: Rupiah'}</option>
                   </select>
                 </div>
 

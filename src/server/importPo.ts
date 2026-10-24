@@ -533,7 +533,7 @@ export const importPoHandler = async (req: Request, res: Response): Promise<void
        const journalId = await getNextJournalId(purchaseDateStr);
        
        let cashAccCode = '1101';
-       let cashAccName = 'Cash NTD';
+       let cashAccName = 'Cash: NTD';
        if (!isCredit && po.kasAccountLabel) {
           // crude mapping
           if (po.kasAccountLabel.includes('IDR') || po.kasAccountLabel.includes('Rupiah') || po.kasAccountLabel.includes('1102')) {

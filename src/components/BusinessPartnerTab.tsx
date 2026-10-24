@@ -505,7 +505,7 @@ export const BusinessPartnerTab: React.FC = () => {
     // 3. Create Journal
     const isIDR = selectedAkun.includes('Rupiah');
     const creditAcc = isIDR ? '1102' : '1101'; // 1102 Rupiah, 1101 NTD
-    const creditName = isIDR ? 'Cash:IDR' : 'Cash:NTD';
+    const creditName = isIDR ? 'Cash: Rupiah' : 'Cash: NTD';
     // Debit Beban Komisi Penjualan (assuming 5320, we can use name Beban Komisi Penjualan)
     // Find account by name or just use text if code doesn't exist
     

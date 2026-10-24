@@ -419,7 +419,7 @@ export const FixedAssetsTab: React.FC = () => {
       const journalRef = doc(db, 'journalEntries', journalId);
 
       const acqAssetAcc = coaAccounts.find(a => a.code === assetAccountCode) || { name: 'Aset Tetap', code: assetAccountCode };
-      const acqPaidViaAcc = coaAccounts.find(a => a.code === paidViaCode) || { name: 'Cash:NTD', code: paidViaCode };
+      const acqPaidViaAcc = coaAccounts.find(a => a.code === paidViaCode) || { name: 'Cash: NTD', code: paidViaCode };
 
       const batch = writeBatch(db);
 

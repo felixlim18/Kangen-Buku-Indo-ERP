@@ -579,7 +579,7 @@ export const OngkosKirimTab: React.FC<OngkosKirimTabProps> = ({ setTab }) => {
       // 1. Resolve cash account details
       const accountCodeMatch = formAkun.match(/^(\d{4})/);
       const accountCode = accountCodeMatch ? accountCodeMatch[1] : (formAkun.includes('1102') ? '1102' : '1101');
-      const accountName = formAkun.includes('1102') ? 'Cash Rupiah' : (formAkun.includes('1101') ? 'Cash:NTD' : formAkun.split(' - ')[1] || 'Cash:NTD');
+      const accountName = formAkun.includes('1102') ? 'Cash: Rupiah' : (formAkun.includes('1101') ? 'Cash: NTD' : formAkun.split(' - ')[1] || 'Cash: NTD');
       
       const cashAcc = {
         code: accountCode,
@@ -717,7 +717,7 @@ export const OngkosKirimTab: React.FC<OngkosKirimTabProps> = ({ setTab }) => {
     try {
       const accountCodeMatch = payAkun.match(/^(\d{4})/);
       const accountCode = accountCodeMatch ? accountCodeMatch[1] : (payAkun.includes('1102') ? '1102' : '1101');
-      const accountName = payAkun.includes('1102') ? 'Cash Rupiah' : (payAkun.includes('1101') ? 'Cash:NTD' : payAkun.split(' - ')[1] || 'Cash:NTD');
+      const accountName = payAkun.includes('1102') ? 'Cash: Rupiah' : (payAkun.includes('1101') ? 'Cash: NTD' : payAkun.split(' - ')[1] || 'Cash: NTD');
 
       const cashAcc = {
         code: accountCode,
