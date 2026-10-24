@@ -4495,14 +4495,18 @@ export const PurchasesTab = () => {
       batch.delete(doc(db, 'journalEntries', `JU-PO-${poId}-rec-capitalize`));
       batch.delete(doc(db, 'journalEntries', `JU-PO-${poId}-rec-capitalize-mig`));
       
-      const journalsQuery1 = query(collection(db, 'journalEntries'), where('refId', '==', poId));
-      const journalsQuery2 = query(collection(db, 'journalEntries'), where('refId', '==', po.purchaseCode));
-      const journalsQuery3 = query(collection(db, 'journalEntries'), where('sourceId', '==', poId));
-      
-      const [jSnap1, jSnap2, jSnap3] = await Promise.all([getDocs(journalsQuery1), getDocs(journalsQuery2), getDocs(journalsQuery3)]);
-      jSnap1.forEach(d => batch.delete(d.ref));
-      jSnap2.forEach(d => batch.delete(d.ref));
-      jSnap3.forEach(d => batch.delete(d.ref));
+      // Kode di layar bisa hasil nomor ulang sanitizePurchaseOrders; jurnal lama memakai kode yang tersimpan
+      // di database. Cari dengan keduanya, kalau tidak jurnal "Pemesanan Barang" tertinggal setelah PO dihapus.
+      const storedSnap = await getDoc(doc(db, 'purchaseOrders', poId));
+      const codes = [...new Set([po.purchaseCode, storedSnap.exists() ? storedSnap.data().purchaseCode : null].filter(Boolean))];
+      const snaps = await Promise.all([
+        getDocs(query(collection(db, 'journalEntries'), where('refId', '==', poId))),
+        getDocs(query(collection(db, 'journalEntries'), where('sourceId', '==', poId))),
+        ...codes.map(code => getDocs(query(collection(db, 'journalEntries'), where('refId', '==', code)))),
+      ]);
+      const toDelete = new Map<string, any>();
+      snaps.forEach(snap => snap.forEach(d => toDelete.set(d.id, d.ref)));
+      toDelete.forEach(ref => batch.delete(ref));
 
       const receiptEventsSnap = await getDocs(collection(db, 'purchaseOrders', poId, 'receiptEvents'));
       receiptEventsSnap.forEach(d => {
