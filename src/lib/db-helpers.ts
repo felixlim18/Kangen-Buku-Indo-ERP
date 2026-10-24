@@ -454,31 +454,53 @@ export function getMovingAverageLandedCost(
     });
   }
 
+  // Barang keluar dari rata-rata SAAT DIKIRIM, sebesar HPP yang dikunci di ledger DISPATCHED (= cogsSnapshot =
+  // nominal jurnal pengiriman). Dulu baru keluar saat SO selesai dan dinilai ulang dengan rata-rata berjalan,
+  // sehingga buku yang sudah dikirim tapi SO-nya belum selesai ikut dirata-rata untuk pengiriman berikutnya
+  // (Seni Merayu Tuhan #S260813002: HPP 119,15 padahal harga belinya 107,60).
   const outflowEvents: any[] = [];
   if (allLedgers) {
+    const tsOf = (e: any) => e.timestamp?.seconds || e.timestamp?.toDate?.()?.getTime() / 1000 || e.timestamp || 0;
+    const dispatchedSoIds = new Set(
+      allLedgers.filter(e => e.bookId === bookId && e.reversed !== true && e.type === 'DISPATCHED').map(e => e.refId)
+    );
     allLedgers.forEach(e => {
       if (e.bookId !== bookId) return;
       if (e.reversed === true) return;
-      
+
+      if (e.type === 'DISPATCHED') {
+        const qty = Math.abs(e.qtyDelta || 0);
+        outflowEvents.push({
+          type: 'outflow',
+          timestamp: tsOf(e),
+          qtyDelta: qty,
+          costCents: e.unitCost !== undefined && e.unitCost !== null ? qty * e.unitCost : null,
+          refId: e.refId,
+          id: e.id
+        });
+        return;
+      }
+
+      // Data lama tanpa ledger DISPATCHED: keluar saat selesai, dinilai dengan rata-rata berjalan
       const isSale = e.type === 'COMPLETED_SALE' || e.type === 'COMPLETED (SALE)' || e.type === 'sale_shipped';
-      if (isSale) {
+      if (isSale && !dispatchedSoIds.has(e.refId)) {
         const so = allSalesOrders?.find(s => s.id === e.refId);
         if (so && (so.status === 'completed' || so.status === 'Selesai')) {
-          const timestamp = e.timestamp?.seconds || e.timestamp?.toDate?.()?.getTime() / 1000 || e.timestamp || 0;
           outflowEvents.push({
             type: 'outflow',
-            timestamp: timestamp,
+            timestamp: tsOf(e),
             qtyDelta: Math.abs(e.qtyDelta || 0),
+            costCents: null,
             refId: e.refId,
             id: e.id
           });
         }
       } else if (e.type === 'damaged_stock') {
-        const timestamp = e.timestamp?.seconds || e.timestamp?.toDate?.()?.getTime() / 1000 || e.timestamp || 0;
         outflowEvents.push({
           type: 'outflow',
-          timestamp: timestamp,
+          timestamp: tsOf(e),
           qtyDelta: Math.abs(e.qtyDelta || 0),
+          costCents: null,
           refId: e.refId,
           id: e.id
         });
@@ -520,7 +542,7 @@ export function getMovingAverageLandedCost(
       }
     } 
     else if (event.type === 'outflow') {
-      const hppCents = event.qtyDelta * currentAverageCost;
+      const hppCents = event.costCents ?? event.qtyDelta * currentAverageCost;
       runningStock = Math.max(0, runningStock - event.qtyDelta);
       runningValueCents = Math.max(0, runningValueCents - hppCents);
     }
