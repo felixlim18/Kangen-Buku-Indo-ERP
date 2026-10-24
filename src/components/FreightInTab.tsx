@@ -1312,7 +1312,8 @@ export default function FreightInTab() {
     const timeA = getTime(a.inputAt || a.createdAt);
     const timeB = getTime(b.inputAt || b.createdAt);
     if (timeA !== timeB) return timeB - timeA;
-    return b.freightCode.localeCompare(a.freightCode);
+    // Tanggal sama (data lama): No. Doc urut sesuai input, yang terbesar di atas
+    return (b.docNo || '').localeCompare(a.docNo || '') || b.freightCode.localeCompare(a.freightCode);
   });
 
   const freightPerPage = 50;
