@@ -22,7 +22,7 @@ import { BusinessPartnerTab } from './BusinessPartnerTab';
 import { PriveTab } from './PriveTab';
 import { PiutangUtangTab } from './PiutangUtangTab';
 import { formatNTD, formatIDR, getAccountBalanceForPeriod, formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
-import { isPeriodClosed } from '../lib/period-closing-utils';
+import { isPeriodClosed, getMonthlyRateIdrPerNtd } from '../lib/period-closing-utils';
 import { formatDate } from '../lib/date-utils';
 import { ensureAutoAccountExists, AUTO_ACCOUNTS, findAccountByRole, getLiveAutoAccounts, AutoAccount } from '../lib/journalAuto';
 import { useAuth } from '../lib/auth-context';
@@ -247,7 +247,14 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
       const timestampVal = Timestamp.fromDate(parsedDate);
       
       const amtCents = payCurrency === 'NTD' ? amtNum * 100 : amtNum; // store whole
-      const amtNtdCents = payCurrency === 'NTD' ? amtNum * 100 : amtNum * 0.17801;
+      // Kurs IDR->NTD: pakai kurs resmi bulan tanggal bayar (fxRates/YYYY-MM, Rp per NT$);
+      // konstanta fallback hanya kalau dokumen bulan itu belum ada.
+      let ntdPerIdr = 1;
+      if (payCurrency !== 'NTD') {
+        const monthRate = await getMonthlyRateIdrPerNtd(payDate);
+        ntdPerIdr = monthRate ? 1 / monthRate : FALLBACK_NTD_PER_IDR;
+      }
+      const amtNtdCents = payCurrency === 'NTD' ? amtNum * 100 : Math.round(amtNum * ntdPerIdr * 100);
 
       // Find Beban Gaji account dynamically
       const bebanGajiAccountObj = findAccountByRole(coaAccounts, 'beban_gaji');
@@ -307,7 +314,9 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
           paidAt: timestampVal,
           notes: payNotes,
           journalId,
-          cashflowId
+          cashflowId,
+          amountNTD: amtNtdCents,
+          fxRateUsed: ntdPerIdr
         } as Payroll;
         transaction.set(payrollRef, payrollPayload);
 
@@ -320,7 +329,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
           category: 'payroll',
           amount: amtCents,
           amountNTD: amtNtdCents,
-          fxRateUsed: payCurrency === 'NTD' ? 1 : FALLBACK_NTD_PER_IDR,
+          fxRateUsed: ntdPerIdr,
           refType: 'payroll',
           refId: pId,
           description: `Payroll Salary Gaji ${payee} untuk Periode ${payrollPeriod}`,
@@ -598,7 +607,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
                       <td className="p-4 text-center uppercase font-numeric font-bold text-neutral-500">{p.currency}</td>
                       <td className="p-4 text-center font-numeric font-bold text-neutral-900 dark:text-white">
                         <div>
-                          {p.currency === 'NTD' ? formatNTD(p.amount * 100) : formatNTD(p.amount * 0.17801)}
+                          {p.currency === 'NTD' ? formatNTD(p.amount * 100) : formatNTD(p.amountNTD ?? p.amount * FALLBACK_NTD_PER_IDR * 100)}
                         </div>
                         {p.currency === 'IDR' && (
                           <div className="text-[10px] text-neutral-450 dark:text-neutral-500 font-normal mt-0.5">

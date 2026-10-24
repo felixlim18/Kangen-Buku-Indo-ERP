@@ -1,5 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { FALLBACK_IDR_PER_NTD } from '../lib/exchangeRateConstants';
 import { 
@@ -87,6 +87,8 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
   const [loanDueDate, setLoanDueDate] = useState('');
   const [loanNotes, setLoanNotes] = useState('');
   const [isSubmittingLoan, setIsSubmittingLoan] = useState(false);
+  // Kunci sinkron anti double-submit pembayaran (dulu tidak ada penjaga sama sekali -> pembayaran piutang dobel).
+  const savingPaymentRef = useRef(false);
 
   // Delete confirmation modal states
   const [confirmingCancelUtang, setConfirmingCancelUtang] = useState<any | null>(null);
@@ -333,6 +335,16 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
 
   const handleSavePayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingPaymentRef.current) return;
+    savingPaymentRef.current = true;
+    try {
+      await savePayment();
+    } finally {
+      savingPaymentRef.current = false;
+    }
+  };
+
+  const savePayment = async () => {
     if (!selectedItem) return;
 
     const parsedAmount = parseFloat(cleanCommas(payAmount));
@@ -389,6 +401,10 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
           const order = snap.data();
           const curPaid = order.amountPaid || 0;
           const nextPaid = curPaid + payAmountCents;
+          // Validasi ulang dengan data terbaru (selectedItem bisa basi kalau pembayaran lain baru masuk).
+          if (nextPaid > (order.totalPrice || 0) + 10) {
+            throw new Error(`Nominal melebihi sisa piutang terkini: ${formatNTD((order.totalPrice || 0) - curPaid)}`);
+          }
           const isFullyPaid = nextPaid >= (order.totalPrice || 0) - 5; // tolerance
 
           // 1. Update Sales Order

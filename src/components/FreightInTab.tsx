@@ -1171,6 +1171,11 @@ export default function FreightInTab() {
         if (!freightSnap.exists()) {
           throw new Error('Dokumen Freight-In tidak ditemukan.');
         }
+        // Klik ganda / dua user: tanpa cek ini terbentuk dua jurnal kapitalisasi (Persediaan dobel)
+        // dan yang pertama jadi yatim karena capitalizationJournalId ditimpa.
+        if (freightSnap.data()?.isCapitalized) {
+          throw new Error(`Freight-In ${rec.freightCode} sudah dikapitalisasi.`);
+        }
 
         const journalSnap = await transaction.get(journalRef);
         if (journalSnap.exists()) {

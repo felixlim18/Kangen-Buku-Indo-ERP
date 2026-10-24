@@ -1,4 +1,4 @@
-import { doc, runTransaction } from 'firebase/firestore';
+import { doc, runTransaction, getDoc, getDocs, collection, query, where } from 'firebase/firestore';
 import { db } from './firebase';
 
 export async function getNextJournalId(selectedDateIso: string): Promise<string> {
@@ -28,4 +28,22 @@ export async function getNextJournalId(selectedDateIso: string): Promise<string>
     throw new Error('Gagal mengambil nomor jurnal berikutnya. Coba lagi.');
   }
   return `JU${dateStr}${String(nextValue).padStart(4, '0')}`;
+}
+
+/**
+ * Cari jurnal milik sebuah dokumen sumber (iklan, prive, dll). `journalId` yang tersimpan di dokumen
+ * bisa basi (contoh: adsPurchases menyimpan "JU-AD-..." / prive "JU-PRIVE-..." padahal jurnalnya
+ * sudah dinomori ulang ke JU...). Urutan: id tersimpan kalau dokumennya ada -> jurnal dengan
+ * refId/sourceId = id dokumen sumber. Mengembalikan null kalau tidak ditemukan.
+ */
+export async function resolveLinkedJournalId(storedJournalId: string | undefined | null, sourceDocId: string): Promise<string | null> {
+  if (storedJournalId) {
+    const snap = await getDoc(doc(db, 'journalEntries', storedJournalId));
+    if (snap.exists()) return storedJournalId;
+  }
+  for (const field of ['refId', 'sourceId']) {
+    const res = await getDocs(query(collection(db, 'journalEntries'), where(field, '==', sourceDocId)));
+    if (!res.empty) return res.docs[0].id;
+  }
+  return null;
 }

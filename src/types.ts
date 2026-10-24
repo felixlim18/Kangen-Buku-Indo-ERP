@@ -255,6 +255,8 @@ export interface Payroll {
   notes: string;
   journalId?: string;
   cashflowId?: string;
+  amountNTD?: number;         // sen NTD, hasil konversi saat disimpan
+  fxRateUsed?: number;        // NTD per 1 IDR yang dipakai
 }
 
 /**

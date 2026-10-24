@@ -1702,7 +1702,13 @@ export const SalesTab: React.FC = () => {
   // Pricing calculations
   const cartSubtotal = cartItems.reduce((acc, item) => acc + item.lineTotal, 0);
   const discountCents = Math.round(parseFloat(cleanCommas(discountInput)) * 100) || 0;
-  const platformFeeCents = Math.round(parseFloat(cleanCommas(platformFeeInput)) * 100) || 0;
+  // Biaya Platform hanya berlaku untuk iOPEN Mall (nama di order bisa "IopenMall" / "Iopen Mall").
+  // Platform lain selalu 0 walau Data Master punya adminFee, supaya fee tidak ikut tercatat ke SO non-iOPEN.
+  const isIopenMallOrder = buyerType !== 'marketplace'
+    && String(platformOrder || '').toLowerCase().replace(/[\s\-_.]+/g, '') === 'iopenmall';
+  const platformFeeCents = isIopenMallOrder
+    ? (Math.round(parseFloat(cleanCommas(platformFeeInput)) * 100) || 0)
+    : 0;
   const cartTotalPrice = Math.max(0, cartSubtotal - discountCents - platformFeeCents);
 
   // Business partner profit share percentage calculation
@@ -2029,11 +2035,23 @@ export const SalesTab: React.FC = () => {
     }
   };
 
+  // Kunci sinkron anti double-submit SO (state isOrderSubmitting baru berlaku setelah render ulang,
+  // jadi klik/Enter ganda yang cepat bisa lolos dan membuat dua SO).
+  const orderSubmitLockRef = useRef(false);
   const handleOrderSubmit = async (e?: React.FormEvent | React.MouseEvent, options: { isDraft?: boolean } = {}) => {
     if (e && typeof e.preventDefault === 'function') {
       e.preventDefault();
     }
-    if (isOrderSubmitting) return;
+    if (isOrderSubmitting || orderSubmitLockRef.current) return;
+    orderSubmitLockRef.current = true;
+    try {
+      await submitOrder(options);
+    } finally {
+      orderSubmitLockRef.current = false;
+    }
+  };
+
+  const submitOrder = async (options: { isDraft?: boolean } = {}) => {
 
     let hasValidationError = false;
     const cleanPhone = phoneNumber.trim();
@@ -7996,6 +8014,7 @@ export const SalesTab: React.FC = () => {
               {platformFeeCents > 0 && (
                 <div className="kbi-so-summary-row"><span>Dibayar Pembeli</span><span className="val">{formatNTD(Math.max(0, cartSubtotal - discountCents))}</span></div>
               )}
+              {isIopenMallOrder && (
               <div className="kbi-so-summary-row" style={{ color: '#d97706' }}>
                 <span>Biaya Platform</span>
                 <input
@@ -8011,6 +8030,7 @@ export const SalesTab: React.FC = () => {
                   style={{ color: '#d97706' }}
                 />
               </div>
+              )}
               {buyerType === 'reseller' && selectedPartner && (
                 <div className="kbi-so-summary-row" style={{ color: '#6B4C9A', fontWeight: 600 }}>
                   <span>Estimasi Komisi Partner</span>

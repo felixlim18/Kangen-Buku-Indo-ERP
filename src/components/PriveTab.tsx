@@ -1,4 +1,4 @@
-import { getNextJournalId } from '../lib/journalUtils';
+import { getNextJournalId, resolveLinkedJournalId } from '../lib/journalUtils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { FALLBACK_IDR_PER_NTD } from '../lib/exchangeRateConstants';
@@ -269,7 +269,9 @@ export const PriveTab: React.FC = () => {
       let journalId = '';
       if (editingRecordId) {
         const originalRecord = isPriveType ? prives.find(p => p.id === editingRecordId) : setorans.find(s => s.id === editingRecordId);
-        journalId = originalRecord?.journalId || '';
+        // journalId tersimpan bisa basi (format lama JU-PRIVE-...): pakai jurnal asli via refId,
+        // jangan sampai edit membuat jurnal kedua di samping jurnal lama.
+        journalId = (await resolveLinkedJournalId(originalRecord?.journalId, editingRecordId)) || '';
       }
       if (!journalId) {
         const tgl = formDate ? new Date(formDate) : new Date();
@@ -388,7 +390,8 @@ export const PriveTab: React.FC = () => {
     try {
       const isPriveType = type === 'prive';
       const recordRef = doc(db, isPriveType ? 'prive' : 'setoranModal', record.id);
-      const journalRef = doc(db, 'journalEntries', record.journalId);
+      const linkedJournalId = (await resolveLinkedJournalId(record.journalId, record.id)) || record.journalId;
+      const journalRef = doc(db, 'journalEntries', linkedJournalId);
 
       await runTransaction(db, async (transaction) => {
         // Read Phase first per transaction requirements
@@ -411,7 +414,7 @@ export const PriveTab: React.FC = () => {
             userEmail: profile?.email || 'unknown@kangenbukuindo.tw',
             userDisplayName: profile?.displayName || 'User',
             action: 'DELETE',
-            journalId: record.journalId,
+            journalId: linkedJournalId,
             before: journalSnap.data(),
             after: null
           };

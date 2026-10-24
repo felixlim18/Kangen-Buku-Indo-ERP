@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { getNextJournalId } from '../lib/journalUtils';
 import { 
@@ -51,6 +51,8 @@ export const FixedAssetsTab: React.FC = () => {
   const [closedPeriods, setClosedPeriods] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  // Kunci sinkron anti double-submit (state `submitting` baru berlaku setelah render ulang).
+  const submitLockRef = useRef(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [successMsg, setSuccessMsg] = useState<string>('');
 
@@ -402,6 +404,8 @@ export const FixedAssetsTab: React.FC = () => {
       return;
     }
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
     setSubmitting(true);
 
     try {
@@ -483,6 +487,7 @@ export const FixedAssetsTab: React.FC = () => {
       console.error(err);
       setErrorMsg('Gagal menyimpan aset tetap. Silakan coba kembali.');
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   };
@@ -497,7 +502,13 @@ export const FixedAssetsTab: React.FC = () => {
       setErrorMsg(`Gagal memposting depresiasi. Periode penyusutan (${schedItem.period}) telah ditutup.`);
       return;
     }
+    if ((asset.postedDepreciations || []).some(d => d.period === schedItem.period)) {
+      setErrorMsg(`Penyusutan ${asset.docCode} periode ${schedItem.period} sudah diposting.`);
+      return;
+    }
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
     setSubmitting(true);
 
     try {
@@ -561,6 +572,7 @@ export const FixedAssetsTab: React.FC = () => {
       console.error(err);
       setErrorMsg('Gagal memposting penyusutan bulanan.');
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   };
@@ -584,6 +596,8 @@ export const FixedAssetsTab: React.FC = () => {
       return;
     }
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
     setSubmitting(true);
 
     try {
@@ -607,6 +621,7 @@ export const FixedAssetsTab: React.FC = () => {
       console.error(err);
       setErrorMsg('Gagal menghapus aset tetap dari database.');
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   };
@@ -622,6 +637,8 @@ export const FixedAssetsTab: React.FC = () => {
       return;
     }
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
     setSubmitting(true);
 
     try {
@@ -654,6 +671,7 @@ export const FixedAssetsTab: React.FC = () => {
       console.error(err);
       setErrorMsg('Gagal membatalkan penyusutan bulanan.');
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   };

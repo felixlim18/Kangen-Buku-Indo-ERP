@@ -81,6 +81,27 @@ export function adjustJournalPayloadIfPeriodClosed(payload: any, closedPeriods: 
 }
 
 /**
+ * Kurs resmi bulan tertentu (Rp per 1 NT$) dari koleksi `fxRates` (doc id "YYYY-MM").
+ * Mengembalikan null kalau dokumen bulan itu belum ada / tidak valid - pemanggil yang
+ * menentukan fallback-nya. Tidak fetch API: transaksi bertanggal lampau harus memakai
+ * kurs bulannya sendiri, bukan kurs hari ini.
+ */
+export async function getMonthlyRateIdrPerNtd(dateInput: any): Promise<number | null> {
+  try {
+    // String "YYYY-MM-DD" diambil apa adanya supaya tidak bergeser bulan karena zona waktu.
+    const monthKey = typeof dateInput === 'string' && /^\d{4}-\d{2}/.test(dateInput)
+      ? dateInput.slice(0, 7)
+      : getYearMonth(dateInput);
+    const snap = await getDoc(doc(db, 'fxRates', monthKey));
+    const rate = snap.exists() ? snap.data().rateIdrPerNtd : null;
+    return typeof rate === 'number' && rate > 0 ? rate : null;
+  } catch (err) {
+    console.error('Failed to read monthly exchange rate:', err);
+    return null;
+  }
+}
+
+/**
  * Kurs resmi bulanan (IDR per 1 NTD), disimpan di koleksi `fxRates` dengan doc id
  * "YYYY-MM". Kalau dokumen bulan berjalan sudah ada, dipakai langsung (tidak fetch API
  * lagi - rate konsisten sepanjang bulan, sesuai kebutuhan "auto-update bulanan").

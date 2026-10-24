@@ -1,6 +1,6 @@
-import { getNextJournalId } from '../lib/journalUtils';
+import { getNextJournalId, resolveLinkedJournalId } from '../lib/journalUtils';
 import { formatDate } from '../lib/date-utils';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   collection, 
   doc, 
@@ -150,6 +150,8 @@ export const IklanTab: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
   const [submitting, setSubmitting] = useState(false);
+  // Kunci sinkron anti double-submit (state `submitting` baru berlaku setelah render ulang).
+  const submitLockRef = useRef(false);
   
   // Helper for toasts
   const triggerToast = (msg: string, type: 'success' | 'error' = 'success') => {
@@ -488,6 +490,8 @@ export const IklanTab: React.FC = () => {
       return;
     }
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
     setSubmitting(true);
     try {
       const isIdr = formCurrency === 'IDR';
@@ -507,8 +511,14 @@ export const IklanTab: React.FC = () => {
         const adId = selectedAdForEdit.id;
         const docRef = doc(db, 'adsPurchases', adId);
         
+        // journalId tersimpan bisa basi (format lama JU-AD-...): cari jurnal aslinya via refId.
+        // Kalau memang tidak ada, buat jurnal baru supaya beban iklan tidak hilang dari GL.
+        const resolvedJournalId = await resolveLinkedJournalId(selectedAdForEdit.journalId, adId);
+        const journalId = resolvedJournalId || await getNextJournalId(formDate);
+
         // Update Iklan entry
         const updatedEntryPayload: Partial<IklanEntry> = {
+          journalId,
           date: formDate,
           platform: formPlatform,
           currency: formCurrency,
@@ -520,8 +530,12 @@ export const IklanTab: React.FC = () => {
         batch.update(docRef, updatedEntryPayload);
 
         // Update Associated Journal Entry
-        const journalRef = doc(db, 'journalEntries', selectedAdForEdit.journalId);
+        const journalRef = doc(db, 'journalEntries', journalId);
         const journalPayload = {
+          id: journalId,
+          refType: 'Expenses',
+          refId: adId,
+          isAuto: true,
           date: Timestamp.fromDate(new Date(formDate)),
           description: `${selectedAdForEdit.docNo} - ${formPlatform}`,
           lines: [
@@ -550,7 +564,7 @@ export const IklanTab: React.FC = () => {
           ],
           updatedAt: Timestamp.now()
         };
-        batch.update(journalRef, journalPayload);
+        batch.set(journalRef, journalPayload, { merge: true });
 
         await batch.commit();
         triggerToast(`Entri iklan ${selectedAdForEdit.docNo} berhasil diperbarui beserta jurnalnya!`, 'success');
@@ -623,6 +637,7 @@ export const IklanTab: React.FC = () => {
       console.error(err);
       triggerToast(`Gagal menyimpan transaksi: ${err.message}`, 'error');
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   };
@@ -645,6 +660,8 @@ export const IklanTab: React.FC = () => {
       return;
     }
 
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
     setSubmitting(true);
     try {
       const batch = writeBatch(db);
@@ -652,8 +669,9 @@ export const IklanTab: React.FC = () => {
       // Delete Iklan document
       batch.delete(doc(db, 'adsPurchases', selectedAdForDelete.id));
       
-      // Delete associated Journal Entry
-      batch.delete(doc(db, 'journalEntries', selectedAdForDelete.journalId));
+      // Delete associated Journal Entry (journalId tersimpan bisa basi -> cari via refId)
+      const journalId = await resolveLinkedJournalId(selectedAdForDelete.journalId, selectedAdForDelete.id);
+      if (journalId) batch.delete(doc(db, 'journalEntries', journalId));
       
       await batch.commit();
       triggerToast(`Belanja iklan ${selectedAdForDelete.docNo} beserta jurnalnya berhasil dihapus secara permanen!`, 'success');
@@ -662,6 +680,7 @@ export const IklanTab: React.FC = () => {
       console.error(err);
       triggerToast(`Gagal menghapus transaksi: ${err.message}`, 'error');
     } finally {
+      submitLockRef.current = false;
       setSubmitting(false);
     }
   };
