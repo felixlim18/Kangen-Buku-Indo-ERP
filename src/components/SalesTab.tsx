@@ -3312,6 +3312,11 @@ export const SalesTab: React.FC = () => {
     setAppliedDetails('');
   };
 
+  // Filter / pencarian / tanggal berubah -> kembali ke halaman 1 (halaman lama bisa melebihi jumlah halaman hasil baru)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [appliedPlatform, appliedSumber, appliedCourier, appliedDetails, globalSearch, globalStartDate, globalEndDate]);
+
   // 0. Filter by Global Date Filter (Before cards and status tab)
   const dateFilteredOrders = useMemo(() => {
     const filtered = orders.filter(order => {
@@ -3560,7 +3565,9 @@ export const SalesTab: React.FC = () => {
   const itemsPerPage = 50;
   const totalItems = sortedOrders.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
-  const startIndex = (currentPage - 1) * itemsPerPage;
+  // Jaga-jaga kalau jumlah order menyusut (mis. order dihapus) saat berada di halaman terakhir
+  const page = Math.min(currentPage, totalPages);
+  const startIndex = (page - 1) * itemsPerPage;
   const paginatedOrders = sortedOrders.slice(startIndex, startIndex + itemsPerPage);
 
 
@@ -6600,18 +6607,18 @@ export const SalesTab: React.FC = () => {
             {totalPages > 1 && (
               <div className="flex items-center gap-1.5 ml-2">
                 <button
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={page === 1}
+                  onClick={() => setCurrentPage(Math.max(page - 1, 1))}
                   className="px-2.5 py-1 text-xs font-semibold rounded border border-[#E7E1D2] dark:border-neutral-800 text-[#3d4451] dark:text-neutral-200 disabled:opacity-40 cursor-pointer"
                 >
                   Prev
                 </button>
                 <span className="font-['Inter'] text-xs font-medium text-[#6b7280]">
-                  {currentPage} / {totalPages}
+                  {page} / {totalPages}
                 </span>
                 <button
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={page === totalPages}
+                  onClick={() => setCurrentPage(Math.min(page + 1, totalPages))}
                   className="px-2.5 py-1 text-xs font-semibold rounded border border-[#E7E1D2] dark:border-neutral-800 text-[#3d4451] dark:text-neutral-200 disabled:opacity-40 cursor-pointer"
                 >
                   Next
