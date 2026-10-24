@@ -151,6 +151,23 @@ export async function ensureAutoAccountExists(acc: AutoAccount): Promise<void> {
   }
 }
 
+/**
+ * Diskon PO per unit untuk satu item, dibagi SESUAI HARGA item (seperti marketplace membagi voucher dan
+ * menghitung refund), bukan rata per buku. Dulu rata per buku: PO26101301 menilai 2 buku yang diterima
+ * NT$8,75 terlalu murah karena buku ketiga (lebih mahal) dibatalkan dan direfund sesuai harganya.
+ */
+export function poDiscountPerUnitCents(po: any, item: any): number {
+  const discount = po?.discount || 0;
+  if (!discount || !item) return 0;
+  const items: any[] = po.items || [];
+  const gross = items.reduce((a, it) => a + (it.priceNTDTotal || 0), 0);
+  const qty = item.qty || 1;
+  if (gross > 0 && item.priceNTDTotal !== undefined) return (discount * (item.priceNTDTotal || 0)) / gross / qty;
+  // Data tanpa harga per item: kembali ke pembagian rata per buku
+  const totalQty = items.reduce((a, it) => a + (it.qty || 0), 0) || 1;
+  return discount / totalQty;
+}
+
 export async function prepareReceiptEventData(
   db: any,
   po: any,
@@ -176,7 +193,11 @@ export async function prepareReceiptEventData(
       }
       transaction.set(counterRef, { value: nextValue }, { merge: true });
     });
-  } catch(e) { console.error(e); nextValue = Math.floor(Math.random()*9999); }
+  } catch (e) {
+    // Nomor acak bisa menimpa jurnal yang sudah ada -> gagalkan penerimaan, jangan tebak nomor
+    console.error(e);
+    throw new Error('Gagal mengambil nomor jurnal penerimaan. Coba lagi.');
+  }
   const nextJournalId = `JU${dateStr}${String(nextValue).padStart(4, '0')}`;
 
   return {
@@ -198,11 +219,11 @@ export function writeReceiptEventAndJournal(
   const tglTerima = Timestamp.now();
   const dateStr = tglTerima.toDate().toISOString().split('T')[0];
   
-  const journalId = receiptEventData.nextJournalId || doc(collection(db, 'journalEntries')).id;
+  if (!receiptEventData?.nextJournalId) throw new Error('Nomor jurnal penerimaan belum disiapkan (prepareReceiptEventData).');
+  const journalId = receiptEventData.nextJournalId;
   const autoAccounts = AUTO_ACCOUNTS;
   
   const totalQtyOrdered = po.items.reduce((acc: number, it: any) => acc + (it.qty || 0), 0) || 1;
-  const diskon_per_unit_cents = (po.discount || 0) / totalQtyOrdered;
   const freight_per_unit_cents = ((po.forwarderFeeNTD || 0) * 100) / totalQtyOrdered;
 
   let totalPurchaseCents = 0;
@@ -212,7 +233,7 @@ export function writeReceiptEventAndJournal(
   itemsReceivedThisTime.forEach(it => {
      const poItem = po.items.find((i: any) => i.bookId === it.bookId);
      if (poItem) {
-        const pItemCents = (poItem.pricePerItem || poItem.pricePerUnitNTD || 0) - diskon_per_unit_cents;
+        const pItemCents = (poItem.pricePerItem || poItem.pricePerUnitNTD || 0) - poDiscountPerUnitCents(po, poItem);
         totalPurchaseCents += pItemCents * it.qtyReceived;
         totalFreightCents += freight_per_unit_cents * it.qtyReceived;
         totalLandedCents += (pItemCents + freight_per_unit_cents) * it.qtyReceived;

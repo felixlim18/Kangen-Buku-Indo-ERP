@@ -35,6 +35,7 @@ import {
   getFreightInAccount,
   getCashAccount,
   generateReceivingJournals,
+  poDiscountPerUnitCents,
   prepareReceiptEventData,
   writeReceiptEventAndJournal,
   findAccountBySystemKey
@@ -807,7 +808,7 @@ export const PurchasesTab = () => {
             const nextTransit = Math.max(0, prevTransit - qtyRecNum);
 
             const totalQtyOrdered = updatedItemsList.reduce((acc: number, it: any) => acc + (it.qty || 0), 0) || 1;
-            const diskon_per_unit_cents = (po.discount || 0) / totalQtyOrdered;
+            const diskon_per_unit_cents = poDiscountPerUnitCents({ ...po, items: updatedItemsList }, item);
             const freight_per_unit_cents = ((po.forwarderFeeNTD || 0) * 100) / totalQtyOrdered;
             const unitLandedCents = item.pricePerItem - diskon_per_unit_cents + freight_per_unit_cents;
 
@@ -3749,7 +3750,7 @@ export const PurchasesTab = () => {
 
             // Landed Unit cost in cents
             const totalQtyOrdered = updatedItemsList.reduce((acc: number, it: any) => acc + (it.qty || 0), 0) || 1;
-            const diskon_per_unit_cents = (selectedPo.discount || 0) / totalQtyOrdered;
+            const diskon_per_unit_cents = poDiscountPerUnitCents({ ...selectedPo, items: updatedItemsList }, item);
             const freight_per_unit_cents = ((selectedPo.forwarderFeeNTD || 0) * 100) / totalQtyOrdered;
             const unitLandedCents = item.pricePerItem - diskon_per_unit_cents + freight_per_unit_cents;
 
