@@ -27,8 +27,12 @@ const sa = JSON.parse(readFileSync(KEY, 'utf8'));
 const app = initializeApp({ credential: cert(sa), projectId: 'gen-lang-client-0501656267' });
 const db = getFirestore(app, 'ai-studio-53e52a01-a8d6-4019-9f99-16eb3032e0f7');
 
-/** Toleransi 2 sen - pembulatan per-baris vs per-jurnal memang menyisakan recehan. */
-const TOLERANCE_CENTS = 2;
+/**
+ * Toleransi 10 sen - pembulatan per-baris vs per-jurnal memang menyisakan recehan, dan sebagian harga
+ * satuan (opname, freight) berupa pecahan sen (mis. 9720.875) sehingga selisihnya terakumulasi beberapa sen.
+ * Selisih nyata (transaksi hilang / ganda) selalu jauh di atas ini.
+ */
+const TOLERANCE_CENTS = 10;
 const VALID_JOURNAL_ID = /^JU\d{6}\d{4}$/;
 
 const MONTHS = [
