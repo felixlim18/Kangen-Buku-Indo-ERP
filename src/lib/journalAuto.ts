@@ -108,7 +108,30 @@ const _autoAccountCache = new Set<string>();
  * Helper to dynamically ensure an automatic account exists in the CoA Firestore collection.
  */
 export async function ensureAutoAccountExists(acc: AutoAccount): Promise<void> {
-  if (!acc.systemKey) return;
+  // Tanpa systemKey: pastikan akunnya ada berdasarkan kode. Dulu fungsi ini langsung keluar, sehingga akun baru
+  // (mis. 5510) tidak pernah dibuat dan jurnalnya merujuk akun yang tidak ada di COA.
+  if (!acc.systemKey) {
+    if (!acc.code || _autoAccountCache.has(`code:${acc.code}`)) return;
+    try {
+      const snapCode = await getDocs(query(collection(db, 'coa'), where('code', '==', acc.code)));
+      if (snapCode.empty) {
+        const docRef = doc(collection(db, 'coa'));
+        await setDoc(docRef, {
+          id: docRef.id,
+          code: acc.code,
+          name: acc.name,
+          type: acc.type,
+          subType: acc.subType,
+          isActive: true,
+          createdAt: Timestamp.now(),
+        });
+      }
+      _autoAccountCache.add(`code:${acc.code}`);
+    } catch (err) {
+      console.error('Gagal memastikan akun COA', acc.code, err);
+    }
+    return;
+  }
   if (_autoAccountCache.has(acc.systemKey)) return;
 
   const q = query(collection(db, 'coa'), where('systemKey', '==', acc.systemKey));

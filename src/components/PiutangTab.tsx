@@ -32,6 +32,16 @@ export const PiutangTab: React.FC = () => {
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [reverseModalData, setReverseModalData] = useState<any | null>(null);
+  // Hapus piutang tak tertagih: D 5510 Beban Piutang Tak Tertagih / K 1110, order mencatat writtenOff
+  const [writeOffData, setWriteOffData] = useState<any | null>(null);
+  const [writeOffAmount, setWriteOffAmount] = useState('');
+  const [writeOffDate, setWriteOffDate] = useState(() => toLocalDateStr());
+  const [writeOffNote, setWriteOffNote] = useState('');
+  const writeOffSavingRef = useRef(false);
+  const [closedPeriods, setClosedPeriods] = useState<string[]>([]);
+  useEffect(() => onSnapshot(collection(db, 'periodClosings'), (snap) => {
+    setClosedPeriods(snap.docs.filter((d) => d.data().status === 'Ditutup').map((d) => d.id));
+  }, (err) => console.error('periodClosings snapshot error:', err)), []);
   const [payAmount, setPayAmount] = useState('');
   const savingPaymentRef = useRef(false);
   const [cashAccount, setCashAccount] = useState<'1101' | '1102'>('1101');
@@ -121,7 +131,7 @@ export const PiutangTab: React.FC = () => {
       const mList: any[] = [];
       snap.forEach((d) => {
         const m = d.data();
-        if (m.paymentStatus === 'paid') return; // lunas, tidak perlu tampil di daftar outstanding
+        if (m.paymentStatus === 'paid' || m.paymentStatus === 'written_off') return; // lunas / dihapus, tidak perlu tampil
         mList.push({
           id: d.id,
           source: 'manual',
@@ -133,6 +143,7 @@ export const PiutangTab: React.FC = () => {
           pickupLogistics: m.notes || '-',
           totalPrice: m.amountNTD || 0,
           amountPaid: m.amountPaid || 0,
+          writtenOff: m.writtenOff || 0,
           paymentStatus: m.paymentStatus,
           dueDate: m.dueDate || null,
           createdAt: m.createdAt,
@@ -161,10 +172,12 @@ export const PiutangTab: React.FC = () => {
   // Gabungan piutang dari Sales Order + Piutang Manual, untuk tampilan/aggregasi terpadu
   const allPiutangItems = [...salesOrders, ...manualReceivables];
 
-  const getOutstanding = (item: any) => (item.totalPrice || 0) - (item.amountPaid || 0);
+  // Sisa piutang = tagihan - dibayar - dihapus (tak tertagih). Sama dengan saldo GL 1110 per order.
+  const getOutstanding = (item: any) => (item.totalPrice || 0) - (item.amountPaid || 0) - (item.writtenOff || 0);
 
   const getStatus = (item: any) => {
     const sisa = getOutstanding(item);
+    if (sisa <= 0 && (item.writtenOff || 0) > 0) return { label: 'Dihapus', c: '#8a8a8a', bg: '#f1f1f1', class: 'dibayar' };
     if (sisa <= 0) return { label: 'Dibayar', c: 'var(--green)', bg: 'var(--green-bg)', class: 'dibayar' };
     if ((item.amountPaid || 0) > 0) return { label: 'Sebagian', c: 'var(--teal)', bg: 'var(--teal-bg)', class: 'sebagian' };
     return { label: 'Belum Dibayar', c: 'var(--amber)', bg: 'var(--amber-bg)', class: 'belum' };
@@ -230,7 +243,12 @@ export const PiutangTab: React.FC = () => {
     if (!reverseModalData) return;
     try {
       const order = reverseModalData;
-      const journalSnap = await getDocs(query(collection(db, 'journalEntries'), where('refId', '==', order.id), where('refType', '==', 'sales_order_payment')));
+      const journalSnap = await getDocs(query(collection(db, 'journalEntries'), where('refId', '==', order.id), where('refType', 'in', ['sales_order_payment', 'receivable_writeoff'])));
+      for (const d of journalSnap.docs) {
+        if (closedPeriods.length && isPeriodClosed(d.data().date?.toDate?.() || d.data().date, closedPeriods)) {
+          throw new Error(`Jurnal ${d.id} berada di periode yang sudah ditutup.`);
+        }
+      }
       const cfSnap = await getDocs(query(collection(db, 'cashFlow'), where('refId', '==', order.id)));
       
       const journalRefs = journalSnap.docs.map(d => d.ref);
@@ -255,6 +273,7 @@ export const PiutangTab: React.FC = () => {
         // Reset order payment status
         transaction.update(orderRef, {
           amountPaid: 0,
+          writtenOff: 0,
           paymentStatus: 'unpaid',
           isUnpaid: true,
           updatedAt: Timestamp.now()
@@ -264,6 +283,59 @@ export const PiutangTab: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       alert(`Gagal membatalkan pelunasan: ${err.message}`);
+    }
+  };
+
+  const handleConfirmWriteOff = async () => {
+    if (!writeOffData || writeOffSavingRef.current) return;
+    const amountCents = Math.round((parseFloat(cleanCommas(writeOffAmount)) || 0) * 100);
+    if (amountCents <= 0) { alert('Masukkan nominal yang dihapus.'); return; }
+    if (amountCents > getOutstanding(writeOffData) + 5) { alert(`Nominal melebihi sisa piutang NT$ ${(getOutstanding(writeOffData) / 100).toLocaleString('en-US')}.`); return; }
+    if (isPeriodClosed(writeOffDate, closedPeriods)) { alert(`Periode ${writeOffDate.slice(0, 7)} sudah ditutup.`); return; }
+    writeOffSavingRef.current = true;
+    try {
+      const isManual = writeOffData.source === 'manual';
+      const orderRef = doc(db, isManual ? 'manualReceivables' : 'salesOrders', writeOffData.id);
+      const expense = { code: '5510', name: 'Beban Piutang Tak Tertagih', type: 'Expenses', subType: 'Biaya Umum dan Administrasi' } as any;
+      await ensureAutoAccountExists(expense);
+      await ensureAutoAccountExists({ code: '1110', name: 'Piutang Usaha', type: 'Assets', subType: 'Aset Lancar' });
+      const journalId = await getNextJournalId(writeOffDate);
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(orderRef);
+        if (!snap.exists()) throw new Error('Data piutang tidak ditemukan');
+        const order = snap.data();
+        if (!isManual && order.status !== 'completed') throw new Error('Hanya order Selesai yang punya piutang di buku besar.');
+        const outstanding = (order.totalPrice || order.amountNTD || 0) - (order.amountPaid || 0) - (order.writtenOff || 0);
+        if (amountCents > outstanding + 5) throw new Error(`Sisa piutang hanya NT$ ${(outstanding / 100).toLocaleString('en-US')}.`);
+        const nextWrittenOff = (order.writtenOff || 0) + amountCents;
+        const fullyClosed = amountCents >= outstanding - 5;
+        transaction.update(orderRef, {
+          writtenOff: nextWrittenOff,
+          ...(fullyClosed ? { paymentStatus: isManual ? 'written_off' : (order.amountPaid > 0 ? 'paid' : 'written_off'), isUnpaid: false } : {}),
+          ...(isManual ? {} : { wasPiutang: true }),
+          writeOffNote: writeOffNote.trim() || null,
+          updatedAt: Timestamp.now()
+        });
+        transaction.set(doc(db, 'journalEntries', journalId), {
+          id: journalId,
+          date: Timestamp.fromDate(new Date(writeOffDate)),
+          description: `Hapus Piutang Tak Tertagih ${order.orderCode || order.receivableCode || writeOffData.id}${writeOffNote.trim() ? ` - ${writeOffNote.trim()}` : ''}`,
+          refType: 'receivable_writeoff',
+          refId: writeOffData.id,
+          isAuto: true,
+          createdAt: Timestamp.now(),
+          lines: [
+            { account: expense.name, accountCode: expense.code, debit: amountCents, credit: 0 },
+            { account: 'Piutang Usaha', accountCode: '1110', debit: 0, credit: amountCents }
+          ]
+        });
+      });
+      setWriteOffData(null);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Gagal menghapus piutang: ${err.message}`);
+    } finally {
+      writeOffSavingRef.current = false;
     }
   };
 
@@ -299,7 +371,7 @@ export const PiutangTab: React.FC = () => {
   // Pengaman pembayaran ganda: dicek di dalam transaksi terhadap data terbaru, jadi klik ganda / dua tab yang
   // memproses order yang sama tidak bisa mencatat pelunasan melebihi tagihan (lihat insiden 18/10/2026).
   const assertNotOverpaid = (order: any, curPaid: number, addCents: number, label: string) => {
-    const total = order.totalPrice || 0;
+    const total = (order.totalPrice || 0) - (order.writtenOff || 0);
     if (curPaid + addCents > total + 10) {
       const sisa = Math.max(0, total - curPaid);
       throw new Error(`${label} sudah dibayar NT$ ${(curPaid / 100).toLocaleString('en-US')} dari tagihan NT$ ${(total / 100).toLocaleString('en-US')}; sisa hanya NT$ ${(sisa / 100).toLocaleString('en-US')}. Tidak diposting.`);
@@ -333,7 +405,7 @@ export const PiutangTab: React.FC = () => {
         const curPaid = order.amountPaid || 0;
         assertNotOverpaid(order, curPaid, payAmountCents, order.orderCode || order.receivableCode || selectedItem.id);
         const nextPaid = curPaid + payAmountCents;
-        const isFullyPaid = nextPaid >= (order.totalPrice || 0) - 5;
+        const isFullyPaid = nextPaid >= (order.totalPrice || 0) - (order.writtenOff || 0) - 5;
 
         transaction.update(orderRef, {
           amountPaid: nextPaid,
@@ -816,7 +888,7 @@ export const PiutangTab: React.FC = () => {
           const curPaid = orderData.amountPaid || 0;
           assertNotOverpaid(orderData, curPaid, op.amountCents, orderData.orderCode || orderData.receivableCode || snap.id);
           const nextPaid = curPaid + op.amountCents;
-          const isFullyPaid = nextPaid >= (orderData.totalPrice || 0) - 5;
+          const isFullyPaid = nextPaid >= (orderData.totalPrice || 0) - (orderData.writtenOff || 0) - 5;
 
           transaction.update(snap.ref, {
             amountPaid: nextPaid,
@@ -1074,7 +1146,17 @@ export const PiutangTab: React.FC = () => {
                           >
                             {sisa <= 0 ? 'Lunas' : 'Terima Bayar'}
                           </button>
-                          {(o.amountPaid || 0) > 0 && (
+                          {sisa > 0 && (
+                            <button
+                              className="btn-row"
+                              title="Hapus sisa piutang sebagai tak tertagih (D 5510 / K 1110)"
+                              style={{ color: '#6b6b6b', borderColor: '#bdbdbd', backgroundColor: '#fff' }}
+                              onClick={() => { setWriteOffData(o); setWriteOffAmount(String(sisa / 100)); setWriteOffDate(toLocalDateStr()); setWriteOffNote(''); }}
+                            >
+                              Hapus
+                            </button>
+                          )}
+                          {((o.amountPaid || 0) > 0 || (o.writtenOff || 0) > 0) && (
                             <button
                               className="btn-row"
                               style={{ color: '#d93025', borderColor: '#d93025', backgroundColor: '#fff' }}
@@ -1454,6 +1536,38 @@ export const PiutangTab: React.FC = () => {
       )}
 
       {/* MODAL: KONFIRMASI REVERSE PELUNASAN */}
+      {writeOffData && (
+        <div className="overlay open" onMouseDown={(e) => { if (e.target === e.currentTarget) setWriteOffData(null); }}>
+          <div className="modal" style={{ maxWidth: '420px' }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <h2>Hapus Piutang Tak Tertagih</h2>
+                <p>Order {writeOffData.orderCode || writeOffData.id} · sisa NT$ {(getOutstanding(writeOffData) / 100).toLocaleString('en-US')}</p>
+              </div>
+              <button className="modal-close" onClick={() => setWriteOffData(null)}>
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: '20px', lineHeight: '1.5', display: 'grid', gap: 12 }}>
+              <p style={{ fontSize: 12 }}>Piutang yang tidak akan dibayar pembeli dibebankan ke <b>5510 Beban Piutang Tak Tertagih</b> dan mengurangi <b>1110 Piutang Usaha</b>. Bisa dibatalkan lewat tombol Batal.</p>
+              <label style={{ fontSize: 11, fontWeight: 700 }}>TANGGAL
+                <input type="date" value={writeOffDate} onChange={(e) => setWriteOffDate(e.target.value)} style={{ width: '100%', marginTop: 4 }} className="tb-input" />
+              </label>
+              <label style={{ fontSize: 11, fontWeight: 700 }}>NOMINAL DIHAPUS (NT$)
+                <input value={writeOffAmount} onChange={(e) => setWriteOffAmount(formatInputWithCommas(e.target.value))} style={{ width: '100%', marginTop: 4 }} className="tb-input" />
+              </label>
+              <label style={{ fontSize: 11, fontWeight: 700 }}>ALASAN
+                <input value={writeOffNote} onChange={(e) => setWriteOffNote(e.target.value)} placeholder="Mis. paket tidak diambil, pembeli tidak bisa dihubungi" style={{ width: '100%', marginTop: 4 }} className="tb-input" />
+              </label>
+            </div>
+            <div className="tb-foot">
+              <button className="tb-btn-cancel" onClick={() => setWriteOffData(null)}>Kembali</button>
+              <button className="tb-btn-post" style={{ background: '#6b6b6b', color: '#fff' }} onClick={handleConfirmWriteOff}>Hapus Piutang</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {reverseModalData && (
         <div className="overlay open" onMouseDown={(e) => { if (e.target === e.currentTarget) setReverseModalData(null); }}>
           <div className="modal" style={{ maxWidth: '400px' }} onMouseDown={(e) => e.stopPropagation()}>
@@ -1467,7 +1581,7 @@ export const PiutangTab: React.FC = () => {
               </button>
             </div>
             <div className="modal-body" style={{ padding: '24px 20px', lineHeight: '1.5' }}>
-              <p>Membatalkan pelunasan akan <b>menghapus seluruh riwayat pembayaran</b> untuk order ini sebesar <b>NT$ {((reverseModalData.amountPaid || 0)/100).toLocaleString('en-US')}</b> dan mengembalikannya ke status <b>Belum Dibayar</b>.</p>
+              <p>Membatalkan pelunasan akan <b>menghapus seluruh riwayat pembayaran</b> untuk order ini sebesar <b>NT$ {((reverseModalData.amountPaid || 0)/100).toLocaleString('en-US')}</b>{(reverseModalData.writtenOff || 0) > 0 && <> serta piutang yang dihapus (tak tertagih) <b>NT$ {(reverseModalData.writtenOff / 100).toLocaleString('en-US')}</b></>} dan mengembalikannya ke status <b>Belum Dibayar</b>.</p>
               <p style={{ marginTop: '12px' }}>Jurnal akuntansi terkait juga akan dihapus.</p>
             </div>
             <div className="tb-foot">

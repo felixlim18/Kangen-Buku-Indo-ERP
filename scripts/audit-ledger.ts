@@ -82,9 +82,9 @@ const day = (t: any) => (t?.toDate ? t.toDate().toISOString().slice(0, 10) : Str
   console.log(`   TOTAL (harus 0): ${n(Object.values(bal).reduce((a, b) => a + b, 0))}`);
 
   // 5. Subledger vs GL
-  const arSub = so.filter((o) => ['completed'].includes(o.status)).reduce((s, o) => s + Math.max(0, (o.totalPrice || 0) - (o.amountPaid || 0)), 0);
+  const arSub = so.filter((o) => ['completed'].includes(o.status)).reduce((s, o) => s + Math.max(0, (o.totalPrice || 0) - (o.amountPaid || 0) - (o.writtenOff || 0)), 0);
   const manual = await db.collection('manualReceivables').get().catch(() => null);
-  const manualSub = manual ? manual.docs.reduce((s, d) => s + Math.max(0, (d.data().totalPrice || d.data().amount || 0) - (d.data().amountPaid || 0)), 0) : 0;
+  const manualSub = manual ? manual.docs.reduce((s, d) => s + Math.max(0, (d.data().totalPrice || d.data().amount || 0) - (d.data().amountPaid || 0) - (d.data().writtenOff || 0)), 0) : 0;
   console.log(`\n[5] Piutang: subledger SO selesai ${n(arSub)} + manual ${n(manualSub)} vs GL 1110 ${n(bal['1110'] || 0)} -> selisih ${n((bal['1110'] || 0) - arSub - manualSub)}`);
   const prepaid = so.filter((o) => !['completed', 'cancelled', 'returned'].includes(o.status)).reduce((s, o) => s + (o.amountPaid || 0), 0);
   console.log(`    Diterima di muka: SO belum selesai amountPaid ${n(prepaid)} vs GL 2110 ${n(-(bal['2110'] || 0))} -> selisih ${n(-(bal['2110'] || 0) - prepaid)}`);

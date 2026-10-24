@@ -209,7 +209,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
 
   // Calculate high-level summary widgets for Piutang Usaha (A/R)
   const totalPiutangCents = salesOrders.reduce((acc, so) => {
-    const outstanding = (so.totalPrice || 0) - (so.amountPaid || 0);
+    const outstanding = (so.totalPrice || 0) - (so.amountPaid || 0) - (so.writtenOff || 0);
     return acc + Math.max(0, outstanding);
   }, 0);
 
@@ -375,7 +375,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
     }
 
     if (activeSegment === 'piutang') {
-      const outstanding = (selectedItem.totalPrice || 0) - (selectedItem.amountPaid || 0);
+      const outstanding = (selectedItem.totalPrice || 0) - (selectedItem.amountPaid || 0) - (selectedItem.writtenOff || 0);
       if (payAmountCents > outstanding + 10) { // small tolerance for float rounding
         alert(`Nominal pembayaran melebihi sisa piutang: ${formatNTD(outstanding)}`);
         return;
@@ -1137,7 +1137,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
             <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 text-xs text-neutral-750 dark:text-neutral-300">
               {activeSegment === 'piutang' ? (
                 salesOrders.map((so) => {
-                  const outstanding = (so.totalPrice || 0) - (so.amountPaid || 0);
+                  const outstanding = (so.totalPrice || 0) - (so.amountPaid || 0) - (so.writtenOff || 0);
                   const statusBadge = so.amountPaid > 0 ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-600 text-[10px] uppercase font-bold py-0.5 px-2 rounded-full border border-amber-200/40' : 'bg-red-100 dark:bg-red-950/40 text-red-600 text-[10px] uppercase font-bold py-0.5 px-2 rounded-full border border-red-200/40';
                   const labelStatus = so.amountPaid > 0 ? 'Sebagian' : 'Belum Bayar';
 
