@@ -76,16 +76,29 @@ export const isTimestampInMonth = (timestamp: any, monthStr: string): boolean =>
   return date.getFullYear() === year && (date.getMonth() + 1) === month;
 };
 
+/**
+ * Qty buku ini dalam satu penerimaan PO - aturan yang sama dengan getBookQtyInReceipt di db-helpers
+ * (dipakai HPP saat SO dikirim), supaya freight per buku di laporan sama dengan yang masuk HPP.
+ * Penerimaan PO multi-judul menyimpan rinciannya di `r.items` (qtyReceived); dulu hanya
+ * `receivedQtyDetails` yang dibaca, sehingga seluruh freight jatuh ke po.bookId (judul pertama).
+ */
 export const getBookQtyInReceipt = (po: any, r: any, bookId: string): number => {
-  if (!r.receivedQtyDetails) {
-    const poBookId = po.bookId || '';
-    if (poBookId === bookId) {
-      return r.receivedQty || 0;
-    }
-    return 0;
+  if (!r) return 0;
+  if (Array.isArray(r.items)) {
+    const it = r.items.find((x: any) => x.bookId === bookId);
+    return it ? it.qtyReceived || 0 : 0;
   }
-  const detail = r.receivedQtyDetails.find((d: any) => d.bookId === bookId);
-  return detail ? detail.qty || 0 : 0;
+  if (Array.isArray(r.receivedQtyDetails)) {
+    const d = r.receivedQtyDetails.find((x: any) => x.bookId === bookId);
+    return d ? d.qty || 0 : 0;
+  }
+  const poItems = po.items || [];
+  if (poItems.length === 0) return po.bookId === bookId ? r.receivedQty || 0 : 0;
+  const item = poItems.find((x: any) => x.bookId === bookId);
+  if (!item) return 0;
+  if (poItems.length === 1) return r.receivedQty || 0;
+  const totalPoQty = poItems.reduce((a: number, x: any) => a + (x.qty || 0), 0) || 1;
+  return Math.round(((item.qty || 0) / totalPoQty) * (r.receivedQty || 0));
 };
 
 /**
@@ -506,16 +519,9 @@ export function buildPerpetualIndex(data: PerpetualData, nowMs: number = Date.no
       if (po.receipts && po.receipts.length > 0) {
         for (const r of po.receipts) {
           if (!r.kodeEkspedisi || r.kodeEkspedisi.toUpperCase().trim() !== fCode) continue;
-          if (r.receivedQtyDetails) {
-            for (const d of r.receivedQtyDetails) {
-              // legacy hanya memproses PO yang lolos filter bookPos untuk buku ini
-              const inPo = po.bookId === d.bookId || (po.items && po.items.some((it: any) => it.bookId === d.bookId));
-              if (!inPo) continue;
-              emit(d.bookId, d.qty || 0);
-            }
-          } else if (po.bookId) {
-            emit(po.bookId, r.receivedQty || 0);
-          }
+          // Setiap judul di PO mendapat bagian sesuai qty-nya di penerimaan ini
+          const bookIds = new Set<string>(po.items && po.items.length > 0 ? po.items.map((it: any) => it.bookId) : [po.bookId]);
+          for (const bid of bookIds) if (bid) emit(bid, getBookQtyInReceipt(po, r, bid));
         }
         continue;
       }
