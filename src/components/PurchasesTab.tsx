@@ -3262,7 +3262,9 @@ export const PurchasesTab = () => {
           for (const code of oldCodes) {
             const oldJrnSnap1 = await getDocs(query(collection(db, 'journalEntries'), where('refId', '==', code)));
             oldJrnSnap1.forEach(d => {
-              if (d.data().description === 'Pemesanan Barang') batch.delete(d.ref);
+              // Kode PO bisa dipakai dua dokumen (bekas nomor ulang): jangan hapus jurnal milik PO lain
+              const src = d.data().sourceId;
+              if (d.data().description === 'Pemesanan Barang' && (!src || src === poId)) batch.delete(d.ref);
             });
           }
           const oldJrnSnap2 = await getDocs(query(collection(db, 'journalEntries'), where('refId', '==', poId)));
@@ -4505,7 +4507,11 @@ export const PurchasesTab = () => {
         ...codes.map(code => getDocs(query(collection(db, 'journalEntries'), where('refId', '==', code)))),
       ]);
       const toDelete = new Map<string, any>();
-      snaps.forEach(snap => snap.forEach(d => toDelete.set(d.id, d.ref)));
+      // Jurnal yang tertaut ke dokumen PO lain (sourceId berbeda) tidak ikut terhapus walaupun kodenya sama
+      snaps.forEach(snap => snap.forEach(d => {
+        const src = d.data().sourceId;
+        if (!src || src === poId) toDelete.set(d.id, d.ref);
+      }));
       toDelete.forEach(ref => batch.delete(ref));
 
       const receiptEventsSnap = await getDocs(collection(db, 'purchaseOrders', poId, 'receiptEvents'));
