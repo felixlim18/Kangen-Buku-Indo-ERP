@@ -10,7 +10,8 @@
 //      jurnal D 1203 / K kas (platform IDR -> 1102 + nilai Rp; NTD -> 1101; PO belum lunas -> 2100) bertanggal
 //      tanggal pembelian, sourceId = dokumen PO.
 //   C. Kode PO yang dipakai dua dokumen: dokumen yang tanggal pembeliannya tidak sama dengan tanggal di kode
-//      diberi kode baru POYYMMDDNN sesuai tanggal pembelian (nomor urut berikutnya yang belum dipakai).
+//      dikembalikan ke kode aslinya, yaitu kode di jurnal penerimaan barangnya sendiri (nominal = nilai PO,
+//      tanggal di kode = tanggal beli). Kalau tidak ada, kode baru POYYMMDDNN sesuai tanggal pembelian.
 //   Semua jurnal pemesanan yang terpetakan diberi sourceId = dokumen PO, refId = kode PO (setelah C).
 // Berhenti tanpa menulis kalau ada jurnal tak terpetakan atau jumlah A/B/C tidak sesuai harapan. Backup JSON.
 //
@@ -76,9 +77,22 @@ const ymdTaipei = (t: any) => (t?.toDate ? t.toDate() : new Date(t)).toLocaleStr
     if (mismatched.length !== 1) { problems.push(`${code}: ${mismatched.length} dokumen tanggalnya tidak cocok dengan kode`); continue; }
     const p = mismatched[0];
     const ymd = ymdTaipei(p.purchaseDate).slice(2).replace(/-/g, '');
-    let seq = 1;
-    while (usedCodes.has(`PO${ymd}${String(seq).padStart(2, '0')}`)) seq++;
-    const nc = `PO${ymd}${String(seq).padStart(2, '0')}`;
+    // Kode asli PO ini tercatat di jurnal penerimaan barangnya sendiri ("PO #<kode> Penerimaan Barang",
+    // nominal = nilai PO, tanggal di kode = tanggal beli). Pakai kode itu kalau belum dipakai dokumen lain.
+    const receiptCodes = [...new Set(jsS.docs
+      .map((d) => d.data())
+      .filter((j) => /Penerimaan Barang/.test(String(j.description)) &&
+        Math.abs((j.lines || []).find((l: any) => l.accountCode === '1203' && l.credit > 0)?.credit - (p.purchasePriceNTD || 0)) <= 2)
+      .map((j) => (String(j.description).replace(/\s+/g, ' ').match(/PO #(PO\d{8})/) || [])[1])
+      .filter((c) => c && c.slice(2, 8) === ymd && !usedCodes.has(c)))];
+    let nc: string;
+    if (receiptCodes.length === 1) nc = receiptCodes[0];
+    else if (receiptCodes.length > 1) { problems.push(`${code} (${p.id}): beberapa kandidat kode ${receiptCodes.join(',')}`); continue; }
+    else {
+      let seq = 1;
+      while (usedCodes.has(`PO${ymd}${String(seq).padStart(2, '0')}`)) seq++;
+      nc = `PO${ymd}${String(seq).padStart(2, '0')}`;
+    }
     usedCodes.add(nc);
     newCode.set(p.id, nc);
   }
