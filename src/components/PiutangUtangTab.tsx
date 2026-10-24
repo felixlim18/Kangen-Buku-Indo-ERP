@@ -830,38 +830,58 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
           codeCashflowsSnap.forEach(d => transaction.delete(d.ref));
         });
       } else {
-        // Deleting PO Utang
+        // Membatalkan utang PO. Dulu cabang ini menghapus PO + SEMUA jurnal ber-kode sama tanpa menyentuh
+        // ledger & dokumen persediaan: jurnal penerimaan ikut hilang padahal stoknya tetap ada (persediaan
+        // tidak lagi cocok dengan buku besar), stok dalam perjalanan tidak dikurangi, dan kode PO yang dipakai
+        // dua dokumen ikut menghapus jurnal PO lain.
         const poId = item.id;
-        const poCode = item.code;
+        const poRef = doc(db, 'purchaseOrders', poId);
+        const poSnap = await getDoc(poRef);
+        if (!poSnap.exists()) throw new Error('Purchase Order tidak ditemukan.');
+        const po: any = poSnap.data();
+        const poItems: any[] = po.items && po.items.length > 0 ? po.items : [{ bookId: po.bookId, qty: po.qty, qtyReceived: po.qtyReceived }];
+        const anyReceived = ['received', 'partial'].includes(po.status) ||
+          poItems.some(it => (it.qtyReceived || 0) > 0) ||
+          (po.receipts || []).some((r: any) => (r.receivedQty || 0) > 0);
+        if (anyReceived) {
+          throw new Error(`PO ${po.purchaseCode} sudah ada barang diterima. Batalkan/kelola lewat tab Purchase Orders (Refund Sisa / Tutup PO) supaya stok dan jurnal penerimaan ikut terkoreksi.`);
+        }
 
-        const journalsQuery1 = query(collection(db, 'journalEntries'), where('refId', '==', poId));
-        const journalsQuery2 = query(collection(db, 'journalEntries'), where('refId', '==', poCode));
-        const journalsQuery3 = query(collection(db, 'journalEntries'), where('docCode', '==', poCode));
-        const journalsQuery4 = query(collection(db, 'journalEntries'), where('refCode', '==', poCode));
+        // Periode tutup buku dari database (localStorage di atas bisa basi)
+        const closingsSnap = await getDocs(query(collection(db, 'periodClosings'), where('status', '==', 'Ditutup')));
+        const poDate = po.purchaseDate?.toDate ? po.purchaseDate.toDate() : new Date(po.purchaseDate);
+        const poPeriod = `${poDate.getFullYear()}-${String(poDate.getMonth() + 1).padStart(2, '0')}`;
+        if (closingsSnap.docs.some(d => d.id === poPeriod || d.data().period === poPeriod)) {
+          throw new Error(`Periode ${poPeriod} sudah ditutup.`);
+        }
 
-        const cfQuery1 = query(collection(db, 'cashFlow'), where('refId', '==', poId));
-        const cfQuery2 = query(collection(db, 'cashFlow'), where('refCode', '==', poCode));
-
-        const [jSnap1, jSnap2, jSnap3, jSnap4, cfSnap1, cfSnap2] = await Promise.all([
-          getDocs(journalsQuery1), getDocs(journalsQuery2), getDocs(journalsQuery3), getDocs(journalsQuery4),
-          getDocs(cfQuery1), getDocs(cfQuery2)
+        // Hanya jurnal milik PO ini: sourceId = PO, atau jurnal lama tanpa sourceId yang refId-nya id/kode PO
+        const codes = [...new Set([po.purchaseCode, item.code].filter(Boolean))];
+        const snaps = await Promise.all([
+          getDocs(query(collection(db, 'journalEntries'), where('sourceId', '==', poId))),
+          getDocs(query(collection(db, 'journalEntries'), where('refId', '==', poId))),
+          ...codes.map(c => getDocs(query(collection(db, 'journalEntries'), where('refId', '==', c)))),
         ]);
+        const journalRefs = new Map<string, any>();
+        snaps.forEach(snap => snap.forEach(d => {
+          const src = d.data().sourceId;
+          if (!src || src === poId) journalRefs.set(d.id, d.ref);
+        }));
+        const cfSnap = await getDocs(query(collection(db, 'cashFlow'), where('refId', '==', poId)));
 
         const batch = writeBatch(db);
-        batch.delete(doc(db, 'purchaseOrders', poId));
-        batch.delete(doc(db, 'journalEntries', `JU-PO-${poId}-create`));
-        batch.delete(doc(db, 'journalEntries', `JU-PO-${poId}-rec-freight`));
-        batch.delete(doc(db, 'journalEntries', `JU-PO-${poId}-rec-capitalize`));
-        batch.delete(doc(db, 'journalEntries', `JU-PO-${poId}-rec-capitalize-mig`));
-
-        jSnap1.forEach(d => batch.delete(d.ref));
-        jSnap2.forEach(d => batch.delete(d.ref));
-        jSnap3.forEach(d => batch.delete(d.ref));
-        jSnap4.forEach(d => batch.delete(d.ref));
-
-        cfSnap1.forEach(d => batch.delete(d.ref));
-        cfSnap2.forEach(d => batch.delete(d.ref));
-
+        batch.delete(poRef);
+        journalRefs.forEach(ref => batch.delete(ref));
+        cfSnap.forEach(d => batch.delete(d.ref));
+        // Kurangi stok dalam perjalanan (sama seperti batalkan PO di tab Purchase Orders)
+        for (const it of poItems) {
+          if (!it.bookId || !(it.qty > 0)) continue;
+          const invSnap = await getDocs(query(collection(db, 'inventory'), where('bookId', '==', it.bookId)));
+          if (!invSnap.empty) {
+            const cur = invSnap.docs[0].data();
+            batch.update(invSnap.docs[0].ref, { inTransitStock: Math.max(0, (cur.inTransitStock || 0) - it.qty), lastUpdated: Timestamp.now() });
+          }
+        }
         await batch.commit();
       }
 
