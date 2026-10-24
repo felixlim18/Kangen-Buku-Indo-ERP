@@ -57,7 +57,6 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
   const isOwner = profile?.role === 'owner';
   
   // Realtime lists
-  const [cashflows, setCashflows] = useState<CashFlowEntry[]>([]);
   const [journals, setJournals] = useState<JournalEntry[]>([]);
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [partners, setPartners] = useState<BusinessPartner[]>([]);
@@ -111,19 +110,6 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
       await ensureAutoAccountExists(AUTO_ACCOUNTS.BEBAN_GAJI);
     };
     ensureAccounts();
-
-    // Read Cash flows
-    const unsubCf = onSnapshot(collection(db, 'cashFlow'), (snap) => {
-      const cList: CashFlowEntry[] = [];
-      snap.forEach((d) => cList.push(d.data() as CashFlowEntry));
-      setCashflows(cList.sort((a, b) => b.date?.seconds - a.date?.seconds));
-    }, err => {
-      if (String(err).includes("Quota") || String(err).includes("quota")) {
-        console.warn("Firebase quota exceeded (snapshot)");
-      } else {
-        console.error("Snapshot error:", err);
-      }
-    });
 
     // Read Journal entries
     const unsubJ = onSnapshot(collection(db, 'journalEntries'), (snap) => {
@@ -204,7 +190,6 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
     });
 
     return () => {
-      unsubCf();
       unsubJ();
       unsubP();
       unsubPartners();
@@ -214,86 +199,6 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
     };
   }, []);
 
-  // --- Sub-Tab 1: Cash Flow Positions ---
-  const ntdCashflows = cashflows.filter(c => c.ledger === 'NTD');
-  const idrCashflows = cashflows.filter(c => c.ledger === 'IDR');
-
-  // --- Sub-Tab 2: Income Statement calculations ---
-  // Revenue channels
-  const shopeeRevenues = journals
-    .flatMap(j => j.lines)
-    .filter(l => l.account === 'Revenue:Shopee')
-    .reduce((acc, l) => acc + l.credit, 0);
-
-  const websiteRevenues = journals
-    .flatMap(j => j.lines)
-    .filter(l => l.account === 'Revenue:Website')
-    .reduce((acc, l) => acc + l.credit, 0);
-
-  const directRevenues = journals
-    .flatMap(j => j.lines)
-    .filter(l => l.account.startsWith('Revenue:') && l.account !== 'Revenue:Shopee' && l.account !== 'Revenue:Website')
-    .reduce((acc, l) => acc + l.credit, 0);
-
-  const totalRevenue = shopeeRevenues + websiteRevenues + directRevenues;
-
-  // COGS (Double entry COGS)
-  const totalCOGS = journals
-    .flatMap(j => j.lines)
-    .filter(l => l.account === 'COGS')
-    .reduce((acc, l) => acc + l.debit, 0);
-
-  const grossProfit = totalRevenue - totalCOGS;
-
-  // Operating Expenses (OpEx)
-  // Prorated Forwarder Cargo expenses
-  const forwarderExp = journals
-    .flatMap(j => j.lines)
-    .filter(l => l.account === 'Cash:IDR' || l.account === 'Cash Rupiah' || l.account === 'Cash:NTD')
-    // let's estimate payroll salary + other expenses
-    .reduce((acc, l) => acc + 0, 0); // Simplified for reporting or we can sum Cashflows categorised under salary or opEx
-
-  const payrollExpensesNTD = payrolls.reduce((acc, p) => {
-    // Convert to NTD snapshot
-    const amt = p.currency === 'NTD' ? p.amount * 100 : p.amount * 0.17801; // estimated mock conversion
-    return acc + amt;
-  }, 0);
-
-  const partnerExpensesNTD = journals
-    .flatMap(j => j.lines)
-    .filter(l => l.accountCode === AUTO_ACCOUNTS.PARTNER_PROFIT_SHARE.code)
-    .reduce((acc, l) => acc + l.debit, 0);
-
-  const totalOpEx = payrollExpensesNTD + partnerExpensesNTD;
-  const netIncome = grossProfit - totalOpEx;
-
-  // --- Sub-Tab 3: Balance Sheet calculations ---
-  // Current Assets
-  // Cash NTD & Cash IDR (base values + mutations)
-  const ntdInflow = cashflows.filter(c => c.ledger === 'NTD' && c.direction === 'inflow').reduce((acc, c) => acc + c.amount, 0);
-  const ntdOutflow = cashflows.filter(c => c.ledger === 'NTD' && c.direction === 'outflow').reduce((acc, c) => acc + c.amount, 0);
-  const balanceCashNTD = 15000000 + ntdInflow - ntdOutflow;
-
-  const idrInflow = cashflows.filter(c => c.ledger === 'IDR' && c.direction === 'inflow').reduce((acc, c) => acc + c.amount, 0);
-  const idrOutflow = cashflows.filter(c => c.ledger === 'IDR' && c.direction === 'outflow').reduce((acc, c) => acc + c.amount, 0);
-  const balanceCashIDR = 85000000 + idrInflow - idrOutflow;
-
-  const balanceCashIDRInNTD = balanceCashIDR * 0.17801; // approx NTD cents
-
-  // Inventory value calculated dynamically from the Chart of Accounts ledger
-  const acc1200 = coaAccounts.find(a => a.code === '1200');
-  const balanceInventory = acc1200 
-    ? Math.round(getAccountBalanceForPeriod(acc1200, coaAccounts, journals, null, null) * 100)
-    : 0;
-
-  const totalAssets = balanceCashNTD + balanceCashIDRInNTD + balanceInventory;
-
-  // Current Liabilities & equity calculated dynamically from the Hutang Komisi Reseller (2101) ledger
-  const acc2101 = coaAccounts.find(a => a.code === '2101');
-  const partnerAccountsPayable = acc2101 
-    ? Math.round(getAccountBalanceForPeriod(acc2101, coaAccounts, journals, null, null) * 100)
-    : 0;
-  const balanceEquity = totalAssets - partnerAccountsPayable; // Balancing equity
 
   // Add / Edit payroll record
   const handleSavePayroll = async (e: React.FormEvent) => {
@@ -615,52 +520,6 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
       setPartnerCategories([]);
     } catch (err) {
       console.error("Error adding partner", err);
-    }
-  };
-
-  // Settle partner payable payout
-  const handleSettlePartner = async (partner: BusinessPartner) => {
-    const amountToSettle = partnerAccountsPayable;
-
-    if (amountToSettle <= 0) {
-      return;
-    }
-
-    try {
-      const cfId = doc(collection(db, 'cashFlow')).id;
-      await setDoc(doc(db, 'cashFlow', cfId), {
-        id: cfId,
-        date: Timestamp.now(),
-        ledger: 'NTD',
-        direction: 'outflow',
-        category: 'partners_payout',
-        amount: amountToSettle,
-        amountNTD: amountToSettle,
-        fxRateUsed: 1,
-        refType: 'manual',
-        refId: partner.id,
-        description: `Payout Prive Settle Pembagian Profit Share bagi Partner ${partner.name}`,
-        createdAt: Timestamp.now()
-      } as CashFlowEntry);
-
-      // Record double entry Journal: Dr Hutang Komisi Reseller (2101) | Cr Cash:NTD (1101)
-      const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
-      await setDoc(doc(db, 'journalEntries', journalId), {
-        id: journalId,
-        date: Timestamp.now(),
-        description: `Settle Profit Share Partner - ${partner.name}`,
-        lines: [
-          { account: AUTO_ACCOUNTS.AP_PARTNERS?.name || 'Hutang Komisi Reseller', accountCode: AUTO_ACCOUNTS.AP_PARTNERS?.code || '2101', debit: amountToSettle, credit: 0 },
-          { account: AUTO_ACCOUNTS.CASH_NTD?.name || 'Cash:NTD', accountCode: AUTO_ACCOUNTS.CASH_NTD?.code || '1101', debit: 0, credit: amountToSettle }
-        ],
-        refType: 'manual',
-        refId: partner.id,
-        isAuto: true,
-        createdAt: Timestamp.now()
-      } as JournalEntry);
-
-    } catch (err) {
-      console.error("Error settling payout", err);
     }
   };
 

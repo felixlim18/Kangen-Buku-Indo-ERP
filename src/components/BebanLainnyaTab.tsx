@@ -6,6 +6,7 @@ import { formatNumber, cleanCommas } from '../lib/decimal-utils';
 import { AUTO_ACCOUNTS, ensureAutoAccountExists, getLiveAutoAccounts, AutoAccount } from '../lib/journalAuto';
 import { Receipt, X, Trash2, Edit2, Search, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { isPeriodClosed } from '../lib/period-closing-utils';
+import { getNextJournalId } from '../lib/journalUtils';
 import { formatDate } from '../lib/date-utils';
 
 // Categories mapping for UI
@@ -239,7 +240,8 @@ const BebanLainnyaTab: React.FC = () => {
       ];
 
       const journalData = {
-        date: formTanggal,
+        // Timestamp seperti jurnal lain (dulu string "YYYY-MM-DD")
+        date: Timestamp.fromDate(new Date(formTanggal)),
         description: `Beban Lain-lain (${CATEGORIES[formKategori as keyof typeof CATEGORIES].label}): ${formKeterangan}`,
         lines: journalLines,
         refType: 'beban_lainnya',
@@ -277,7 +279,8 @@ const BebanLainnyaTab: React.FC = () => {
         await batch.commit();
         showToast("Beban berhasil diperbarui.");
       } else {
-        const journalRef = doc(collection(db, 'journalEntries'));
+        // Nomor JU berurutan seperti jurnal lain (dulu ID acak Firestore)
+        const journalRef = doc(db, 'journalEntries', await getNextJournalId(formTanggal));
         batch.set(journalRef, {
           ...journalData,
           id: journalRef.id,

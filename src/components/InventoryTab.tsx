@@ -1121,7 +1121,11 @@ export const InventoryTab: React.FC = () => {
       const lastDayOfMonth = new Date(year, month, 0, 23, 59, 59);
 
       const batch = writeBatch(db);
-      const journalRef = doc(db, 'journalEntries', `ADJ-INV-${selectedMonth}`);
+      // Nomor JU baru per posting. Dulu ID tetap ADJ-INV-<bulan>: posting kedua di bulan yang sama menimpa
+      // penyesuaian pertama. refId tetap ADJ-INV-<bulan> supaya bisa dilacak per bulan.
+      const lastDayIso = `${selectedMonth}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`;
+      const adjJournalId = await getNextJournalId(lastDayIso);
+      const journalRef = doc(db, 'journalEntries', adjJournalId);
 
       const absDiffCents = Math.abs(diffCents);
 
@@ -1161,6 +1165,7 @@ export const InventoryTab: React.FC = () => {
       }
 
       const journalEntry = {
+        id: adjJournalId,
         date: Timestamp.fromDate(lastDayOfMonth),
         refId: `ADJ-INV-${selectedMonth}`,
         description: `Jurnal Penyesuaian Selisih Pembulatan Persediaan Fisik vs Ledger (${selectedMonth})`,
