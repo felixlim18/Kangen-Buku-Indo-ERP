@@ -96,7 +96,8 @@ const day = (t: any) => (t?.toDate ? t.toDate().toISOString().slice(0, 10) : Str
   console.log(`    Kas NTD: cashFlow ${n(cfNtd)} vs GL 1101 ${n(bal['1101'] || 0)} -> selisih ${n((bal['1101'] || 0) - cfNtd)}`);
 
   // 6. Tanggal jurnal aneh
-  const future = js.filter((j) => day(j.date) > '2026-10-23');
+  const today = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).slice(0, 10);
+  const future = js.filter((j) => day(j.date) > today && !String(j.refType).startsWith('amortization'));
   const old = js.filter((j) => day(j.date) < '2025-01-01');
   console.log(`\n[6] Jurnal bertanggal masa depan: ${future.length} ${future.slice(0, 5).map((j) => `${j._id}@${day(j.date)}`).join(' ')}; sebelum 2025: ${old.length}`);
   const noDate = js.filter((j) => !j.date);
