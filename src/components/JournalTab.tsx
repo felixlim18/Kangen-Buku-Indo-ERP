@@ -1,6 +1,7 @@
 import { getNextJournalId } from '../lib/journalUtils';
 import { formatDate } from '../lib/date-utils';
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSubmitLock } from '../lib/useSubmitLock';
 import { 
   collection, 
   onSnapshot, 
@@ -584,6 +585,7 @@ interface JournalTabProps {
 }
 
 export const JournalTab: React.FC<JournalTabProps> = ({ setTab }) => {
+  const submitLock = useSubmitLock(); // kunci klik ganda untuk aksi yang menulis jurnal
   const { profile } = useAuth();
   const [journals, setJournals] = useState<JournalEntry[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
@@ -1159,7 +1161,7 @@ export const JournalTab: React.FC<JournalTabProps> = ({ setTab }) => {
   };
 
   // Save/Submit Form
-  const handleSaveJournal = async (e: React.FormEvent) => {
+  const handleSaveJournal = submitLock('handleSaveJournal', async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
     setFormSuccess('');
@@ -1303,7 +1305,7 @@ export const JournalTab: React.FC<JournalTabProps> = ({ setTab }) => {
       handleFirestoreError(error, OperationType.WRITE, 'journalEntries');
       setFormError('Gagal menyimpan jurnal ke basis data.');
     }
-  };
+  });
 
   // Duplicate mockup action
   const handleDuplicateJournal = (entry: JournalEntry) => {

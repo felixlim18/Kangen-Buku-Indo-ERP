@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSubmitLock } from '../lib/useSubmitLock';
 import { collection, onSnapshot, query, addDoc, doc, updateDoc, deleteDoc, Timestamp, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { JournalEntry, JournalEntryLine } from '../types';
@@ -37,6 +38,7 @@ const formatNTD = (cents: number) => `NT$ ${(cents / 100).toLocaleString('en-US'
 const formatIDR = (val: number) => `Rp ${Math.round(val).toLocaleString('en-US')}`;
 
 const BebanLainnyaTab: React.FC = () => {
+  const submitLock = useSubmitLock(); // kunci klik ganda untuk aksi yang menulis jurnal
   const [entries, setEntries] = useState<BebanLainnyaEntry[]>([]);
   const [closedPeriods, setClosedPeriods] = useState<string[]>([]);
   const [coaAccounts, setCoaAccounts] = useState<{ code: string; name: string }[]>([]);
@@ -179,7 +181,7 @@ const BebanLainnyaTab: React.FC = () => {
     return parts.length > 1 ? `${intPart}.${parts.slice(1).join('').slice(0, 2)}` : intPart;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = submitLock('handleSubmit', async () => {
     if (!formTanggal || !formKeterangan.trim() || !formDibayarVia) {
       alert("Harap lengkapi semua field yang wajib.");
       return;
@@ -315,9 +317,9 @@ const BebanLainnyaTab: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  });
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = submitLock('handleDeleteConfirm', async () => {
     if (!deleteConfirm) return;
     const entry = entries.find(e => e.id === deleteConfirm.id);
     if (!entry) return;
@@ -341,7 +343,7 @@ const BebanLainnyaTab: React.FC = () => {
     } finally {
       setDeleteConfirm(null);
     }
-  };
+  });
 
   // Compute filtered list
   const filteredList = useMemo(() => {

@@ -1,6 +1,7 @@
 import { getNextJournalId } from '../lib/journalUtils';
 import { formatDate } from '../lib/date-utils';
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSubmitLock } from '../lib/useSubmitLock';
 import { 
   collection, 
   onSnapshot, 
@@ -59,6 +60,7 @@ interface BankKasTabProps {
 }
 
 export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
+  const submitLock = useSubmitLock(); // kunci klik ganda untuk aksi yang menulis jurnal
   const { profile } = useAuth();
   const isOwner = profile?.role === 'owner';
   const canAccessRevaluasi = isOwner || profile?.permissions?.['bank-kas.revaluasi'] !== false;
@@ -586,7 +588,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
   };
 
   // Handle Save Multi-Currency Transfer
-  const handleSaveTransfer = async (e: React.FormEvent) => {
+  const handleSaveTransfer = submitLock('handleSaveTransfer', async (e: React.FormEvent) => {
     e.preventDefault();
 
     const numFrom = parseFloat(amountFromInput.replace(/,/g, ''));
@@ -695,10 +697,10 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
     } finally {
       setSubmittingTransfer(false);
     }
-  };
+  });
 
   // Handle Post Monthly Revaluation Journal
-  const handlePostRevaluation = async () => {
+  const handlePostRevaluation = submitLock('handlePostRevaluation', async () => {
     const rate = parseFloat(closingRateInput);
     if (isNaN(rate) || rate <= 0) {
       alert('Masukkan kurs penutupan yang valid (misal 545).');
@@ -826,7 +828,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
       handleFirestoreError(err, OperationType.WRITE, 'journalEntries');
       setPostingRevaluation(false);
     }
-  };
+  });
 
   // Export Report to CSV
   const handleExportCSV = () => {

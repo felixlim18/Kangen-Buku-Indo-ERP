@@ -1,5 +1,6 @@
 import { getNextJournalId } from '../lib/journalUtils';
 import React, { useState, useEffect } from 'react';
+import { useSubmitLock } from '../lib/useSubmitLock';
 import { db } from '../lib/firebase';
 import { FALLBACK_NTD_PER_IDR, FALLBACK_NTD_PER_USD } from '../lib/exchangeRateConstants';
 import { 
@@ -78,7 +79,25 @@ const ButtonWithTooltip: React.FC<ButtonWithTooltipProps> = ({ onClick, title, c
   );
 };
 
+
+// Jurnal perlengkapan dulu dikenali dari awalan ID (JU-PL-…-buy, JU-PL-…-close-, JU-ADJ-PL-, JU-WO-PERLENGKAPAN-).
+// Sejak semua nomor jurnal diseragamkan ke JU+tanggal, ID itu tidak ada lagi: riwayat kosong dan "hapus semua"
+// melewatkan jurnalnya. Kenali juga dari refId (id pembelian / id barang) + deskripsi yang ditulis tab ini.
+const pjDesc = (j: any) => String(j?.description || '');
+const isPurchaseBuyJournal = (j: any) =>
+  (String(j?.id).startsWith('JU-PL-') && String(j.id).includes('-buy')) ||
+  (j?.refType === 'Expenses' && /^Pembelian - /.test(pjDesc(j)));
+const isPurchaseCloseJournal = (j: any, purchaseId: string) =>
+  String(j?.id).startsWith(`JU-PL-${purchaseId}-close-`) ||
+  (j?.refId === purchaseId && (String(j.id).includes('-close-') || /\*\*(Refund|Tutup & Catat Rugi)\*\*/.test(pjDesc(j))));
+const isItemAdjustmentJournal = (j: any, itemIds: Set<string>) =>
+  String(j?.id).startsWith('JU-ADJ-PL-') || String(j?.id).startsWith('JU-WO-PERLENGKAPAN-') ||
+  (itemIds.has(j?.refId) && (/^Penyesuaian - /.test(pjDesc(j)) || /\*\*Tutup & Catat Rugi\*\*/.test(pjDesc(j))));
+const isWriteOffJournal = (j: any) =>
+  String(j?.id).startsWith('JU-WO-PERLENGKAPAN-') || /\*\*Tutup & Catat Rugi\*\*/.test(pjDesc(j));
+
 export const PerlengkapanTab: React.FC = () => {
+  const submitLock = useSubmitLock(); // kunci klik ganda untuk aksi yang menulis jurnal
   const { user, profile } = useAuth();
   
   // Real-time Firestore Subscriptions
@@ -264,9 +283,7 @@ export const PerlengkapanTab: React.FC = () => {
     const list: any[] = [];
 
     // 1. Pembelian (from active receipt journals: JU-PL-[purchaseId]-buy)
-    const receiptJournals = journals.filter(
-      (j) => j.id.startsWith('JU-PL-') && j.id.includes('-buy')
-    );
+    const receiptJournals = journals.filter(isPurchaseBuyJournal);
 
     receiptJournals.forEach((j) => {
       const purchaseId = j.refId || j.id.split('-')[2];
@@ -340,7 +357,7 @@ export const PerlengkapanTab: React.FC = () => {
 
     closedPurchases.forEach((p) => {
       const closeJournal = journals.find(
-        (j) => j.id.startsWith(`JU-PL-${p.id}-close-`) || (j.refId === p.id && j.id.includes('-close-'))
+        (j) => isPurchaseCloseJournal(j, p.id)
       );
 
       let closeDate = p.updatedAt ? parseToDate(p.updatedAt) : parseToDate(p.date);
@@ -368,12 +385,11 @@ export const PerlengkapanTab: React.FC = () => {
     });
 
     // 3. Penyesuaian Stok & Write-Off (from journal entries starting with JU-ADJ-PL- or JU-WO-PERLENGKAPAN-)
-    const adjustmentJournals = journals.filter(
-      (j) => j.id.startsWith('JU-ADJ-PL-') || j.id.startsWith('JU-WO-PERLENGKAPAN-')
-    );
+    const itemIdSet = new Set<string>(items.map((it: any) => it.id));
+    const adjustmentJournals = journals.filter((j) => isItemAdjustmentJournal(j, itemIdSet));
 
     adjustmentJournals.forEach((j) => {
-      const isWriteOff = j.id.startsWith('JU-WO-PERLENGKAPAN-');
+      const isWriteOff = isWriteOffJournal(j);
       const isBulk = j.id.includes('-BULK-');
       let typeName = 'Penyesuaian Stok';
       if (isWriteOff) {
@@ -660,7 +676,7 @@ export const PerlengkapanTab: React.FC = () => {
   };
 
   // Submit Beli Perlengkapan Handler (Creates directly completed order with auto-journal & stock update)
-  const handleBeliPerlengkapan = async (e: React.FormEvent) => {
+  const handleBeliPerlengkapan = submitLock('handleBeliPerlengkapan', async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCategoryForPurchase || !itemNameInput.trim()) return;
 
@@ -786,7 +802,7 @@ export const PerlengkapanTab: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  });
 
   // Terima / Accept Purchase order (Opens partial receipt modal)
   const handleAcceptPurchase = (purchase: any) => {
@@ -801,7 +817,7 @@ export const PerlengkapanTab: React.FC = () => {
   };
 
   // Confirm Receive Goods (Partial or Full)
-  const handleConfirmReceiveGoods = async (e: React.FormEvent) => {
+  const handleConfirmReceiveGoods = submitLock('handleConfirmReceiveGoods', async (e: React.FormEvent) => {
     e.preventDefault();
     if (!receivingPurchase) return;
 
@@ -906,7 +922,7 @@ export const PerlengkapanTab: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  });
 
   // Open Close PO / Tutup Sisa Modal
   const handleOpenClosePurchase = (purchase: any) => {
@@ -916,7 +932,7 @@ export const PerlengkapanTab: React.FC = () => {
   };
 
   // Confirm Tutup Sisa PO
-  const handleConfirmClosePurchase = async (e: React.FormEvent) => {
+  const handleConfirmClosePurchase = submitLock('handleConfirmClosePurchase', async (e: React.FormEvent) => {
     e.preventDefault();
     if (!closingPurchase) return;
 
@@ -1062,10 +1078,10 @@ export const PerlengkapanTab: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  });
 
   // Cancel / Batalkan Purchase order
-  const handleCancelPurchase = async (purchase: any) => {
+  const handleCancelPurchase = submitLock('handleCancelPurchase', async (purchase: any) => {
     setSubmitting(true);
     try {
       // 1. Fetch latest purchase document to see its status, categoryId, itemName, receipts, and dates
@@ -1259,7 +1275,7 @@ export const PerlengkapanTab: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  });
 
   // Delete all transaction history from database
   const handleDeleteAllHistory = async () => {
@@ -1289,7 +1305,9 @@ export const PerlengkapanTab: React.FC = () => {
 
       // 2. Delete all matching journal entries
       const listToDel = journals.filter(
-        (j) => j.id.startsWith('JU-PL-') || j.id.startsWith('JU-WO-PERLENGKAPAN-') || j.id.startsWith('JU-ADJ-PL-')
+        (j) => String(j.id).startsWith('JU-PL-') || isPurchaseBuyJournal(j) ||
+          purchases.some((p) => isPurchaseCloseJournal(j, p.id)) ||
+          isItemAdjustmentJournal(j, new Set<string>(items.map((it: any) => it.id)))
       );
       listToDel.forEach((j) => {
         batch.delete(doc(db, 'journalEntries', j.id));
@@ -1317,7 +1335,7 @@ export const PerlengkapanTab: React.FC = () => {
 
   // Reverse receipt (Rollback Diterima or Diterima Sebagian -> Pending)
   // If receiptId is provided, only reverse that specific receipt. Otherwise, reverse the whole purchase receipts.
-  const handleReversePurchase = async (purchase: any, receiptId?: string) => {
+  const handleReversePurchase = submitLock('handleReversePurchase', async (purchase: any, receiptId?: string) => {
     setSubmitting(true);
     try {
       // 1. Fetch latest purchase document to see its status, categoryId, itemName, receipts, and buy date
@@ -1613,10 +1631,10 @@ export const PerlengkapanTab: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  });
 
   // Reverse "Tutup Sisa" action on purchase order
-  const handleReverseClosePurchase = async (purchase: any) => {
+  const handleReverseClosePurchase = submitLock('handleReverseClosePurchase', async (purchase: any) => {
     // Determine close date to verify closed period
     let closeDate = purchase.updatedAt;
     const closeJournal = journals.find(
@@ -1681,10 +1699,10 @@ export const PerlengkapanTab: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  });
 
   // Reverse Stock Adjustment
-  const handleReverseAdjustment = async (journalId: string) => {
+  const handleReverseAdjustment = submitLock('handleReverseAdjustment', async (journalId: string) => {
     setSubmitting(true);
     try {
       // 1. Fetch the journal entry document to read its metadata
@@ -1727,7 +1745,7 @@ export const PerlengkapanTab: React.FC = () => {
       );
       const adjSnap = await getDocs(adjQuery);
       const latestAdjDocs = adjSnap.docs.filter(
-        d => d.id.startsWith('JU-ADJ-PL-') || d.id.startsWith('JU-WO-PERLENGKAPAN-')
+        d => isItemAdjustmentJournal({ id: d.id, ...d.data() }, new Set([itemId]))
       );
 
       // Execute transaction for strict reads-before-writes
@@ -1793,7 +1811,7 @@ export const PerlengkapanTab: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  });
 
   // Write-Off / Tutup & Catat Rugi on item stock
   const handleWriteOffItem = (item: any) => {
@@ -1882,7 +1900,7 @@ export const PerlengkapanTab: React.FC = () => {
   };
 
   // Confirm Single Item Stock Adjustment (Redesign)
-  const handleConfirmSingleAdjustment = async (e: React.FormEvent) => {
+  const handleConfirmSingleAdjustment = submitLock('handleConfirmSingleAdjustment', async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adjustingItem) return;
 
@@ -2008,10 +2026,10 @@ export const PerlengkapanTab: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  });
 
   // Confirm Bulk Item Stock Adjustment (Redesign)
-  const handleConfirmBulkAdjustment = async (e: React.FormEvent) => {
+  const handleConfirmBulkAdjustment = submitLock('handleConfirmBulkAdjustment', async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (isPeriodClosed(bulkAdjustDate, closedPeriods)) {
@@ -2128,7 +2146,7 @@ export const PerlengkapanTab: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  };
+  });
 
   if (loading) {
     return (
@@ -3619,7 +3637,7 @@ export const PerlengkapanTab: React.FC = () => {
                         if (!itemId) return false;
 
                         const itemAdjs = journals.filter(j => 
-                          (j.id.startsWith('JU-ADJ-PL-') || j.id.startsWith('JU-WO-PERLENGKAPAN-')) &&
+                          isItemAdjustmentJournal(j, new Set([itemId])) &&
                           (j.refId === itemId || j.id.includes(itemId))
                         );
 
