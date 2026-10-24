@@ -46,10 +46,12 @@ import {
 } from './decimal-utils';
 
 /**
- * Atomic counter for order formatting #S26061301 or similar
+ * Nomor PO POYYMMDDNN. Tanggalnya WAJIB tanggal pembelian, bukan tanggal input: sanitizePurchaseOrders
+ * memberi nomor ulang setiap PO yang tanggal kodenya beda dengan tanggal pembelian, dan nomor ulang itu
+ * tersimpan saat PO diedit -> jurnal "Pemesanan Barang" lama (kode asli) tertinggal dan tercatat ganda.
  */
-export async function generateSystemPoNumber(): Promise<string> {
-  const now = new Date();
+export async function generateSystemPoNumber(purchaseDate?: Date): Promise<string> {
+  const now = purchaseDate && !isNaN(purchaseDate.getTime()) ? purchaseDate : new Date();
   const yy = String(now.getFullYear()).slice(-2);
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
@@ -59,8 +61,7 @@ export async function generateSystemPoNumber(): Promise<string> {
   try {
     const counterRef = doc(db, 'counters', counterId);
     let nextValue = 1;
-    
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+
     await runTransaction(db, async (transaction) => {
       const counterSnap = await transaction.get(counterRef);
       if (counterSnap.exists()) {

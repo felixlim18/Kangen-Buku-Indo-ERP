@@ -3046,9 +3046,9 @@ export const PurchasesTab = () => {
       if (editingPoId) {
         poId = editingPoId;
         existingPo = purchaseOrders.find(p => p.id === editingPoId);
-        sysPoCode = existingPo.purchaseCode || await generateSystemPoNumber();
+        sysPoCode = existingPo.purchaseCode || await generateSystemPoNumber(new Date(poDate));
       } else {
-        sysPoCode = await generateSystemPoNumber();
+        sysPoCode = await generateSystemPoNumber(new Date(poDate));
       }
 
       const poRef = doc(db, 'purchaseOrders', poId);
@@ -3252,12 +3252,19 @@ export const PurchasesTab = () => {
           await ensureAutoAccountExists(cashAcc);
         }
 
-        // Delete previous creation journal if it exists (so we don't duplicate on edit)
+        // Delete previous creation journal if it exists (so we don't duplicate on edit).
+        // Cari juga lewat kode yang TERSIMPAN di database: kode di layar bisa hasil nomor ulang
+        // sanitizePurchaseOrders, sehingga jurnal lama (kode asli) dulu tidak ketemu dan tercatat ganda.
         if (editingPoId) {
-          const oldJrnSnap1 = await getDocs(query(collection(db, 'journalEntries'), where('refId', '==', sysPoCode)));
-          oldJrnSnap1.forEach(d => {
-            if (d.data().description === 'Pemesanan Barang') batch.delete(d.ref);
-          });
+          const storedSnap = await getDoc(doc(db, 'purchaseOrders', poId));
+          const storedCode = storedSnap.exists() ? storedSnap.data().purchaseCode : null;
+          const oldCodes = [...new Set([sysPoCode, storedCode].filter(Boolean))];
+          for (const code of oldCodes) {
+            const oldJrnSnap1 = await getDocs(query(collection(db, 'journalEntries'), where('refId', '==', code)));
+            oldJrnSnap1.forEach(d => {
+              if (d.data().description === 'Pemesanan Barang') batch.delete(d.ref);
+            });
+          }
           const oldJrnSnap2 = await getDocs(query(collection(db, 'journalEntries'), where('refId', '==', poId)));
           oldJrnSnap2.forEach(d => {
             if (d.data().description === 'Pemesanan Barang') batch.delete(d.ref);
@@ -3286,6 +3293,7 @@ export const PurchasesTab = () => {
           description: 'Pemesanan Barang',
           refType: 'System',
           refId: sysPoCode,
+          sourceId: poId, // tautan tetap ke dokumen PO walaupun kodenya berganti
           createdAt: existingPo ? (existingPo.createdAt || Timestamp.now()) : Timestamp.now(),
           lines: [
             {
