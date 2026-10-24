@@ -5,7 +5,6 @@ import {
   onSnapshot, 
   setDoc, 
   getDoc, 
-  getDocs, 
   updateDoc, 
   deleteDoc, 
   writeBatch, 
@@ -84,6 +83,7 @@ interface FreightInRecord {
   exchangeRate?: number;
   docNo?: string;
   createdAt?: any;
+  inputAt?: any;
   totalHargaPengiriman?: number;
   totalHargaPengirimanNTD?: number;
   isCapitalized?: boolean;
@@ -487,50 +487,41 @@ export default function FreightInTab() {
   };
 
   // 1. Initial Listeners
+  // Realtime: freight baru / hasil edit / PO yang di-link langsung tampil tanpa refresh halaman
+  // (dulu getDocs sekali saat halaman dibuka, sehingga input baru baru muncul setelah refresh).
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [freightSnap, journalSnap, poSnap, coaSnap] = await Promise.all([
-          getDocs(collection(db, 'freightIn')),
-          getDocs(collection(db, 'journalEntries')),
-          getDocs(collection(db, 'purchaseOrders')),
-          getDocs(collection(db, 'coa'))
-        ]);
-        
-        // Freight In
-        const list = [];
-        freightSnap.forEach(d => list.push({ id: d.id, ...d.data() }));
-        list.sort((a, b) => {
-          const dateA = a.date?.seconds || 0;
-          const dateB = b.date?.seconds || 0;
-          return dateB - dateA;
-        });
-        setFreightList(list);
-
-        // Journal Entries
-        const jList = [];
-        journalSnap.forEach(d => jList.push({ id: d.id, ...d.data() }));
-        setJournalEntries(jList);
-
-        // Purchase Orders
-        const poList = [];
-        poSnap.forEach((d) => poList.push({ id: d.id, ...d.data() }));
-        setPurchaseOrders(sanitizePurchaseOrders(poList));
-        
-        // COA
-        const cList = [];
-        coaSnap.forEach((d) => cList.push({ id: d.id, ...d.data() }));
-        // setAccounts(cList);
-        setLoading(false);
-      } catch (err) {
-        if (String(err).includes('quota') || String(err).includes('Quota')) {
-           console.warn('Quota exceeded while fetching FreightInTab data');
-        } else {
-           console.error('Error fetching data for FreightInTab:', err);
-        }
+    const onError = (name: string) => (err: any) => {
+      if (String(err).includes('quota') || String(err).includes('Quota')) {
+        console.warn(`Quota exceeded while listening to ${name} (FreightInTab)`);
+      } else {
+        console.error(`Error listening to ${name} (FreightInTab):`, err);
       }
     };
-    loadData();
+
+    const unsubFreight = onSnapshot(collection(db, 'freightIn'), (snap) => {
+      const list: any[] = [];
+      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+      setFreightList(list);
+      setLoading(false);
+    }, onError('freightIn'));
+
+    const unsubJournals = onSnapshot(collection(db, 'journalEntries'), (snap) => {
+      const jList: any[] = [];
+      snap.forEach(d => jList.push({ id: d.id, ...d.data() }));
+      setJournalEntries(jList);
+    }, onError('journalEntries'));
+
+    const unsubPOs = onSnapshot(collection(db, 'purchaseOrders'), (snap) => {
+      const poList: any[] = [];
+      snap.forEach((d) => poList.push({ id: d.id, ...d.data() }));
+      setPurchaseOrders(sanitizePurchaseOrders(poList));
+    }, onError('purchaseOrders'));
+
+    return () => {
+      unsubFreight();
+      unsubJournals();
+      unsubPOs();
+    };
   }, []);
 
   // Listen for search filter from Journal Tab and dismiss copy toast
@@ -685,6 +676,8 @@ export default function FreightInTab() {
           exchangeRate: exchangeRate,
           docNo: newDocNo,
           createdAt: journalDateTimestamp,
+          // Waktu input sebenarnya (createdAt = tanggal freight yang dipilih, bisa mundur); dipakai mengurutkan daftar
+          inputAt: Timestamp.now(),
           status: 'sudah_dijurnal',
           totalHargaPengiriman: totalHargaPengiriman,
           totalHargaPengirimanNTD: totalHargaPengirimanNTD,
@@ -1315,8 +1308,9 @@ export default function FreightInTab() {
       }
       return 0;
     };
-    const timeA = getTime(a.createdAt);
-    const timeB = getTime(b.createdAt);
+    // Input terbaru paling atas. Data lama belum punya inputAt -> pakai tanggal freight (createdAt).
+    const timeA = getTime(a.inputAt || a.createdAt);
+    const timeB = getTime(b.inputAt || b.createdAt);
     if (timeA !== timeB) return timeB - timeA;
     return b.freightCode.localeCompare(a.freightCode);
   });
