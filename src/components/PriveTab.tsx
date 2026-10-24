@@ -15,7 +15,7 @@ import {
 import { Prive, SetoranModal, CoaAccount, JournalEntry } from '../types';
 import { formatNTD, convertIdrToNtdCents, calculateNtdCentsFromIdr, formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
 import { isPeriodClosed, formatPeriodName, fetchCurrentExchangeRate } from '../lib/period-closing-utils';
-import { formatDate } from '../lib/date-utils';
+import { formatDate, toLocalDateStr } from '../lib/date-utils';
 
 function parseToDate(val: any): Date {
   if (!val) return new Date();
@@ -79,7 +79,7 @@ export const PriveTab: React.FC = () => {
   
   const [formDate, setFormDate] = useState(() => {
     const d = new Date();
-    return d.toISOString().split('T')[0];
+    return toLocalDateStr(d);
   });
   const [formAmount, setFormAmount] = useState('');
   const [formCurrency, setFormCurrency] = useState<'NTD' | 'IDR'>('NTD');
@@ -180,7 +180,7 @@ export const PriveTab: React.FC = () => {
     setErrorMsg(null);
     setPageErrorMsg(null);
     setEditingRecordId(null);
-    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormDate(toLocalDateStr());
     setFormAmount('');
     setFormCurrency('NTD');
     setFormCashAccount('1101');
@@ -195,7 +195,7 @@ export const PriveTab: React.FC = () => {
     setErrorMsg(null);
     setPageErrorMsg(null);
     setEditingRecordId(record.id);
-    const dateStr = parseToDate(record.date).toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(parseToDate(record.date));
     setFormDate(dateStr);
     setFormAmount(record.amount.toString());
     setFormCurrency(record.currency);
@@ -275,7 +275,7 @@ export const PriveTab: React.FC = () => {
       }
       if (!journalId) {
         const tgl = formDate ? new Date(formDate) : new Date();
-        const dateStr = tgl.toISOString().split('T')[0];
+        const dateStr = toLocalDateStr(tgl);
         journalId = await getNextJournalId(dateStr);
       }
 

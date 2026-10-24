@@ -1,5 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
-import { formatDate } from '../lib/date-utils';
+import { formatDate, toLocalDateStr } from '../lib/date-utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSubmitLock } from '../lib/useSubmitLock';
 import { 
@@ -688,7 +688,7 @@ export const JournalTab: React.FC<JournalTabProps> = ({ setTab }) => {
   };
 
   // Form Fields - General Info
-  const [entryDate, setEntryDate] = useState(new Date().toISOString().substring(0, 10));
+  const [entryDate, setEntryDate] = useState(toLocalDateStr());
   const [description, setDescription] = useState('');
   const [refId, setRefId] = useState('');
   const [refType, setRefType] = useState('Manual');
@@ -1125,7 +1125,7 @@ export const JournalTab: React.FC<JournalTabProps> = ({ setTab }) => {
 
     setEditingId(entry.id);
     const dateObj = entry.date?.seconds ? new Date(entry.date.seconds * 1000) : new Date(entry.date);
-    setEntryDate(isNaN(dateObj.getTime()) ? new Date().toISOString().substring(0, 10) : dateObj.toISOString().substring(0, 10));
+    setEntryDate(isNaN(dateObj.getTime()) ? toLocalDateStr() : toLocalDateStr(dateObj));
     setDescription(entry.description);
     
     // Determine currency

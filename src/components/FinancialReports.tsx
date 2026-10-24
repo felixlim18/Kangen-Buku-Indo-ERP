@@ -812,7 +812,20 @@ export const NeracaReport: React.FC<ReportProps> = ({ coaAccounts, journals }) =
       <DiagnosticPanel 
         modalAkhir={reportData.modalEkuitas}
         neracaModal={reportData.modalEkuitas}
-        saldoAkhirKas={0}
+        saldoAkhirKas={(() => {
+          // Jalur hitung terpisah dari saldo akun: jumlah mutasi semua akun kas (anak 1100) sampai tanggal neraca,
+          // sama seperti Laporan Arus Kas. Dulu ditulis 0 sehingga tes ini selalu gagal.
+          const cashParent = coaAccounts.find(a => a.code === '1100')?.name;
+          const cashCodes = new Set(coaAccounts.filter(a => a.code !== '1100' && ((cashParent && a.parentAccount === cashParent) || a.code === '1101' || a.code === '1102')).map(a => a.code));
+          const endMs = endDate.getTime();
+          let cents = 0;
+          for (const j of journals) {
+            const d = parseToDate(j.date);
+            if (!d || d.getTime() > endMs) continue;
+            for (const l of (j.lines || [])) if (cashCodes.has(l.accountCode)) cents += (l.debit || 0) - (l.credit || 0);
+          }
+          return cents / 100;
+        })()}
         balance1100={(() => {
           const acc1100 = coaAccounts.find(a => a.code === '1100');
           return acc1100 ? getAccountBalanceForPeriod(acc1100, coaAccounts, journals, null, endDate) : 0;
@@ -1342,7 +1355,12 @@ export const LabaRugiReport: React.FC<ReportProps> = ({ coaAccounts, journals })
     const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
     const endDate = new Date(parseInt(year), parseInt(month), 0);
 
-    const revenueAccounts = coaAccounts.filter(a => a.type === 'Revenue' || a.code?.startsWith('4'));
+    const allRevenueAccounts = coaAccounts.filter(a => a.type === 'Revenue' || a.code?.startsWith('4'));
+    // Pendapatan di luar usaha pokok (4104 Pendapatan Lain-lain, 42xx Laba/Rugi Selisih Kurs) tidak termasuk omset
+    // penjualan; disajikan terpisah di bawah laba usaha. Laba bersih tidak berubah.
+    const isOtherIncome = (a: CoaAccount) => a.code === '4104' || a.code?.startsWith('42') || a.subType?.toLowerCase() === 'pendapatan lain-lain';
+    const revenueAccounts = allRevenueAccounts.filter(a => !isOtherIncome(a));
+    const otherIncomeAccounts = allRevenueAccounts.filter(isOtherIncome);
     const expenseAccounts = coaAccounts.filter(a => a.type === 'Expenses' || a.code?.startsWith('5'));
 
     // COGS vs OpEx classification
@@ -1414,12 +1432,17 @@ export const LabaRugiReport: React.FC<ReportProps> = ({ coaAccounts, journals })
     const opex = opexData.items;
     const totalOpEx = opexData.total;
 
-    const netIncome = grossProfit - totalOpEx;
+    const otherIncomeData = processCategory(otherIncomeAccounts);
+    const operatingIncome = grossProfit - totalOpEx;
+    const netIncome = operatingIncome + otherIncomeData.total;
 
     return {
       revenues,
       cogs,
       opex,
+      otherIncome: otherIncomeData.items,
+      totalOtherIncome: otherIncomeData.total,
+      operatingIncome,
       totalRevenue,
       totalCOGS,
       grossProfit,
@@ -1579,8 +1602,34 @@ export const LabaRugiReport: React.FC<ReportProps> = ({ coaAccounts, journals })
                 <span className="col-span-8 italic pl-2">Total Biaya Operasional (OpEx)</span>
                 <span className="col-span-4 text-right font-numeric text-rust dark:text-rose-450">-{formatNTD(Math.round(reportData.totalOpEx * 100))}</span>
               </div>
+              <div className="grid grid-cols-12 items-center mt-1 p-[11px_14px] border-[1.5px] border-ink dark:border-neutral-750 rounded-lg text-sm font-semibold text-ink dark:text-neutral-100">
+                <span className="col-span-8 italic pl-1">Laba Usaha (Operating Income)</span>
+                <span className="col-span-4 text-right font-numeric font-bold">{formatNTD(Math.round(reportData.operatingIncome * 100))}</span>
+              </div>
             </div>
           </div>
+
+          {/* 4. Pendapatan / Beban Lain-lain (di luar usaha pokok) */}
+          {reportData.otherIncome.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2.5 mb-2 pl-1">
+                <div className="w-5 h-5 rounded-md bg-gold text-white flex items-center justify-center font-bold text-[10px] shrink-0">4</div>
+                <span className="font-serif font-semibold text-base text-gold tracking-[0.2px]">Pendapatan / Beban Lain-lain</span>
+              </div>
+              <div className="space-y-0.5 pl-7.5">
+                {reportData.otherIncome.map((item: any, idx: number) => (
+                  <div key={`${item.id || item.code}-${idx}`} className="grid grid-cols-12 py-2.5 border-b border-line-soft dark:border-neutral-805 text-sm items-center text-ink dark:text-neutral-200">
+                    <div className="col-span-8"><span>{item.code} · {item.name}</span></div>
+                    <span className="col-span-4 text-right font-numeric font-medium">{formatNTD(Math.round(item.balance * 100))}</span>
+                  </div>
+                ))}
+                <div className="grid grid-cols-12 py-3.5 font-semibold text-sm text-ink dark:text-neutral-100 items-center">
+                  <span className="col-span-8 italic pl-2">Total Pendapatan / Beban Lain-lain</span>
+                  <span className="col-span-4 text-right font-numeric">{formatNTD(Math.round(reportData.totalOtherIncome * 100))}</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Hero Total - Net Income */}
           <div className="mt-8 grid grid-cols-12 items-center p-5 rounded-2xl bg-gradient-to-br from-navy to-[#14263e] text-white">

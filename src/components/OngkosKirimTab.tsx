@@ -1,5 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
-import { formatDate } from '../lib/date-utils';
+import { formatDate, toLocalDateStr } from '../lib/date-utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
@@ -362,7 +362,7 @@ export const OngkosKirimTab: React.FC<OngkosKirimTabProps> = ({ setTab }) => {
             const shortId = d.id.slice(-3).toUpperCase();
             const docNo = `OK${yy}${mm}${dd}${shortId}`;
 
-            const orderDateStr = so.orderDate ? (typeof so.orderDate === 'string' ? so.orderDate.slice(0, 10) : new Date().toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10);
+            const orderDateStr = so.orderDate ? (typeof so.orderDate === 'string' ? so.orderDate.slice(0, 10) : toLocalDateStr()) : toLocalDateStr();
             const nominalVal = 0;
             const nominalNTDCents = 0;
 
@@ -690,7 +690,7 @@ export const OngkosKirimTab: React.FC<OngkosKirimTabProps> = ({ setTab }) => {
     }
 
     setSelectedEntryForPay(entry);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr();
     setPayTanggal(entry.tanggal || today);
     setPayAkun(entry.akun || (coaCashAccounts.length > 0 ? `${coaCashAccounts[0].code} - ${coaCashAccounts[0].name}` : '1101 - Cash: NTD'));
     setPayNominalRaw(entry.nominal && entry.nominal > 0 && (entry.isUserEdited || entry.status === 'Dibayar' || !entry.isAuto) ? formatNumber(entry.nominal) : '');
@@ -730,7 +730,7 @@ export const OngkosKirimTab: React.FC<OngkosKirimTabProps> = ({ setTab }) => {
       await ensureAutoAccountExists(cashAcc);
 
       const nominalNTDCents = Math.round(nominalVal * 100);
-      const tglForJrn = new Date().toISOString().split('T')[0];
+      const tglForJrn = toLocalDateStr();
       const journalId = await getNextJournalId(tglForJrn);
       const batch = writeBatch(db);
 

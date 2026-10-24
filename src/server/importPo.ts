@@ -2,6 +2,9 @@ import { FALLBACK_NTD_PER_IDR, FALLBACK_NTD_PER_USD } from '../lib/exchangeRateC
 import { Request, Response } from 'express';
 import { getDb, collection, getDocs, query, where, doc, writeBatch, Timestamp, getDoc, getNextJournalId } from './firestore-admin';
 
+// Tanggal kalender Taipei (server bisa berjalan di UTC; toISOString() memundurkan transaksi 00:00–07:59 sehari).
+const taipeiDateStr = (d: Date = new Date()) => d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
+
 // Firestore lewat firebase-admin (lihat firestore-admin.ts); dulu SDK klien tanpa login.
 const db = getDb();
 
@@ -529,7 +532,7 @@ export const importPoHandler = async (req: Request, res: Response): Promise<void
        // Creation Journal (Pesanan Pembelian)
        // Debit Inventory in Transit, Credit Kas/Utang
        const isCredit = po.paymentStatus === 'unpaid';
-       const purchaseDateStr = po.purchaseDate.toDate ? po.purchaseDate.toDate().toISOString().split('T')[0] : new Date(po.purchaseDate).toISOString().split('T')[0];
+       const purchaseDateStr = po.purchaseDate.toDate ? taipeiDateStr(po.purchaseDate.toDate()) : taipeiDateStr(new Date(po.purchaseDate));
        const journalId = await getNextJournalId(purchaseDateStr);
        
        let cashAccCode = '1101';
@@ -669,7 +672,7 @@ export const importPoHandler = async (req: Request, res: Response): Promise<void
       }
 
       // Receive Journal
-      const recJournalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+      const recJournalId = await getNextJournalId(taipeiDateStr());
       operations.push({
          type: 'set',
          ref: doc(db, 'journalEntries', recJournalId),

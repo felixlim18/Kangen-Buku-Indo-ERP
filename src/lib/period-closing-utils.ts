@@ -156,10 +156,18 @@ export async function fetchCurrentExchangeRate(): Promise<number> {
  * Scan all journal entries up to the end of the period and calculate FX adjustments.
  * PeriodId: YYYY-MM
  */
+/**
+ * Pos moneter dalam Rupiah yang direvaluasi saat tutup periode (IAS 21): kas Rupiah dan utang dalam Rupiah.
+ * Persediaan, freight, biaya dibayar dimuka, modal, pendapatan & beban adalah pos non-moneter / sudah terealisasi
+ * dan tetap memakai kurs historis.
+ */
+export const FX_MONETARY_ACCOUNT_CODES = ['1102', '2100'];
+
 export function calculateFxRevaluations(
   journalEntries: any[],
   latestExchangeRate: number,
-  periodId: string
+  periodId: string,
+  monetaryCodes: string[] = FX_MONETARY_ACCOUNT_CODES
 ) {
   // 1. Filter entries up to the end of the period
   // We include any entries that fall in or before the closing month.
@@ -191,11 +199,16 @@ export function calculateFxRevaluations(
 
   filteredEntries.forEach(entry => {
     if (!entry.lines) return;
+    // Revaluasi sebelumnya (tutup periode / Revaluasi Kurs Bank & Kas) sudah mengubah nilai NT$ porsi Rupiah. Ikut
+    // dihitung supaya penyesuaian bulan berikutnya hanya selisih baru, bukan dihitung ulang dari kurs historis (dobel).
+    const isRevaluation = entry.isFxRevaluation === true || entry.refType === 'Revaluasi Kurs';
     entry.lines.forEach((line: any) => {
-      const accName = line.account;
+      const code = String(line.accountCode || '');
+      if (!monetaryCodes.includes(code)) return;
+      const accName = code;
       if (!accountBalances[accName]) {
         accountBalances[accName] = {
-          account: accName,
+          account: line.account || accName,
           accountCode: line.accountCode || '',
           totalNTDDebit: 0,
           totalNTDCredit: 0,
@@ -215,6 +228,9 @@ export function calculateFxRevaluations(
         b.hasIdrPostings = true;
         b.totalIDRDebit += line.originalDebitIDR || 0;
         b.totalIDRCredit += line.originalCreditIDR || 0;
+        b.totalNTDFromIDRDebit += line.debit || 0;
+        b.totalNTDFromIDRCredit += line.credit || 0;
+      } else if (isRevaluation) {
         b.totalNTDFromIDRDebit += line.debit || 0;
         b.totalNTDFromIDRCredit += line.credit || 0;
       }

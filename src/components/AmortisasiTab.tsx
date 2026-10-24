@@ -1,4 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
+import { toLocalDateStr } from '../lib/date-utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
@@ -61,10 +62,20 @@ function addMonthsToPeriod(startYYYYMMDD: string, monthsToAdd: number): string {
   return `${y}-${m}`;
 }
 
+/** Nominal (sen) amortisasi bulan ke-n. Bulan terakhir mengambil sisa supaya total = nilai perolehan persis. */
+function amortizationAmountFor(item: AmortizationItem, monthNumber: number): number {
+  const total = item.nilaiPerolehanNTD || 0;
+  const life = item.usefulLifeMonths || 12;
+  const monthly = Math.round(total / life);
+  if (monthNumber < life) return monthly;
+  const before = (item.postings || []).filter((p) => p.monthNumber < monthNumber).reduce((a, p) => a + (p.amountNTD || 0), 0);
+  return total - before;
+}
+
 function deriveItemStatus(item: AmortizationItem): 'Berjalan' | 'Selesai' | 'Belum Dimulai' {
   const postedCount = item.postings?.length || 0;
   if (postedCount >= item.usefulLifeMonths) return 'Selesai';
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = toLocalDateStr();
   if (postedCount === 0 && item.startDate > todayStr) return 'Belum Dimulai';
   return 'Berjalan';
 }
@@ -115,8 +126,8 @@ export const AmortisasiTab: React.FC = () => {
   const [formCurrency, setFormCurrency] = useState<'NTD' | 'IDR'>('NTD');
   const [formFxRate, setFormFxRate] = useState('0.00205'); // NTD per IDR
   const [formMasa, setFormMasa] = useState('12');
-  const [formTanggal, setFormTanggal] = useState(() => new Date().toISOString().slice(0, 10));
-  const [formMulai, setFormMulai] = useState(() => new Date().toISOString().slice(0, 10));
+  const [formTanggal, setFormTanggal] = useState(() => toLocalDateStr());
+  const [formMulai, setFormMulai] = useState(() => toLocalDateStr());
   const [formBayarVia, setFormBayarVia] = useState('1101');
   const [formPrepaidAccount, setFormPrepaidAccount] = useState('1400');
   const [formExpenseAccount, setFormExpenseAccount] = useState('5240');
@@ -294,7 +305,8 @@ export const AmortisasiTab: React.FC = () => {
       tMonths += useful;
       pMonths += posted;
 
-      if (posted < useful && deriveItemStatus(it) === 'Berjalan') {
+      // Hanya periode berikutnya yang tanggal jurnalnya (tgl 28) sudah tiba
+      if (posted < useful && deriveItemStatus(it) === 'Berjalan' && `${addMonthsToPeriod(it.startDate, posted)}-28` <= toLocalDateStr()) {
         due++;
       }
     });
@@ -369,10 +381,10 @@ export const AmortisasiTab: React.FC = () => {
       const paidAcc = coaAccounts.find((a) => a.code === formBayarVia) || { code: formBayarVia, name: formBayarVia === '1102' ? 'Cash: Rupiah' : 'Cash: NTD' };
       const prepaidAcc = coaAccounts.find((a) => a.code === formPrepaidAccount) || { code: formPrepaidAccount, name: 'Biaya Dibayar Dimuka' };
 
-      const dateStr = formTanggal || new Date().toISOString().split('T')[0];
+      const dateStr = formTanggal || toLocalDateStr();
       
       // Nomor jurnal mengikuti tanggal perolehan (formTanggal sudah YYYY-MM-DD)
-      const journalId = await getNextJournalId(formTanggal || new Date().toISOString().split('T')[0]);
+      const journalId = await getNextJournalId(formTanggal || toLocalDateStr());
       const journalDesc = `${docCode}\nBiaya Dibayar Dimuka - ${formName.trim()}`;
 
       // Create Acquisition Journal
@@ -450,9 +462,15 @@ export const AmortisasiTab: React.FC = () => {
       return;
     }
 
-    const monthlyAmountNTD = Math.round(item.nilaiPerolehanNTD / item.usefulLifeMonths);
-    
-          
+    // Jurnal amortisasi bertanggal 28 periodenya. Memposting lebih awal membuat jurnal bertanggal masa depan,
+    // sehingga Neraca (per hari ini) dan Laba Rugi / Perubahan Modal (sebulan penuh) menunjukkan angka berbeda.
+    if (`${period}-28` > toLocalDateStr()) {
+      showToast(`Amortisasi periode ${period} baru bisa dijurnal mulai ${period.replace('-', '/')}/28.`);
+      return;
+    }
+
+    const monthlyAmountNTD = amortizationAmountFor(item, monthNumber);
+
     // Nomor jurnal mengikuti tanggal jurnalnya (tanggal 28 periode amortisasi)
     const journalId = await getNextJournalId(`${period}-28`);
     const journalDesc = `${item.docCode}\nAmortisasi Bulanan - Periode ${period}`;
@@ -581,8 +599,9 @@ export const AmortisasiTab: React.FC = () => {
             const period = addMonthsToPeriod(item.startDate, nextMonthNum - 1);
 
             if (isPeriodClosed(period, closedPeriods)) continue;
+            if (`${period}-28` > toLocalDateStr()) continue; // belum jatuh tempo (lihat handlePostMonthly)
 
-            const monthlyAmountNTD = Math.round(item.nilaiPerolehanNTD / item.usefulLifeMonths);
+            const monthlyAmountNTD = amortizationAmountFor(item, nextMonthNum);
             const journalId = await getNextJournalId(`${period}-28`);
             const journalDesc = `${item.docCode}\nAmortisasi Bulanan - Periode ${period}`;
 

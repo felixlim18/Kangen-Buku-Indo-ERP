@@ -1,5 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
-import { formatDate } from '../lib/date-utils';
+import { formatDate, toLocalDateStr } from '../lib/date-utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSubmitLock } from '../lib/useSubmitLock';
 import { 
@@ -114,14 +114,14 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
   const [linkedCoaCode, setLinkedCoaCode] = useState<'1101' | '1102'>('1101');
 
   // Reconciliation Form state
-  const [recDate, setRecDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [recDate, setRecDate] = useState<string>(() => toLocalDateStr());
   const [recAccountCode, setRecAccountCode] = useState<'1101' | '1102'>('1101');
   const [recSelectedBankId, setRecSelectedBankId] = useState<string>('');
   const [recStatementBalance, setRecStatementBalance] = useState<string>('');
   const [recNotes, setRecNotes] = useState<string>('');
 
   // Revaluation Form state
-  const [revDate, setRevDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [revDate, setRevDate] = useState<string>(() => toLocalDateStr());
   const [closingRateInput, setClosingRateInput] = useState<string>('559.13');
   const [currentExchangeRate, setCurrentExchangeRate] = useState<number>(559.12932);
   const [autoReversal, setAutoReversal] = useState<boolean>(true);
@@ -138,7 +138,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
     getLiveAutoAccounts().then(setLiveAccounts).catch(console.error);
   }, []);
   
-  const [transferDate, setTransferDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [transferDate, setTransferDate] = useState<string>(() => toLocalDateStr());
   const [transferFromAccount, setTransferFromAccount] = useState<'1101' | '1102'>('1101');
   const [transferToAccount, setTransferToAccount] = useState<'1101' | '1102'>('1102');
   const [amountFromInput, setAmountFromInput] = useState<string>('');
@@ -346,7 +346,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
     journals.forEach((j) => {
       if (!j.lines) return;
       const dObj = j.date?.toDate ? j.date.toDate() : new Date(j.date || Date.now());
-      const dateStr = dObj.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(dObj);
 
       j.lines.forEach((line) => {
         const is1101 = line.accountCode === '1101' || line.accountCode === liveAccounts.CASH_NTD?.code || line.account?.includes('1101') || (liveAccounts.CASH_NTD && line.account?.includes(liveAccounts.CASH_NTD.code));
@@ -424,8 +424,8 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
     // Apply month start & end to filter
     const year = nextMonth.getFullYear();
     const month = nextMonth.getMonth();
-    const start = new Date(year, month, 1).toISOString().split('T')[0];
-    const end = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const start = toLocalDateStr(new Date(year, month, 1));
+    const end = toLocalDateStr(new Date(year, month + 1, 0));
     
     setStartDate(start);
     setEndDate(end);
@@ -434,7 +434,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
 
   // Quick Today Filter
   const handleSetToday = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateStr();
     setStartDate(today);
     setEndDate(today);
     setDatePreset('Hari Ini');
@@ -776,10 +776,11 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
       // 2. If Auto-Reversal on 1st of next month is enabled
       let reversalId: string | undefined = undefined;
       if (autoReversal) {
-        reversalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
         const currentDate = new Date(revDate);
         const nextMonthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
-        const reversalDateStr = nextMonthDate.toISOString().split('T')[0];
+        const reversalDateStr = toLocalDateStr(nextMonthDate);
+        // Nomor jurnal mengikuti tanggal pembalikan (tgl 1 bulan berikutnya), bukan tanggal posting.
+        reversalId = await getNextJournalId(reversalDateStr);
 
         // Reverse lines
         const reversalLines: JournalEntryLine[] = lines.map(l => ({
@@ -853,7 +854,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Laporan_Bank_Kas_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `Laporan_Bank_Kas_${toLocalDateStr()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -907,7 +908,7 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
           <button
             onClick={() => {
               setIsTransferModalOpen(true);
-              setTransferDate(new Date().toISOString().split('T')[0]);
+              setTransferDate(toLocalDateStr());
             }}
             className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
           >
@@ -1034,6 +1035,19 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
                    )}
                  </div>
                ))}
+               {(() => {
+                 // Saldo per rekening adalah angka yang diketik manual di "Pecah Saldo", bukan hitungan live.
+                 const banks = bankAccounts.filter(b => b.linkedCoaCode === '1101' && b.splitBalance !== undefined);
+                 if (!banks.length) return null;
+                 const sum = banks.reduce((a, b) => a + (Number(b.splitBalance) || 0), 0);
+                 const diff = Math.round(sum * 100) - cashBalances.ntdTotalCents;
+                 const last = banks.map(b => b.lastSplitUpdate).filter(Boolean).sort().pop();
+                 return (
+                   <div className={`text-[10px] mt-1 ${Math.abs(diff) < 1 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                     Saldo rekening dicatat manual{last ? ` ${formatDate(last)}` : ''}{Math.abs(diff) < 1 ? ' · cocok dengan buku' : ` · selisih ${diff > 0 ? '+' : ''}${formatNTD(diff)} vs buku`}
+                   </div>
+                 );
+               })()}
              </div>
           ) : (
              <div className="mt-5 pt-4 border-t border-neutral-100 dark:border-neutral-800/80 space-y-3" onClick={e => e.stopPropagation()}>
@@ -1162,6 +1176,19 @@ export const BankKasTab: React.FC<BankKasTabProps> = ({ setTab }) => {
                    )}
                  </div>
                ))}
+               {(() => {
+                 // Saldo per rekening adalah angka yang diketik manual di "Pecah Saldo", bukan hitungan live.
+                 const banks = bankAccounts.filter(b => b.linkedCoaCode === '1102' && b.splitBalance !== undefined);
+                 if (!banks.length) return null;
+                 const sum = banks.reduce((a, b) => a + (Number(b.splitBalance) || 0), 0);
+                 const diff = Math.round(sum - cashBalances.idrTotalRaw);
+                 const last = banks.map(b => b.lastSplitUpdate).filter(Boolean).sort().pop();
+                 return (
+                   <div className={`text-[10px] mt-1 ${Math.abs(diff) < 1 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                     Saldo rekening dicatat manual{last ? ` ${formatDate(last)}` : ''}{Math.abs(diff) < 1 ? ' · cocok dengan buku' : ` · selisih ${diff > 0 ? '+' : ''}${formatIDR(diff)} vs buku`}
+                   </div>
+                 );
+               })()}
              </div>
           ) : (
              <div className="mt-5 pt-4 border-t border-neutral-100 dark:border-neutral-800/80 space-y-3" onClick={e => e.stopPropagation()}>

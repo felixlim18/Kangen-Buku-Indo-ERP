@@ -11,13 +11,15 @@ import {
   query, 
   where, 
   Timestamp,
-  runTransaction
+  runTransaction,
+  getDocs
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { FALLBACK_NTD_PER_IDR } from '../lib/exchangeRateConstants';
 import { useAuth } from '../lib/auth-context';
 import { formatNTD, formatIDR, formatNumber, formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
 import { sanitizePurchaseOrders } from '../lib/db-helpers';
+import { freightBookAllocations, splitFreightAllocations } from '../lib/perpetual-inventory';
 import { Decimal } from 'decimal.js';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { 
@@ -932,25 +934,33 @@ export default function FreightInTab() {
 
         // 4. Update Capitalization Journal Entry (if Freight-In is capitalized)
         if (capitalizationJournalSnap && capitalizationJournalSnap.exists() && capitalizationJournalRef) {
+          // Nominal berubah: bagi ulang dengan perbandingan stok gudang yang tercatat saat dikapitalisasi.
+          const oldAllocs = capitalizationJournalSnap.data().freightAllocations;
+          let lines: any[];
+          let freightAllocations: any = oldAllocs ?? null;
+          if (Array.isArray(oldAllocs) && oldAllocs.length) {
+            const rescaled = freightBookAllocations({ freightCode: codeToUse }, purchaseOrders, amountNTDCents);
+            const onHand = new Map<string, number>(oldAllocs.map((a: any) => [a.bookId, a.onHandQty || 0]));
+            freightAllocations = splitFreightAllocations(rescaled.length ? rescaled : oldAllocs.map((a: any) => ({ bookId: a.bookId, qty: a.qty, cents: Math.round(a.cents * amountNTDCents / Math.max(1, oldAllocs.reduce((x: number, y: any) => x + y.cents, 0))) })), onHand);
+            const inv = freightAllocations.reduce((a: number, x: any) => a + x.inventoryCents, 0);
+            lines = [
+              ...(inv > 0 ? [{ account: 'Inventory On Hand', accountCode: '1201', debit: inv, credit: 0 }] : []),
+              ...(amountNTDCents - inv > 0 ? [{ account: 'Harga Pokok Penjualan', accountCode: '5100', debit: amountNTDCents - inv, credit: 0 }] : []),
+              { account: 'Freight-in Dalam Kapitalisasi', accountCode: '1120', debit: 0, credit: amountNTDCents },
+            ];
+          } else {
+            lines = [
+              { account: 'Inventory On Hand', accountCode: '1201', debit: amountNTDCents, credit: 0 },
+              { account: 'Freight-in Dalam Kapitalisasi', accountCode: '1120', debit: 0, credit: amountNTDCents },
+            ];
+          }
           transaction.update(capitalizationJournalRef, {
             date: journalDateTimestamp,
             refId: codeToUse,
             freightCode: codeToUse,
             description: `${codeToUse} - Kapitalisasi Freight-in`,
-            lines: [
-              {
-                account: 'Inventory On Hand',
-                accountCode: '1201',
-                debit: amountNTDCents,
-                credit: 0
-              },
-              {
-                account: 'Freight-in Dalam Kapitalisasi',
-                accountCode: '1120',
-                debit: 0,
-                credit: amountNTDCents
-              }
-            ]
+            lines,
+            ...(freightAllocations ? { freightAllocations } : {}),
           });
         }
 
@@ -1158,6 +1168,26 @@ export default function FreightInTab() {
       }
       const amountNTDCents = Math.round(totalNTD * 100);
 
+      // Biaya freight dibagi ke buku yang diterima dengan kode ini. Tanpa buku, nilainya tidak bisa dilacak di
+      // laporan persediaan (masuk 1201 tanpa pemilik), jadi tunggu sampai barangnya diterima.
+      const allocs = freightBookAllocations(rec, purchaseOrders, amountNTDCents);
+      if (allocs.length === 0) {
+        setAlertState({
+          isOpen: true,
+          title: 'Belum Bisa Dijurnal',
+          message: `Belum ada barang yang diterima dengan Freight-In ${rec.freightCode}. Terima barangnya dulu di Purchase Orders, lalu jurnalkan.`,
+          type: 'error'
+        });
+        return;
+      }
+
+      // Buku yang sudah dikemas tapi belum dikirim masih di gudang (HPP-nya baru dikunci saat dikirim), padahal
+      // endingStock sudah dikurangi saat kemas. Tambahkan kembali supaya bagiannya tetap masuk persediaan.
+      const packedQty = new Map<string, number>();
+      (await getDocs(query(collection(db, 'salesOrders'), where('status', '==', 'packed')))).forEach((d) => {
+        for (const it of (d.data().items || [])) if (it.bookId) packedQty.set(it.bookId, (packedQty.get(it.bookId) || 0) + (it.qty || 0));
+      });
+
       // Kapitalisasi terjadi sekarang, jadi nomor jurnalnya memakai tanggal hari ini.
       // Lihat catatan di handleSaveFreightIn soal kenapa generator bersama ini wajib.
       const today = new Date();
@@ -1182,6 +1212,17 @@ export default function FreightInTab() {
           throw new Error(`Nomor jurnal ${journalId} ternyata sudah dipakai. Ini tidak seharusnya terjadi karena nomor diambil dari penghitung bersama - coba kapitalisasi ulang, dan laporkan kalau berulang.`);
         }
 
+        // Bagian buku yang masih di gudang masuk persediaan; bagian buku yang sudah dikirim/terjual langsung HPP,
+        // supaya biaya freight tidak tertahan di 1201 pada buku yang stoknya sudah habis.
+        const onHand = new Map<string, number>();
+        for (const a of allocs) {
+          const invSnap = await transaction.get(doc(db, 'inventory', a.bookId));
+          onHand.set(a.bookId, (invSnap.exists() ? (invSnap.data().endingStock || 0) : 0) + (packedQty.get(a.bookId) || 0));
+        }
+        const split = splitFreightAllocations(allocs, onHand);
+        const invCents = split.reduce((a, x) => a + x.inventoryCents, 0);
+        const cogsCents = amountNTDCents - invCents;
+
         // WRITE PHASE
         transaction.update(freightRef, {
           isCapitalized: true,
@@ -1196,13 +1237,10 @@ export default function FreightInTab() {
           refId: rec.freightCode,
           freightCode: rec.freightCode,
           createdAt: Timestamp.now(),
+          freightAllocations: split,
           lines: [
-            {
-              account: 'Inventory On Hand',
-              accountCode: '1201',
-              debit: amountNTDCents,
-              credit: 0
-            },
+            ...(invCents > 0 ? [{ account: 'Inventory On Hand', accountCode: '1201', debit: invCents, credit: 0 }] : []),
+            ...(cogsCents > 0 ? [{ account: 'Harga Pokok Penjualan', accountCode: '5100', debit: cogsCents, credit: 0 }] : []),
             {
               account: 'Freight-in Dalam Kapitalisasi',
               accountCode: '1120',

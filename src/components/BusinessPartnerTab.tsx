@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { SalesOrder, BusinessPartner, PaymentBatch, JournalEntry, CoaAccount, CoProducedBook, AgreedPriceEntry, Book } from '../types';
 import { formatNTD, formatIDR } from '../lib/decimal-utils';
-import { formatDate } from '../lib/date-utils';
+import { formatDate, toLocalDateStr } from '../lib/date-utils';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -211,7 +211,7 @@ export const BusinessPartnerTab: React.FC = () => {
 
     let total = 0;
     let nonKpSubtotal = 0;
-    const soDateStr = new Date(so.createdAt?.seconds * 1000).toISOString().slice(0, 10);
+    const soDateStr = toLocalDateStr(new Date(so.createdAt?.seconds * 1000));
 
     for (const item of (so.items || [])) {
       const kp = kpMap.get(item.bookId);
@@ -243,7 +243,7 @@ export const BusinessPartnerTab: React.FC = () => {
   /** Komisi for Ko-Produksi items within a SO (Skenario A only) */
   const komisiKoProduksi = (so: SalesOrder, partner: BusinessPartner): number => {
     const kpMap = new Map((partner.coProducedBooks || []).map(b => [b.bookId, b]));
-    const soDateStr = new Date(so.createdAt?.seconds * 1000).toISOString().slice(0, 10);
+    const soDateStr = toLocalDateStr(new Date(so.createdAt?.seconds * 1000));
     return (so.items || []).reduce((acc, item) => {
       const kp = kpMap.get(item.bookId);
       if (!kp) return acc;
@@ -349,7 +349,7 @@ export const BusinessPartnerTab: React.FC = () => {
       showToast('Isi semua field buku ko-produksi dengan benar.'); return;
     }
     
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = toLocalDateStr();
     const newDrafts = [...kpDrafts];
     
     if (kpEditIdx !== null) {
@@ -469,10 +469,10 @@ export const BusinessPartnerTab: React.FC = () => {
                     (today.getMonth() + 1).toString().padStart(2, '0') + 
                     today.getDate().toString().padStart(2, '0');
     
-    const todaysBatches = paymentBatches.filter(b => b.tanggal === today.toISOString().slice(0, 10));
+    const todaysBatches = paymentBatches.filter(b => b.tanggal === toLocalDateStr(today));
     const seq = String(todaysBatches.length + 1).padStart(2, '0');
     const batchId = `PB${dateStr}${seq}`;
-    const dateOnly = today.toISOString().slice(0, 10);
+    const dateOnly = toLocalDateStr(today);
 
     const batch = writeBatch(db);
     
@@ -509,7 +509,7 @@ export const BusinessPartnerTab: React.FC = () => {
     // Debit Beban Komisi Penjualan (assuming 5320, we can use name Beban Komisi Penjualan)
     // Find account by name or just use text if code doesn't exist
     
-    const jId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+    const jId = await getNextJournalId(toLocalDateStr());
     batch.set(doc(db, 'journalEntries', jId), {
       id: jId,
       date: Timestamp.now(),

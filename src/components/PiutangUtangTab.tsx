@@ -18,7 +18,7 @@ import {
 import { useAuth } from '../lib/auth-context';
 import { AUTO_ACCOUNTS, ensureAutoAccountExists, getLiveAutoAccounts, AutoAccount } from '../lib/journalAuto';
 import { formatNTD, formatIDR, formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
-import { formatDate } from '../lib/date-utils';
+import { formatDate, toLocalDateStr } from '../lib/date-utils';
 import { fetchCurrentExchangeRate } from '../lib/period-closing-utils';
 import { 
   DollarSign, 
@@ -229,7 +229,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
         isLoan: false,
         code: po.purchaseCode || `PO-${po.id.substring(0, 5).toUpperCase()}`,
         creditor: po.supplierName,
-        date: po.purchaseDate?.seconds ? new Date(po.purchaseDate.seconds * 1000).toISOString().split('T')[0] : po.purchaseDate || '',
+        date: po.purchaseDate?.seconds ? toLocalDateStr(new Date(po.purchaseDate.seconds * 1000)) : po.purchaseDate || '',
         dueDate: po.dueDate || '',
         totalAmount: po.purchasePriceNTD || 0,
         totalAmountIDR: po.purchasePriceIDR || 0,
@@ -273,7 +273,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
     let countOverdue = 0;
     let countPaid = 0;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = toLocalDateStr();
 
     unifiedUtangItems.forEach((item) => {
       const outstanding = item.totalAmount - item.amountPaid;
@@ -384,7 +384,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
       // Execute Piutang Payment transaction
       try {
         const orderRef = doc(db, 'salesOrders', selectedItem.id);
-        const dateStr = payDate ? new Date(payDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+        const dateStr = payDate ? toLocalDateStr(new Date(payDate)) : toLocalDateStr();
         const journalId = await getNextJournalId(dateStr);
         const journalRef = doc(db, 'journalEntries', journalId);
         const cfId = doc(collection(db, 'cashFlow')).id;
@@ -487,7 +487,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
       try {
         const isLoan = selectedItem.isLoan === true;
         const targetRef = isLoan ? doc(db, 'loans', selectedItem.id) : doc(db, 'purchaseOrders', selectedItem.id);
-        const dateStr = payDate ? new Date(payDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+        const dateStr = payDate ? toLocalDateStr(new Date(payDate)) : toLocalDateStr();
         const journalId = await getNextJournalId(dateStr);
         const journalRef = doc(db, 'journalEntries', journalId);
         const cfId = doc(collection(db, 'cashFlow')).id;
@@ -666,7 +666,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
       const seqFormatted = String(sequence).padStart(3, '0');
       const loanCode = `PY${yymmdd}${seqFormatted}`;
 
-      const dateStr = loanDate ? new Date(loanDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+      const dateStr = loanDate ? toLocalDateStr(new Date(loanDate)) : toLocalDateStr();
       const journalId = await getNextJournalId(dateStr);
       const cfId = doc(collection(db, 'cashFlow')).id;
 
@@ -1363,7 +1363,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-neutral-500 mb-1">Kas Rekening Penerima *</label>
+                  <label className="block text-[10px] uppercase font-bold text-neutral-500 mb-1">Dibayar dari Kas *</label>
                   <select
                     value={cashAccount}
                     onChange={(e) => setCashAccount(e.target.value as any)}

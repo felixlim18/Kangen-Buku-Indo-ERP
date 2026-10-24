@@ -1401,9 +1401,8 @@ export const CoaTab: React.FC = () => {
                       ) : (
                         sectionAccounts.map((account, idx) => {
                           const isParent = isParentAccount(account, accounts);
-                          const saldo = (isParent || startDate || endDate) 
-                            ? getAccountBalance(account.name, account.type)
-                            : (account.balance !== undefined ? account.balance : getAccountBalance(account.name, account.type));
+                          // Selalu dari jurnal; field coa.balance adalah cache lama yang tidak diperbarui.
+                          const saldo = getAccountBalance(account.name, account.type);
                           return (
                             <tr key={`${account.id || account.code}-${idx}`} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-850/20 transition">
                               <td className="p-3 text-center">

@@ -1,4 +1,5 @@
 import { apiFetch } from '../lib/api-fetch';
+import { toLocalDateStr } from '../lib/date-utils';
 import { Drawer } from 'vaul';
 import { getNextJournalId } from '../lib/journalUtils';
 import Papa from 'papaparse';
@@ -774,7 +775,7 @@ export const SalesTab: React.FC = () => {
   };
 
   // New order form fields
-  const [orderDateInput, setOrderDateInput] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [orderDateInput, setOrderDateInput] = useState<string>(() => toLocalDateStr());
   const [customerName, setCustomerName] = useState('');
   const [customerPlatformName, setCustomerPlatformName] = useState('');
   const [platformChannel, setPlatformChannel] = useState<string>('WhatsApp');
@@ -2286,7 +2287,7 @@ export const SalesTab: React.FC = () => {
   };
 
   const resetOrderForm = () => {
-    setOrderDateInput(new Date().toISOString().slice(0, 10));
+    setOrderDateInput(toLocalDateStr());
     setCustomerName('');
     setCustomerPlatformName('');
     setPlatformChannel(resolvedChannels[0]?.name || 'WhatsApp');
@@ -3154,8 +3155,9 @@ export const SalesTab: React.FC = () => {
     if (!(await promptDoubleConfirmation("Membatalkan orderan (Cancel)"))) return;
     try {
       await reverseSalesOrderTransaction(order.id, user?.uid || 'anonymous', 'cancelled', 'stock');
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error cancelling order", err);
+      safeAlert(`Gagal membatalkan orderan: ${err.message || err}`);
     }
   };
 
@@ -3190,7 +3192,7 @@ export const SalesTab: React.FC = () => {
           if (item.bookId && item.qty > 0) {
             const damagedId = doc(collection(db, 'damagedStock')).id;
             const ledgerId = `LEDGER-${damagedId}`;
-            const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+            const journalId = await getNextJournalId(toLocalDateStr());
             const batch = writeBatch(db);
 
             const ledgerRef = doc(db, 'inventoryLedger', ledgerId);
@@ -3216,7 +3218,7 @@ export const SalesTab: React.FC = () => {
               bookId: item.bookId,
               bookName: item.bookName || '',
               qty: item.qty,
-              date: new Date().toISOString().substring(0, 10),
+              date: toLocalDateStr(),
               notes: `Return Rusak/Hilang (SO ${confirmingDiambilOrder.orderCode || confirmingDiambilOrder.id})`,
               unitCost: item.cogsSnapshot || 0,
               totalCost: totalLoss,
@@ -3260,6 +3262,13 @@ export const SalesTab: React.FC = () => {
     if (!selectedOrderForDelete || isDeleteOrderSubmitting) return;
     setIsDeleteOrderSubmitting(true);
     try {
+      // Order yang sudah punya jurnal (mis. transfer sudah diterima -> D Kas / K 2110) tidak boleh dihapus:
+      // jurnalnya akan yatim dan uangnya tidak lagi terhubung ke order mana pun.
+      const linked = await getDocs(query(collection(db, 'journalEntries'), where('refId', '==', selectedOrderForDelete.id)));
+      if (!linked.empty) {
+        safeAlert(`Orderan ${selectedOrderForDelete.orderCode} sudah punya ${linked.size} jurnal (${linked.docs.map(d => d.id).join(', ')}). Batalkan penerimaan pembayarannya dulu di tab Penerimaan Transfer, lalu hapus.`);
+        return;
+      }
       await deleteDoc(doc(db, 'salesOrders', selectedOrderForDelete.id));
       setSelectedOrderForDelete(null);
     } catch (err: any) {
@@ -4320,7 +4329,7 @@ export const SalesTab: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `sales_orders_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `sales_orders_${toLocalDateStr()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -4329,7 +4338,7 @@ export const SalesTab: React.FC = () => {
 
   const handleEditOrderClick = (order: SalesOrder) => {
     setEditingOrder(order);
-    let dateStr = new Date().toISOString().slice(0, 10);
+    let dateStr = toLocalDateStr();
     if (order.orderDate) {
       try {
         const d = order.orderDate.toDate ? order.orderDate.toDate() : new Date(order.orderDate.seconds * 1000);
@@ -5835,8 +5844,8 @@ export const SalesTab: React.FC = () => {
         cancelledCount={cancelledOrders.length}
         cancelledSum={cancelledSum}
         canViewAmount={canViewAmount}
-        globalStartDate={globalStartDate ? globalStartDate.toISOString().split('T')[0] : ''}
-        globalEndDate={globalEndDate ? globalEndDate.toISOString().split('T')[0] : ''}
+        globalStartDate={globalStartDate ? toLocalDateStr(globalStartDate) : ''}
+        globalEndDate={globalEndDate ? toLocalDateStr(globalEndDate) : ''}
         globalDateLabel={globalDateLabel}
         onDateChange={(start, end, label) => {
           setGlobalStartDate(start ? new Date(start) : null);

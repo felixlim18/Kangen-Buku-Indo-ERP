@@ -39,6 +39,9 @@ export const ReportSalesDetailTab: React.FC = () => {
     return new Date();
   });
   const [presetLabel, setPresetLabel] = useState('Bulan Ini');
+  // Dasar tanggal: 'order' = tanggal pesan; 'selesai' = tanggal order diselesaikan (sama dengan pengakuan pendapatan
+  // di Laba Rugi). Dengan dasar tanggal order, order bulan berjalan yang belum selesai belum ikut terhitung.
+  const [dateBasis, setDateBasis] = useState<'order' | 'selesai'>('order');
 
   useEffect(() => {
     // 1. Subscribe to completed Sales Orders
@@ -170,7 +173,10 @@ export const ReportSalesDetailTab: React.FC = () => {
     const prev: SalesOrder[] = [];
 
     orders.forEach(order => {
-      const orderDate = getOrderDate(order);
+      const completed: any = (order as any).completedAt;
+      const orderDate = dateBasis === 'selesai' && completed
+        ? new Date(completed.seconds !== undefined ? completed.seconds * 1000 : completed)
+        : getOrderDate(order);
       if (orderDate >= periodRanges.startDate && orderDate <= periodRanges.endDate) {
         curr.push(order);
       } else if (orderDate >= periodRanges.prevStartDate && orderDate <= periodRanges.prevEndDate) {
@@ -182,7 +188,7 @@ export const ReportSalesDetailTab: React.FC = () => {
       currentPeriodOrders: curr,
       prevPeriodOrders: prev
     };
-  }, [orders, periodRanges]);
+  }, [orders, periodRanges, dateBasis]);
 
   // --------------------------------------------------------
   // 4. Compute Top-level Grand Totals (Summary Cards)
@@ -364,8 +370,20 @@ export const ReportSalesDetailTab: React.FC = () => {
           <div>
             <h1 className="text-lg font-bold text-neutral-850 dark:text-white">Rincian Penjualan</h1>
             <p className="text-xs text-neutral-450 dark:text-neutral-400 mt-0.5">
-              Analisis performa penjualan terfilter berdasarkan Channel dan Tipe Order
+              Order Selesai menurut {dateBasis === 'order' ? 'tanggal order (order bulan ini yang belum selesai belum terhitung)' : 'tanggal selesai (dasar pendapatan di Laba Rugi; nominal setelah biaya platform)'}
             </p>
+            <div className="mt-2 inline-flex rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden text-[11px] font-semibold">
+              {(['order', 'selesai'] as const).map((b) => (
+                <button
+                  key={b}
+                  type="button"
+                  onClick={() => setDateBasis(b)}
+                  className={`px-2.5 py-1 ${dateBasis === b ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300'}`}
+                >
+                  {b === 'order' ? 'Tanggal Order' : 'Tanggal Selesai'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

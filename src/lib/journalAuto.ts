@@ -1,4 +1,5 @@
 import { getNextJournalId } from './journalUtils';
+import { toLocalDateStr } from './date-utils';
 import { db } from './firebase';
 import { doc, getDoc, setDoc, updateDoc, Timestamp, collection, collectionGroup, getDocs, query, where , runTransaction } from 'firebase/firestore';
 import { CoaAccount } from '../types';
@@ -162,10 +163,14 @@ export function poDiscountPerUnitCents(po: any, item: any): number {
   const items: any[] = po.items || [];
   const gross = items.reduce((a, it) => a + (it.priceNTDTotal || 0), 0);
   const qty = item.qty || 1;
-  if (gross > 0 && item.priceNTDTotal !== undefined) return (discount * (item.priceNTDTotal || 0)) / gross / qty;
+  // Diskon per unit tidak boleh melebihi harga unitnya. Harga item & diskon bisa dikonversi ke NTD dengan kurs
+  // berbeda (PO26081002: harga NT$57,52 kurs lama, diskon NT$57,91 kurs baru) -> biaya satuan negatif & jurnal
+  // penerimaan yang mengkredit persediaan.
+  const unitPrice = item.priceNTDTotal !== undefined ? (item.priceNTDTotal || 0) / qty : (item.pricePerItem ?? Infinity);
+  if (gross > 0 && item.priceNTDTotal !== undefined) return Math.min(unitPrice, (discount * (item.priceNTDTotal || 0)) / gross / qty);
   // Data tanpa harga per item: kembali ke pembagian rata per buku
   const totalQty = items.reduce((a, it) => a + (it.qty || 0), 0) || 1;
-  return discount / totalQty;
+  return Math.min(unitPrice, discount / totalQty);
 }
 
 export async function prepareReceiptEventData(
@@ -217,7 +222,7 @@ export function writeReceiptEventAndJournal(
   userEmail: string
 ) {
   const tglTerima = Timestamp.now();
-  const dateStr = tglTerima.toDate().toISOString().split('T')[0];
+  const dateStr = toLocalDateStr(tglTerima.toDate());
   
   if (!receiptEventData?.nextJournalId) throw new Error('Nomor jurnal penerimaan belum disiapkan (prepareReceiptEventData).');
   const journalId = receiptEventData.nextJournalId;

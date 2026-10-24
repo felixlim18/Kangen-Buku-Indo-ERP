@@ -1,4 +1,5 @@
 import { getNextJournalId } from './journalUtils';
+import { toLocalDateStr } from './date-utils';
 import { FALLBACK_NTD_PER_IDR } from './exchangeRateConstants';
 import { 
   collection, 
@@ -172,7 +173,6 @@ export async function generateOrderCode(prefix: 'S' | 'P'): Promise<string> {
     const counterRef = doc(db, 'counters', counterId);
     let nextValue = 1;
     
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
     await runTransaction(db, async (transaction) => {
       const counterSnap = await transaction.get(counterRef);
       if (counterSnap.exists()) {
@@ -416,6 +416,17 @@ export function getMovingAverageLandedCost(
         : null;
       const timestamp = capTimestamp || fRec.createdAt?.seconds || fRec.createdAt?.toDate?.()?.getTime() / 1000 || 0;
 
+      // Jurnal kapitalisasi baru menyimpan pembagian per buku; hanya bagian yang masuk persediaan (1201) yang ikut
+      // rata-rata. Sama dengan buildPerpetualIndex.
+      const capJournal = fRec.capitalizationJournalId ? allJournals.find(x => x.id === fRec.capitalizationJournalId) : null;
+      if (capJournal && Array.isArray(capJournal.freightAllocations)) {
+        const a = capJournal.freightAllocations.find((x: any) => x.bookId === bookId);
+        if (a?.inventoryCents) {
+          freightCapitalizationEvents.push({ type: 'freight_capitalized', timestamp, freightCode: fRec.freightCode, freightAllocatedCents: a.inventoryCents, refId: fRec.freightCode });
+        }
+        return;
+      }
+
       const pushFreight = (qtyReceived: number) => {
         if (qtyReceived <= 0) return;
         freightCapitalizationEvents.push({
@@ -509,7 +520,15 @@ export function getMovingAverageLandedCost(
     });
   }
 
-  const allEvents = [...poReceiptEvents, ...freightCapitalizationEvents, ...outflowEvents];
+  // Koreksi nilai tanpa qty (jurnal inventory_value_adjustment) - sama dengan buildPerpetualIndex
+  const valueAdjustmentEvents: any[] = [];
+  allJournals.forEach(j => {
+    if (j.refType !== 'inventory_value_adjustment' || !Array.isArray(j.bookValueAdjustments)) return;
+    const a = j.bookValueAdjustments.find((x: any) => x.bookId === bookId);
+    if (a?.valueCents) valueAdjustmentEvents.push({ type: 'value_adjustment', timestamp: j.date, valueCents: a.valueCents });
+  });
+
+  const allEvents = [...poReceiptEvents, ...freightCapitalizationEvents, ...outflowEvents, ...valueAdjustmentEvents];
 
   allEvents.sort((a, b) => {
     const timeA = getEventTime(a.timestamp);
@@ -519,6 +538,7 @@ export function getMovingAverageLandedCost(
     const getOrder = (type: string) => {
       if (type === 'purchase_received') return 1;
       if (type === 'freight_capitalized') return 2;
+      if (type === 'value_adjustment') return 4;
       return 3; // outflow
     };
     return getOrder(a.type) - getOrder(b.type);
@@ -542,6 +562,10 @@ export function getMovingAverageLandedCost(
         currentAverageCost = 0;
       }
     } 
+    else if (event.type === 'value_adjustment') {
+      runningValueCents += event.valueCents;
+      currentAverageCost = runningStock > 0 ? runningValueCents / runningStock : 0;
+    }
     else if (event.type === 'outflow') {
       const hppCents = event.costCents ?? event.qtyDelta * currentAverageCost;
       runningStock = Math.max(0, runningStock - event.qtyDelta);
@@ -571,7 +595,7 @@ export async function packSalesOrderTransaction(orderId: string, currentUserId: 
   try {
     const orderRef = doc(db, 'salesOrders', orderId);
 
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+    // Kemas tidak membuat jurnal, jadi jangan mengambil nomor jurnal (dulu tiap kemas membuang satu nomor JU).
     await runTransaction(db, async (transaction) => {
       const orderSnap = await transaction.get(orderRef);
       if (!orderSnap.exists()) {
@@ -747,7 +771,7 @@ export async function confirmSalesOrderTransaction(orderId: string, currentUserI
       throw new Error(`Dikirim journal already exists for SO ${orderId}`);
     }
 
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+    const journalId = await getNextJournalId(toLocalDateStr());
     await runTransaction(db, async (transaction) => {
       const liveOrderSnap = await transaction.get(orderRef);
       if (!liveOrderSnap.exists()) {
@@ -888,7 +912,7 @@ export async function confirmSalesOrderTransaction(orderId: string, currentUserI
 
       // Double-entry Journal: Dr Inventory in Delivery (1202) | Cr Inventory On Hand (1201)
       // journalId pre-generated outside transaction
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+    const journalId = await getNextJournalId(toLocalDateStr());
       const journalRef = doc(db, 'journalEntries', journalId);
       
       transaction.set(journalRef, {
@@ -945,10 +969,9 @@ export async function completeSalesOrderTransaction(
     const coaSnap = await getDocs(collection(db, 'coa'));
     const coaAccounts = coaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as CoaAccount));
 
-    const journalAId = await getNextJournalId(new Date().toISOString().split('T')[0]);
-    const journalBId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+    const journalAId = await getNextJournalId(toLocalDateStr());
+    const journalBId = await getNextJournalId(toLocalDateStr());
 
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
     await runTransaction(db, async (transaction) => {
       const orderRef = doc(db, 'salesOrders', orderId);
       const orderSnap = await transaction.get(orderRef);
@@ -1145,7 +1168,7 @@ export async function completeSalesOrderTransaction(
 
       // Partner Profit Share if Business Partner
       if (order.orderType === 'Business Partner' && order.partnerProfitShare && order.partnerProfitShare > 0) {
-        const partnerJournalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+        const partnerJournalId = await getNextJournalId(toLocalDateStr());
         const partnerJournalRef = doc(db, 'journalEntries', partnerJournalId);
         transaction.set(partnerJournalRef, {
           id: partnerJournalId,
@@ -1211,6 +1234,9 @@ export async function completeSalesOrderTransaction(
 /**
  * Handles Reversal of Sales Order (Return / Cancel) with physical inventory options
  */
+/** Jurnal penerimaan uang dari pembeli: tidak boleh ikut terhapus saat status order dibalik. */
+const PAYMENT_REF_TYPES = ['sales_order_payment', 'sales_order_transfer_payment'];
+
 export async function reverseSalesOrderTransaction(
   orderId: string, 
   currentUserId: string, 
@@ -1223,14 +1249,21 @@ export async function reverseSalesOrderTransaction(
     const journalSnap = await getDocs(
       query(collection(db, 'journalEntries'), where('refId', '==', orderId))
     );
-    const journalRefs = journalSnap.docs.map(doc => doc.ref);
+    // Jurnal pembayaran (Penerimaan Transfer / pelunasan Piutang) mencatat uang yang benar-benar masuk; jangan
+    // pernah ikut dihapus. Dulu Cancel menghapus semua jurnal order, sehingga transfer yang sudah diterima hilang
+    // dari Kas. Order yang sudah dibayar harus dibatalkan penerimaannya dulu (= dikembalikan ke pembeli).
+    const paymentJournals = journalSnap.docs.filter(d => PAYMENT_REF_TYPES.includes(d.data().refType));
+    if (paymentJournals.length && (targetStatus === 'cancelled' || targetStatus === 'returned')) {
+      const paid = paymentJournals.reduce((a, d) => a + (d.data().lines || []).filter((l: any) => ['1101', '1102'].includes(l.accountCode)).reduce((x: number, l: any) => x + (l.debit || 0) - (l.credit || 0), 0), 0);
+      throw new Error(`Order ini sudah menerima pembayaran NT$ ${(paid / 100).toLocaleString('en-US')}. Batalkan penerimaannya dulu (tombol Batal di tab Penerimaan Transfer / Piutang Usaha) sebelum order dibatalkan atau diretur.`);
+    }
+    const journalRefs = journalSnap.docs.filter(d => !PAYMENT_REF_TYPES.includes(d.data().refType)).map(doc => doc.ref);
 
     const ledgerSnap = await getDocs(
       query(collection(db, 'inventoryLedger'), where('refId', '==', orderId))
     );
     const ledgerRefs = ledgerSnap.docs.map(doc => doc.ref);
 
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
     await runTransaction(db, async (transaction) => {
       const orderRef = doc(db, 'salesOrders', orderId);
       const orderSnap = await transaction.get(orderRef);
@@ -1383,7 +1416,7 @@ export async function receiveGoodsTransaction(
 ): Promise<void> {
   const path = `purchaseOrders/${poId}`;
   try {
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+    const journalId = await getNextJournalId(toLocalDateStr());
     await runTransaction(db, async (transaction) => {
       const poRef = doc(db, 'purchaseOrders', poId);
       const poSnap = await transaction.get(poRef);
@@ -1509,7 +1542,7 @@ export async function receiveGoodsTransaction(
 
       // Double-entry Journal: Dr Inventory | Cr Cash
       // journalId pre-generated outside transaction
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+    const journalId = await getNextJournalId(toLocalDateStr());
       const journalRef = doc(db, 'journalEntries', journalId);
       
       const cashAcc = supplierCurrency === 'IDR' ? AUTO_ACCOUNTS.CASH_RUPIAH : AUTO_ACCOUNTS.CASH_NTD;
@@ -1559,6 +1592,13 @@ export async function revertCompletedSalesOrderToShipped(
     const journalDocs = journalSnap.docs;
     const journalRefs = journalDocs.map(doc => doc.ref);
 
+    // Pelunasan piutang (K 1110) bergantung pada jurnal Selesai (D 1110). Menghapus jurnal Selesai sementara
+    // pelunasannya tetap ada membuat Piutang Usaha di GL minus -> batalkan pelunasannya dulu.
+    const arPayments = await getDocs(query(collection(db, 'journalEntries'), where('refId', '==', orderId), where('refType', '==', 'sales_order_payment')));
+    if (!arPayments.empty) {
+      throw new Error('Order ini sudah dilunasi lewat Piutang Usaha. Batalkan pelunasannya dulu (tombol Batal di tab Piutang Usaha), lalu kembalikan statusnya.');
+    }
+
     // 2. Validate against closed periods before proceeding
     for (const jDoc of journalDocs) {
       const jData = jDoc.data();
@@ -1578,7 +1618,6 @@ export async function revertCompletedSalesOrderToShipped(
       .filter(doc => doc.data().type === 'COMPLETED_SALE' || doc.data().type === 'COMPLETED (SALE)')
       .map(doc => doc.ref);
 
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
     await runTransaction(db, async (transaction) => {
       const orderRef = doc(db, 'salesOrders', orderId);
       const orderSnap = await transaction.get(orderRef);
@@ -1618,12 +1657,16 @@ export async function revertCompletedSalesOrderToShipped(
         ledgerSnaps.push(lSnap);
       }
 
+      // Pembayaran di muka (Penerimaan Transfer) tetap milik order ini: jurnal D Kas / K 2110 tidak dihapus, jadi
+      // amountPaid juga dipertahankan supaya Penerimaan Transfer tetap sama dengan saldo 2110.
+      const keptPaid = order.amountPaid || 0;
       const updateData = {
         status: 'shipped',
-        paymentStatus: 'unpaid',
+        paymentStatus: keptPaid >= (order.totalPrice || 0) - 5 && keptPaid > 0 ? 'paid' : keptPaid > 0 ? 'partial' : 'unpaid',
         isUnpaid: false,
-        amountPaid: 0,
+        amountPaid: keptPaid,
         completedAt: null,
+        dueDate: null,
         updatedAt: Timestamp.now()
       };
 
@@ -1898,7 +1941,7 @@ export async function processMarketplaceRefundTransaction(
 
     // Generate Journal Entry
 
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+    const journalId = await getNextJournalId(toLocalDateStr());
     const journalRef = doc(db, 'journalEntries', journalId);
 
     const journalData: JournalEntry = {
@@ -1971,7 +2014,7 @@ export async function revertDiambilToReturned(orderId: string, currentUserId: st
     const ledgerSnap = await getDocs(collection(db, 'inventoryLedger'));
     const allLedgers = ledgerSnap.docs;
 
-    const journalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+    const journalId = await getNextJournalId(toLocalDateStr());
     await runTransaction(db, async (transaction) => {
       // 1. Reads
       const invSnapsMap = new Map<string, any>();
@@ -2008,8 +2051,8 @@ export async function revertDiambilToReturned(orderId: string, currentUserId: st
         if (invSnap && invSnap.exists()) {
           const invRef = doc(db, 'inventory', item.bookId);
           const inv = invSnap.data() as any;
-          const movingCost = inv.movingAverageCost || 0;
-          const itemCOGS = new Decimal(movingCost).mul(item.qty).toNumber();
+          const movingCost = Math.round(inv.movingAverageCost || 0);
+          const itemCOGS = movingCost * item.qty;
           totalCOGS += itemCOGS;
 
           let nextEndingStock = inv.endingStock || 0;
@@ -2044,10 +2087,11 @@ export async function revertDiambilToReturned(orderId: string, currentUserId: st
             id: ledgerId,
             bookId: item.bookId,
             bookName: item.bookName || '',
-            date: order.orderDate || Timestamp.now(),
+            // Bentuk sama dengan ledger kirim normal: laporan persediaan membaca timestamp & unitCost (sen).
+            timestamp: Timestamp.now(),
             type: 'DISPATCHED',
             qtyDelta: -item.qty,
-            costPerUnitCents: Math.round(movingCost * 100),
+            unitCost: movingCost,
             refCollection: 'salesOrders',
             refId: orderId,
             userId: currentUserId
@@ -2060,10 +2104,10 @@ export async function revertDiambilToReturned(orderId: string, currentUserId: st
     
         transaction.set(doc(db, 'journalEntries', journalId), {
           id: journalId,
-          date: order.orderDate || Timestamp.now(),
+          date: Timestamp.now(),
           description: `Barang Dikirim - SO [${order.orderCode || orderId}]`,
           lines: [
-            { account: 'Inventory In Delivery', accountCode: '1202', debit: totalCOGS, credit: 0 },
+            { account: 'Inventory in Delivery', accountCode: '1202', debit: totalCOGS, credit: 0 },
             { account: 'Inventory On Hand', accountCode: '1201', debit: 0, credit: totalCOGS }
           ],
           refCollection: 'salesOrders',

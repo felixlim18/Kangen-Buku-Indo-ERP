@@ -1,4 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
+import { toLocalDateStr } from '../lib/date-utils';
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/firebase';
 import { FALLBACK_IDR_PER_NTD } from '../lib/exchangeRateConstants';
@@ -45,7 +46,7 @@ export const PiutangTab: React.FC = () => {
   const [manualFxRate, setManualFxRate] = useState(String(FALLBACK_IDR_PER_NTD));
   const [manualCreditAccountCode, setManualCreditAccountCode] = useState('');
   const [manualTermsDays, setManualTermsDays] = useState<30 | 60 | 90>(30);
-  const [manualDate, setManualDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [manualDate, setManualDate] = useState(() => toLocalDateStr());
   const [manualNotes, setManualNotes] = useState('');
   const [isSubmittingManual, setIsSubmittingManual] = useState(false);
   
@@ -101,7 +102,9 @@ export const PiutangTab: React.FC = () => {
                           o.isUnpaid === true || 
                           o.paymentMethod === 'Unpaid' || 
                           o.paymentMethod === 'Belum Dibayar';
-        if ((o.status === 'completed' || o.status === 'shipped') && isPiutang) {
+        // Hanya order Selesai: Piutang Usaha (1110) baru didebit saat order selesai. Order Dikirim yang belum
+        // selesai belum punya piutang di GL; pembayaran di muka untuk order itu lewat Penerimaan Transfer (2110).
+        if (o.status === 'completed' && isPiutang) {
           oList.push({ id: d.id, source: 'so', ...o });
         }
       });
@@ -324,6 +327,9 @@ export const PiutangTab: React.FC = () => {
         if (!snap.exists()) throw new Error("Data piutang tidak ditemukan");
 
         const order = snap.data();
+        if (!isManual && order.status !== 'completed') {
+          throw new Error(`${order.orderCode || selectedItem.id} belum Selesai, jadi belum ada piutangnya di buku besar. Catat pembayaran di muka lewat Penerimaan Transfer.`);
+        }
         const curPaid = order.amountPaid || 0;
         assertNotOverpaid(order, curPaid, payAmountCents, order.orderCode || order.receivableCode || selectedItem.id);
         const nextPaid = curPaid + payAmountCents;
@@ -343,7 +349,7 @@ export const PiutangTab: React.FC = () => {
         transaction.set(doc(db, 'journalEntries', journalId), {
           id: journalId,
           date: Timestamp.fromDate(new Date(payDate)),
-          description: `Terima Pembayaran Piutang ${isManual ? 'Manual' : 'SO'} ${order.orderCode || order.receivableCode || selectedItem.id} - ${order.customerName || order.debtorName}`,
+          description: `Terima Pembayaran Piutang ${isManual ? 'Manual' : 'SO'} ${order.orderCode || order.receivableCode || selectedItem.id} - ${order.customerName || order.debtorName || order.customerPlatformName || order.platformChannel || ''}`,
           refType: 'sales_order_payment',
           refId: selectedItem.id,
           isAuto: true,
@@ -360,7 +366,7 @@ export const PiutangTab: React.FC = () => {
           ledger: isRupiah ? 'IDR' : 'NTD',
           direction: 'inflow',
           amount: isRupiah ? paidRupiahWhole : payAmountCents,
-          notes: `Terima Piutang ${order.orderCode || order.receivableCode || selectedItem.id} - ${order.customerName || order.debtorName}`,
+          notes: `Terima Piutang ${order.orderCode || order.receivableCode || selectedItem.id} - ${order.customerName || order.debtorName || order.customerPlatformName || order.platformChannel || ''}`,
           category: 'operating',
           accountCode: targetCash.code,
           refId: selectedItem.id
@@ -474,7 +480,7 @@ export const PiutangTab: React.FC = () => {
     setManualFxRate(String(liveExchangeRate || FALLBACK_IDR_PER_NTD));
     setManualCreditAccountCode('');
     setManualTermsDays(30);
-    setManualDate(new Date().toISOString().split('T')[0]);
+    setManualDate(toLocalDateStr());
     setManualNotes('');
   };
 
@@ -527,7 +533,7 @@ export const PiutangTab: React.FC = () => {
 
       const dueDateObj = new Date(manualDate);
       dueDateObj.setDate(dueDateObj.getDate() + manualTermsDays);
-      const dueDateStr = dueDateObj.toISOString().split('T')[0];
+      const dueDateStr = toLocalDateStr(dueDateObj);
 
       await ensureAutoAccountExists({ code: '1110', name: 'Piutang Usaha', type: 'Assets', subType: 'Aset Lancar' });
 
@@ -804,6 +810,9 @@ export const PiutangTab: React.FC = () => {
           if (!snap.exists()) throw new Error(`${isManual ? 'Piutang manual' : 'Order'} ${op.order.orderCode} hilang`);
 
           const orderData = snap.data();
+          if (!isManual && orderData.status !== 'completed') {
+            throw new Error(`${orderData.orderCode || snap.id} belum Selesai, jadi belum ada piutangnya di buku besar. Catat pembayaran di muka lewat Penerimaan Transfer.`);
+          }
           const curPaid = orderData.amountPaid || 0;
           assertNotOverpaid(orderData, curPaid, op.amountCents, orderData.orderCode || orderData.receivableCode || snap.id);
           const nextPaid = curPaid + op.amountCents;
@@ -1000,7 +1009,7 @@ export const PiutangTab: React.FC = () => {
                   const st = getStatus(o);
                   const d = o.createdAt ? new Date(o.createdAt.seconds * 1000) : null;
                   const dateStr = d ? `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}` : '-';
-                  const todayStr = new Date().toISOString().split('T')[0];
+                  const todayStr = toLocalDateStr();
                   const isOverdue = sisa > 0 && !!o.dueDate && o.dueDate < todayStr;
 
                   return (

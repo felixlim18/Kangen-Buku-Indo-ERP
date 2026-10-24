@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { toLocalDateStr } from '../lib/date-utils';
 import { db } from '../lib/firebase';
 import { getNextJournalId } from '../lib/journalUtils';
 import { 
@@ -74,11 +75,11 @@ export const FixedAssetsTab: React.FC = () => {
   const [salvageValRaw, setSalvageValRaw] = useState<string>('');
   const [acquisitionDate, setAcquisitionDate] = useState<string>(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    return toLocalDateStr(today);
   });
   const [depStartDate, setDepStartDate] = useState<string>(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    return toLocalDateStr(today);
   });
   const [usefulLifeMonths, setUsefulLifeMonths] = useState<number>(12);
   const [paidViaCode, setPaidViaCode] = useState<string>('1101');
@@ -414,7 +415,7 @@ export const FixedAssetsTab: React.FC = () => {
 
       // Ensure locked auto-journal acquisition is generated
       const tgl = acquisitionDate ? new Date(acquisitionDate) : new Date();
-      const dateStr = tgl.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(tgl);
       const journalId = await getNextJournalId(dateStr);
       const journalRef = doc(db, 'journalEntries', journalId);
 
@@ -506,16 +507,20 @@ export const FixedAssetsTab: React.FC = () => {
       setErrorMsg(`Penyusutan ${asset.docCode} periode ${schedItem.period} sudah diposting.`);
       return;
     }
+    // Jurnal penyusutan bertanggal 28 periodenya; memposting lebih awal membuat jurnal bertanggal masa depan
+    // (Neraca per hari ini tidak sama dengan Laba Rugi / Perubahan Modal bulan itu).
+    if (`${schedItem.period}-28` > toLocalDateStr()) {
+      setErrorMsg(`Penyusutan periode ${schedItem.period} baru bisa diposting mulai ${schedItem.period.replace('-', '/')}/28.`);
+      return;
+    }
 
     if (submitLockRef.current) return;
     submitLockRef.current = true;
     setSubmitting(true);
 
     try {
-      const [y,m] = schedItem.period.split('-');
-      const tgl = new Date(parseInt(y), parseInt(m)-1, 1);
-      const dateStr = tgl.toISOString().split('T')[0];
-      const journalId = await getNextJournalId(dateStr);
+      // Nomor jurnal mengikuti tanggal jurnalnya (tanggal 28 periode), bukan tanggal 1.
+      const journalId = await getNextJournalId(`${schedItem.period}-28`);
       const journalRef = doc(db, 'journalEntries', journalId);
 
       const expAcc = coaAccounts.find(a => a.code === asset.expenseAccountCode) || { name: 'Beban Penyusutan', code: asset.expenseAccountCode };

@@ -805,7 +805,7 @@ export const IklanTab: React.FC = () => {
                 <TrendingUp className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-bold text-neutral-400 dark:text-neutral-500">ROAS Gabungan · {formatMonthYear(currentDate)}</p>
+                <p className="text-[10px] uppercase tracking-widest font-bold text-neutral-400 dark:text-neutral-500">ROAS Laba Kotor (Gross Profit ÷ Iklan) · {formatMonthYear(currentDate)}{metrics.totalSpendCents > 0 ? ` · ROAS Omset ${(metrics.totalGmvCents / metrics.totalSpendCents).toFixed(2)}x` : ''}</p>
                 <div className="flex items-baseline gap-2 mt-0.5">
                   <p className="text-xl font-extrabold text-neutral-900 dark:text-white">
                     {metrics.combinedRoas > 0 ? `${metrics.combinedRoas.toFixed(2)}x` : '—'}
@@ -851,7 +851,7 @@ export const IklanTab: React.FC = () => {
                       <span className="text-xs font-numeric font-semibold text-neutral-700 dark:text-neutral-300">{formatNTD(item.grossProfitCents)}</span>
                     </div>
                     <div className="text-right w-16">
-                      <span className="block text-[9px] uppercase tracking-wider text-neutral-400">ROAS</span>
+                      <span className="block text-[9px] uppercase tracking-wider text-neutral-400">ROAS Laba Kotor</span>
                       <span className="text-xs font-numeric font-bold text-indigo-600 dark:text-indigo-400">
                         {item.spendCents > 0 ? `${item.roas.toFixed(2)}x` : '—'}
                       </span>

@@ -102,6 +102,16 @@ export const formatDateForInput = (dateVal: any): string => {
 };
 
 /**
+ * Tanggal kalender lokal YYYY-MM-DD dari sebuah Date (default: sekarang). Pakai ini, BUKAN
+ * `d.toISOString().split('T')[0]`: toISOString() memakai UTC, jadi di Taipei (UTC+8) transaksi pukul
+ * 00:00–07:59 dan tanggal hasil `new Date(y, m, d)` mundur satu hari.
+ */
+export const toLocalDateStr = (d: Date = new Date()): string => {
+  const x = d instanceof Date ? d : new Date(d as any);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+};
+
+/**
  * Indonesian Month names array (0-indexed)
  */
 export const MONTHS_INDO = [

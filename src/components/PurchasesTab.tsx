@@ -40,7 +40,7 @@ import {
   writeReceiptEventAndJournal,
   findAccountBySystemKey
 } from '../lib/journalAuto';
-import { formatDate } from '../lib/date-utils';
+import { formatDate, toLocalDateStr } from '../lib/date-utils';
 
 const ensureAccountExists = async (code: string, name: string, type: 'Assets' | 'Liabilities' | 'Equity' | 'Revenue' | 'Expenses', subType: string) => {
   const docRef = doc(db, 'coa', code);
@@ -268,9 +268,9 @@ export const PurchasesTab = () => {
   const formatToHTMLDateImpl = (date: any) => {
     if (!date) return '';
     try {
-      if (date instanceof Date) return date.toISOString().split('T')[0];
-      if (date.seconds) return new Date(date.seconds * 1000).toISOString().split('T')[0];
-      return new Date(date).toISOString().split('T')[0];
+      if (date instanceof Date) return toLocalDateStr(date);
+      if (date.seconds) return toLocalDateStr(new Date(date.seconds * 1000));
+      return toLocalDateStr(new Date(date));
     } catch { return ''; }
   };
   const parsePoDateToString = (date: any) => formatToHTMLDateImpl(date);
@@ -1986,8 +1986,8 @@ export const PurchasesTab = () => {
                 lineNum,
                 row,
                 levelPO: {
-                  tglPo: parsedTglPo ? parsedTglPo.toISOString().split('T')[0] : '',
-                  tglTerima: parsedTglTerima ? parsedTglTerima.toISOString().split('T')[0] : '',
+                  tglPo: parsedTglPo ? toLocalDateStr(parsedTglPo) : '',
+                  tglTerima: parsedTglTerima ? toLocalDateStr(parsedTglTerima) : '',
                   plat: plat ? plat.trim().toLowerCase() : '',
                   statusBayar: statusBayar ? statusBayar.trim().toLowerCase() : '',
                   kodeKas: kodeKas ? kodeKas.trim() : '',
@@ -3132,7 +3132,7 @@ export const PurchasesTab = () => {
       if (editingPoId && existingPo && !saveAsDraft) {
         const coaSnap = await getDocs(collection(db, 'coa'));
         const coaAccounts = coaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-        const adjAccount = findAccountBySystemKey(coaAccounts, 'inventory_adjustment') || { code: '5500', name: 'Beban Kerugian Pembelian' };
+        const adjAccount = findAccountBySystemKey(coaAccounts, 'inventory_adjustment') || { code: '5500', name: 'Beban Lain-lain' };
 
         const oldItems = existingPo.items && existingPo.items.length > 0 ? existingPo.items : [{ bookId: existingPo.bookId, qty: existingPo.qty, qtyReceived: existingPo.qtyReceived || 0, pricePerItem: existingPo.pricePerUnitNTD || 0 }];
         const oldTotalQtyOrdered = oldItems.filter((it: any) => !it.isCancelled).reduce((sum: number, it: any) => sum + (it.qty || 0), 0) || 1;
@@ -3161,7 +3161,7 @@ export const PurchasesTab = () => {
             const correctionCents = qtyReceived * (newAvgCostCents - oldAvgCostCents);
             
             // 1. Create a correction journal entry
-            const corrJournalId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+            const corrJournalId = await getNextJournalId(toLocalDateStr());
             const corrJournalRef = doc(db, 'journalEntries', corrJournalId);
             
             const invAcc = getInventoryAccount();
@@ -3232,7 +3232,7 @@ export const PurchasesTab = () => {
         // Fetch sequential ID for creation
         let journalId = `JU-PO-${poId}-create`;
         const tglForJrn = existingPo ? existingPo.purchaseDate?.toDate?.() || new Date(existingPo.purchaseDate) : new Date();
-        const dateStrForJrn = (tglForJrn instanceof Date && !isNaN(tglForJrn.getTime()) ? tglForJrn : new Date()).toISOString().split('T')[0];
+        const dateStrForJrn = toLocalDateStr((tglForJrn instanceof Date && !isNaN(tglForJrn.getTime()) ? tglForJrn : new Date()));
         
         // If editing and it already has a sequential ID, we should try to keep it, 
         // but creation journal isn't explicitly saved in PO document. 
@@ -3369,7 +3369,7 @@ export const PurchasesTab = () => {
             });
           } else {
             if (!closeJournalRef) {
-              const newCloseId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+              const newCloseId = await getNextJournalId(toLocalDateStr());
               closeJournalRef = doc(db, 'journalEntries', newCloseId);
             }
             const transitAcc = getInventoryInTransitAccount();
@@ -3389,7 +3389,7 @@ export const PurchasesTab = () => {
                 offsetAccountName = cashAcc.name;
               } else {
                 offsetAccountCode = '5500';
-                offsetAccountName = 'Beban Kerugian Pembelian';
+                offsetAccountName = 'Beban Lain-lain';
               }
             }
 
@@ -4054,7 +4054,7 @@ export const PurchasesTab = () => {
       const timestampDate = Timestamp.fromDate(parsedDate);
 
       // 1. JURNAL 1 - Refund Barang (always created, value = Total Harga Buku dari Inventory in Transit in NT$)
-      const dateStr = parsedDate.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(parsedDate);
       const journal1Id = await getNextJournalId(dateStr);
       const journal1Ref = doc(db, 'journalEntries', journal1Id);
       const journal1Payload = {
@@ -4096,7 +4096,7 @@ export const PurchasesTab = () => {
       const selisihCents = Math.round(selisihNTD * 100);
 
       if (selisihCents !== 0) {
-        const dateStr2 = parsedDate.toISOString().split('T')[0];
+        const dateStr2 = toLocalDateStr(parsedDate);
         const journal2Id = await getNextJournalId(dateStr2);
         const journal2Ref = doc(db, 'journalEntries', journal2Id);
         
@@ -4129,12 +4129,12 @@ export const PurchasesTab = () => {
             }
           ];
         } else {
-          // Rugi: Debit Beban Kerugian Pembelian, Kredit Cash
+          // Rugi: Debit Beban Lain-lain, Kredit Cash
           const absSelisihCents = Math.abs(selisihCents);
-          await ensureAutoAccountExists({ code: '5500', name: 'Beban Kerugian Pembelian', type: 'Expenses', subType: 'Biaya Umum dan Administrasi' });
+          await ensureAutoAccountExists({ code: '5500', name: 'Beban Lain-lain', type: 'Expenses', subType: 'Biaya Umum dan Administrasi' });
           lines = [
             {
-              account: 'Beban Kerugian Pembelian',
+              account: 'Beban Lain-lain',
               accountCode: '5500',
               debit: absSelisihCents,
               credit: 0,
@@ -4312,7 +4312,7 @@ export const PurchasesTab = () => {
 
       // Generate Auto-Journal for "Tutup Sisa PO"
       // removed unused tgl
-      const dateStr = new Date().toISOString().split('T')[0];
+      const dateStr = toLocalDateStr();
       const journalId = await getNextJournalId(dateStr);
       const journalRef = doc(db, 'journalEntries', journalId);
 
@@ -4358,8 +4358,8 @@ export const PurchasesTab = () => {
         } else {
           // Write-off (Debit Loss / Kredit Transit)
           offsetAccountCode = '5500';
-          offsetAccountName = 'Beban Kerugian Pembelian';
-          await ensureAutoAccountExists({ code: '5500', name: 'Beban Kerugian Pembelian', type: 'Expenses', subType: 'Biaya Umum dan Administrasi' });
+          offsetAccountName = 'Beban Lain-lain';
+          await ensureAutoAccountExists({ code: '5500', name: 'Beban Lain-lain', type: 'Expenses', subType: 'Biaya Umum dan Administrasi' });
         }
       }
 
@@ -8270,7 +8270,7 @@ export const PurchasesTab = () => {
                       </p>
                       <p className="text-[11px] leading-relaxed">
                         Uang atas barang yang tidak terkirim hangus atau sisa pembulatan direlakan. 
-                        Jurnal penyesuaian otomatis akan didebet ke akun <strong>Beban Kerugian Pembelian (5500)</strong> dan dikredit ke akun <strong>Persediaan Dalam Perjalanan (1202)</strong> sebesar sisa barang yang dibatalkan.
+                        Jurnal penyesuaian otomatis akan didebet ke akun <strong>Beban Lain-lain (5500)</strong> dan dikredit ke akun <strong>Persediaan Dalam Perjalanan (1202)</strong> sebesar sisa barang yang dibatalkan.
                       </p>
                     </div>
                   )}

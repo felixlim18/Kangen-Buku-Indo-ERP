@@ -8,7 +8,7 @@ import { AUTO_ACCOUNTS, ensureAutoAccountExists, getLiveAutoAccounts, AutoAccoun
 import { Receipt, X, Trash2, Edit2, Search, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { isPeriodClosed } from '../lib/period-closing-utils';
 import { getNextJournalId } from '../lib/journalUtils';
-import { formatDate } from '../lib/date-utils';
+import { formatDate, toLocalDateStr } from '../lib/date-utils';
 
 // Categories mapping for UI
 const CATEGORIES = {
@@ -109,14 +109,16 @@ const BebanLainnyaTab: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Fetch Kas/Bank + Piutang Usaha
+    // Fetch akun Kas/Bank
     const fetchCoa = async () => {
       const snap = await getDocs(collection(db, 'coa'));
       const accs: { code: string; name: string }[] = [];
       snap.forEach(d => {
         const data = d.data();
         if (data.code && data.name) {
-          if ((data.code.startsWith('110') && data.code !== '1100') || data.code === '1110' || data.type === 'Kas & Bank' || data.name.toLowerCase().includes('bank')) {
+          // 1110 Piutang Usaha tidak boleh dikredit dari sini: piutang per order di tab Piutang tidak ikut berkurang,
+          // sehingga tab Piutang tidak lagi sama dengan GL 1110.
+          if ((data.code.startsWith('110') && data.code !== '1100') || data.type === 'Kas & Bank' || data.name.toLowerCase().includes('bank')) {
             accs.push({ code: data.code, name: data.name });
           }
         }
@@ -144,7 +146,7 @@ const BebanLainnyaTab: React.FC = () => {
   }, [formAmountRaw, formCurrency, formFxRateRaw]);
 
   const handleOpenAdd = () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateStr();
     setFormTanggal(today);
     setFormKategori('admin');
     setFormKeterangan('');

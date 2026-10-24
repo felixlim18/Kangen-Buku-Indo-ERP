@@ -23,7 +23,7 @@ import { PriveTab } from './PriveTab';
 import { PiutangUtangTab } from './PiutangUtangTab';
 import { formatNTD, formatIDR, getAccountBalanceForPeriod, formatInputWithCommas, cleanCommas } from '../lib/decimal-utils';
 import { isPeriodClosed, getMonthlyRateIdrPerNtd } from '../lib/period-closing-utils';
-import { formatDate } from '../lib/date-utils';
+import { formatDate, toLocalDateStr } from '../lib/date-utils';
 import { ensureAutoAccountExists, AUTO_ACCOUNTS, findAccountByRole, getLiveAutoAccounts, AutoAccount } from '../lib/journalAuto';
 import { useAuth } from '../lib/auth-context';
 import { 
@@ -70,7 +70,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
 
   // Form Fields
   const [payee, setPayee] = useState('');
-  const [payrollPeriod, setPayrollPeriod] = useState('2026-06');
+  const [payrollPeriod, setPayrollPeriod] = useState(() => toLocalDateStr().slice(0, 7));
   const [payCurrency, setPayCurrency] = useState<'IDR' | 'NTD'>('NTD');
   const [liveAccounts, setLiveAccounts] = useState<Record<string, AutoAccount>>(AUTO_ACCOUNTS);
   
@@ -82,7 +82,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
   const [payNotes, setPayNotes] = useState('');
   const [payDate, setPayDate] = useState(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    return toLocalDateStr(today);
   });
   const [editingPayroll, setEditingPayroll] = useState<Payroll | null>(null);
   const [payrollToDelete, setPayrollToDelete] = useState<Payroll | null>(null);
@@ -128,6 +128,8 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
     const unsubP = onSnapshot(collection(db, 'payroll'), (snap) => {
       const pList: Payroll[] = [];
       snap.forEach((d) => pList.push({ id: d.id, ...d.data() } as Payroll));
+      // Terbaru di atas (periode lalu tanggal bayar); dulu urutan dokumen Firestore sehingga daftar tampak acak.
+      pList.sort((a: any, b: any) => String(b.period || '').localeCompare(String(a.period || '')) || ((b.paidAt?.seconds || 0) - (a.paidAt?.seconds || 0)));
       setPayrolls(pList);
     }, (err) => {
       console.error('Payroll error:', err);
@@ -489,19 +491,19 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({ activeSubTab, setAct
       : p.paidAt instanceof Date 
         ? p.paidAt 
         : new Date(p.paidAt || Date.now());
-    setPayDate(paidAtDate.toISOString().split('T')[0]);
+    setPayDate(toLocalDateStr(paidAtDate));
     
     setIsPayrollOpen(true);
   };
 
   const resetPayrollForm = () => {
     setPayee('');
-    setPayrollPeriod('2026-06');
+    setPayrollPeriod(toLocalDateStr().slice(0, 7));
     setPayCurrency('NTD');
     setPayAmount('30,000');
     setPayNotes('');
     const today = new Date();
-    setPayDate(today.toISOString().split('T')[0]);
+    setPayDate(toLocalDateStr(today));
     setErrorMsg(null);
     setEditingPayroll(null);
   };

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { toLocalDateStr } from '../lib/date-utils';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 import { UserActivityLog } from '../types';
@@ -11,7 +12,7 @@ export const UserActivityTab: React.FC = () => {
   // Filters
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    return toLocalDateStr(today);
   });
   const [selectedRole, setSelectedRole] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<string>('all');

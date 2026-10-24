@@ -34,6 +34,7 @@ import {
   parseToDate, 
   formatPeriodName, 
   calculateFxRevaluations, 
+  getMonthlyRateIdrPerNtd,
   fetchCurrentExchangeRate, 
   PeriodClosing 
 } from '../lib/period-closing-utils';
@@ -125,9 +126,10 @@ export const ClosingTab: React.FC = () => {
     };
   }, []);
 
-  // Generate Periods based on earliest journal entry to current month (June 2026)
-  const currentMonthDate = new Date(2026, 5, 27); // June 2026
-  let earliestDate = new Date(2026, 4, 1); // fallback to May 2026
+  // Periode dari jurnal paling awal sampai bulan berjalan. Dulu bulan berjalan ditulis mati Juni 2026, sehingga
+  // Juli 2026 dan seterusnya tidak muncul dan tidak bisa ditutup.
+  const currentMonthDate = new Date();
+  let earliestDate = new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth(), 1);
   
   if (journals.length > 0) {
     const dates = journals.map(j => parseToDate(j.date));
@@ -209,9 +211,10 @@ export const ClosingTab: React.FC = () => {
     // Step 1 validation
     validatePeriodBalance(period.id);
 
-    // Calculate FX simulations upfront
+    // Calculate FX simulations upfront. Pakai kurs resmi bulan yang ditutup (fxRates/YYYY-MM); kurs live hanya
+    // kalau kurs bulan itu belum dicatat.
     setFetchingRate(true);
-    const rate = await fetchCurrentExchangeRate();
+    const rate = (await getMonthlyRateIdrPerNtd(`${period.id}-28`)) || await fetchCurrentExchangeRate();
     setExchangeRate(rate);
     setFetchingRate(false);
 
@@ -269,7 +272,10 @@ export const ClosingTab: React.FC = () => {
         }
       });
 
-      const tglClosingIso = selectedPeriod.period + '-28';
+      // Nomor jurnal mengikuti tanggal jurnalnya (hari terakhir periode). Dulu memakai selectedPeriod.period yang
+      // tidak ada ("undefined-28") sehingga nomornya jatuh ke tanggal hari ini.
+      const [py, pm] = selectedPeriod.id.split('-').map(Number);
+      const tglClosingIso = `${selectedPeriod.id}-${String(new Date(py, pm, 0).getDate()).padStart(2, '0')}`;
       const fxJournalId = await getNextJournalId(tglClosingIso);
       let hasFxEntry = false;
 

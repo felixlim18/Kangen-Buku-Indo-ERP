@@ -1,4 +1,5 @@
 import { getNextJournalId } from '../lib/journalUtils';
+import { toLocalDateStr } from '../lib/date-utils';
 import React, { useState, useEffect } from 'react';
 import { useSubmitLock } from '../lib/useSubmitLock';
 import { db } from '../lib/firebase';
@@ -129,7 +130,7 @@ export const PerlengkapanTab: React.FC = () => {
   const [totalRaw, setTotalRaw] = useState<string>('');
   const [buyDate, setBuyDate] = useState<string>(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    return toLocalDateStr(today);
   });
 
   // Reset form states when modal opens
@@ -627,7 +628,7 @@ export const PerlengkapanTab: React.FC = () => {
     setSubmitting(true);
     try {
       // Check if period is locked
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = toLocalDateStr();
       if (isPeriodClosed(todayStr, closedPeriods)) {
         triggerToast('Gagal: Periode akuntansi saat ini terkunci!', 'error');
         setSubmitting(false);
@@ -723,7 +724,7 @@ export const PerlengkapanTab: React.FC = () => {
 
       const batch = writeBatch(db);
 
-      const tglBuy = buyDate || new Date().toISOString().split('T')[0];
+      const tglBuy = buyDate || toLocalDateStr();
       const journalId = await getNextJournalId(tglBuy);
       const journalRef = doc(db, 'journalEntries', journalId);
 
@@ -813,7 +814,7 @@ export const PerlengkapanTab: React.FC = () => {
     setReceivingPurchase(purchase);
     const remaining = purchase.qty - (purchase.qtyReceived || 0);
     setReceiveQtyInput(formatInputWithCommas(String(remaining)));
-    setReceiveDateInput(new Date().toISOString().split('T')[0]);
+    setReceiveDateInput(toLocalDateStr());
   };
 
   // Confirm Receive Goods (Partial or Full)
@@ -928,7 +929,7 @@ export const PerlengkapanTab: React.FC = () => {
   const handleOpenClosePurchase = (purchase: any) => {
     setClosingPurchase(purchase);
     setCloseOption('cancel');
-    setCloseDateInput(new Date().toISOString().split('T')[0]);
+    setCloseDateInput(toLocalDateStr());
   };
 
   // Confirm Tutup Sisa PO
@@ -978,7 +979,8 @@ export const PerlengkapanTab: React.FC = () => {
       const calculatedNTD = remainingQty * closingPurchase.pricePerUnitNTD;
       const amountCents = Math.round(calculatedNTD * 100);
 
-      const closeDateStr = new Date().toISOString().split('T')[0];
+      // Nomor jurnal mengikuti tanggal jurnal (closeDateInput), bukan hari ini.
+      const closeDateStr = closeDateInput || toLocalDateStr();
       const journalId = await getNextJournalId(closeDateStr);
       const journalRef = doc(db, 'journalEntries', journalId);
 
@@ -1025,7 +1027,7 @@ export const PerlengkapanTab: React.FC = () => {
 
       } else if (closeOption === 'writeoff') {
         // Write-off Option
-        await ensureAutoAccountExists({ code: '5500', name: 'Beban Kerugian Pembelian', type: 'Expenses', subType: 'Biaya Umum dan Administrasi' });
+        await ensureAutoAccountExists({ code: '5500', name: 'Beban Lain-lain', type: 'Expenses', subType: 'Biaya Umum dan Administrasi' });
         await ensureAutoAccountExists(AUTO_ACCOUNTS.PERLENGKAPAN);
 
         const journalPayload: any = {
@@ -1037,7 +1039,7 @@ export const PerlengkapanTab: React.FC = () => {
           createdAt: Timestamp.now(),
           lines: [
             {
-              account: 'Beban Kerugian Pembelian',
+              account: 'Beban Lain-lain',
               accountCode: '5500',
               debit: amountCents,
               credit: 0
@@ -1046,12 +1048,7 @@ export const PerlengkapanTab: React.FC = () => {
               account: 'Perlengkapan',
               accountCode: '1130',
               debit: 0,
-              credit: amountCents,
-              ...(isIdr ? {
-                originalCurrency: 'IDR',
-                originalDebitIDR: 0,
-                originalCreditIDR: closingPurchase.pricePerUnit * remainingQty
-              } : {})
+              credit: amountCents
             }
           ]
         };
@@ -1103,10 +1100,10 @@ export const PerlengkapanTab: React.FC = () => {
       if (Array.isArray(dbPurchase.receipts)) {
         const closedReceipt = dbPurchase.receipts.find((r: any) => {
           const rDateStr = r.date instanceof Date 
-            ? r.date.toISOString().split('T')[0] 
+            ? toLocalDateStr(r.date) 
             : typeof r.date === 'string' 
               ? r.date 
-              : r.date?.toDate ? r.date.toDate().toISOString().split('T')[0] : '';
+              : r.date?.toDate ? toLocalDateStr(r.date.toDate()) : '';
           return isPeriodClosed(rDateStr, closedPeriods);
         });
         if (closedReceipt) {
@@ -1282,7 +1279,7 @@ export const PerlengkapanTab: React.FC = () => {
     // Check if any of the historyItems are in closed periods
     const hasClosedPeriodTransaction = historyItems.some((item) => {
       const itemDateStr = item.date instanceof Date 
-        ? item.date.toISOString().split('T')[0] 
+        ? toLocalDateStr(item.date) 
         : typeof item.date === 'string' 
           ? item.date 
           : '';
@@ -1820,13 +1817,13 @@ export const PerlengkapanTab: React.FC = () => {
       return;
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = toLocalDateStr();
     if (isPeriodClosed(todayStr, closedPeriods)) {
       triggerToast('Gagal: Periode akuntansi saat ini terkunci!', 'error');
       return;
     }
 
-    const confirmMessage = `Apakah Anda yakin ingin menulis off (Tutup & Catat Rugi) seluruh sisa stok ${item.name} sebanyak ${item.qty} pcs? Ini akan mencatatkan kerugian penuh pada Beban Kerugian Pembelian (5500).`;
+    const confirmMessage = `Apakah Anda yakin ingin menulis off (Tutup & Catat Rugi) seluruh sisa stok ${item.name} sebanyak ${item.qty} pcs? Ini akan mencatatkan kerugian penuh pada Beban Lain-lain (5500).`;
     
     triggerConfirm(
       'Write-Off Perlengkapan',
@@ -1836,16 +1833,16 @@ export const PerlengkapanTab: React.FC = () => {
         try {
           const batch = writeBatch(db);
 
-          // Create Beban Kerugian Pembelian (5500) if not exists
+          // Create Beban Lain-lain (5500) if not exists
           await ensureAutoAccountExists({
             code: '5500',
-            name: 'Beban Kerugian Pembelian',
+            name: 'Beban Lain-lain',
             type: 'Expenses',
             subType: 'Biaya Umum dan Administrasi'
           });
 
           // Write-off journal details
-          const writeOffId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+          const writeOffId = await getNextJournalId(toLocalDateStr());
           const journalRef = doc(db, 'journalEntries', writeOffId);
           
           const totalLossNTD = item.qty * item.avgPrice;
@@ -1863,7 +1860,7 @@ export const PerlengkapanTab: React.FC = () => {
             createdAt: Timestamp.now(),
             lines: [
               {
-                account: 'Beban Kerugian Pembelian',
+                account: 'Beban Lain-lain',
                 accountCode: '5500',
                 debit: totalLossCents,
                 credit: 0
@@ -1888,7 +1885,7 @@ export const PerlengkapanTab: React.FC = () => {
           });
 
           await batch.commit();
-          triggerToast(`Stok ${item.name} berhasil ditulis off dan dicatat di Beban Kerugian Pembelian (5500) sebesar NT$ ${formatNTD(totalLossCents)}!`, 'success');
+          triggerToast(`Stok ${item.name} berhasil ditulis off dan dicatat di Beban Lain-lain (5500) sebesar NT$ ${formatNTD(totalLossCents)}!`, 'success');
         } catch (err) {
           console.error(err);
           triggerToast('Gagal memproses write-off perlengkapan.', 'error');
@@ -1938,7 +1935,7 @@ export const PerlengkapanTab: React.FC = () => {
         const codeToUse = itemCategory?.adjustmentAccountCode || adjustAccountCode || '5500';
         const chosenAcc = coaAccounts.find(a => a.code === codeToUse) || {
           code: codeToUse,
-          name: coaAccounts.find(a => a.code === codeToUse)?.name || 'Beban Kerugian Pembelian',
+          name: coaAccounts.find(a => a.code === codeToUse)?.name || 'Beban Lain-lain',
           type: 'Expenses'
         };
         await ensureAutoAccountExists({
@@ -1948,7 +1945,7 @@ export const PerlengkapanTab: React.FC = () => {
           subType: 'Biaya Umum dan Administrasi'
         });
 
-        const adjustId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+        const adjustId = await getNextJournalId(adjustDate || toLocalDateStr());
         const journalRef = doc(db, 'journalEntries', adjustId);
 
         const journalPayload = {
@@ -1982,7 +1979,7 @@ export const PerlengkapanTab: React.FC = () => {
           subType: 'Pendapatan Usaha'
         });
 
-        const adjustId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+        const adjustId = await getNextJournalId(adjustDate || toLocalDateStr());
         const journalRef = doc(db, 'journalEntries', adjustId);
 
         const journalPayload = {
@@ -2070,7 +2067,7 @@ export const PerlengkapanTab: React.FC = () => {
 
         if (totalCents > 0) {
           const isLoss = diff < 0;
-          const adjustId = await getNextJournalId(new Date().toISOString().split('T')[0]);
+          const adjustId = await getNextJournalId(bulkAdjustDate || toLocalDateStr());
           const journalRef = doc(db, 'journalEntries', adjustId);
 
           const itemCategory = categories.find(c => c.id === item.categoryId);
@@ -2078,7 +2075,7 @@ export const PerlengkapanTab: React.FC = () => {
           const codeToUse = itemCategory?.adjustmentAccountCode || bulkAdjustAccountCode || '5500';
           const chosenAcc = coaAccounts.find(a => a.code === codeToUse) || {
             code: codeToUse,
-            name: coaAccounts.find(a => a.code === codeToUse)?.name || 'Beban Kerugian Pembelian',
+            name: coaAccounts.find(a => a.code === codeToUse)?.name || 'Beban Lain-lain',
             type: 'Expenses'
           };
 
@@ -2193,7 +2190,7 @@ export const PerlengkapanTab: React.FC = () => {
                 initial[item.id] = item.qty || 0;
               });
               setBulkAdjustments(initial);
-              setBulkAdjustDate(new Date().toISOString().split('T')[0]);
+              setBulkAdjustDate(toLocalDateStr());
               setBulkAdjustAccountCode('5500');
               setBulkSearchQuery('');
               setIsBulkAdjustOpen(true);
@@ -2366,7 +2363,7 @@ export const PerlengkapanTab: React.FC = () => {
                                           setAdjustFisikInput(formatInputWithCommas(String(item.qty || 0)));
                                           setAdjustAccountCode('5500');
                                           setAdjustNotes('');
-                                          setAdjustDate(new Date().toISOString().split('T')[0]);
+                                          setAdjustDate(toLocalDateStr());
                                         }}
                                         className="h-7 w-7 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center justify-center text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 transition cursor-pointer"
                                         title="Sesuaikan Stok"
@@ -3043,7 +3040,7 @@ export const PerlengkapanTab: React.FC = () => {
                     <div>
                       <span className="text-xs font-bold text-neutral-800 dark:text-neutral-100 block">Tutup & Catat Rugi</span>
                       <p className="text-[10px] text-neutral-500 mt-0.5 leading-relaxed">
-                        Catat sisa barang senilai {formatNTD(Math.round((closingPurchase.qty - (closingPurchase.qtyReceived || 0)) * closingPurchase.pricePerUnitNTD * 100))} sebagai **Beban Kerugian Pembelian (5500)**.
+                        Catat sisa barang senilai {formatNTD(Math.round((closingPurchase.qty - (closingPurchase.qtyReceived || 0)) * closingPurchase.pricePerUnitNTD * 100))} sebagai **Beban Lain-lain (5500)**.
                       </p>
                     </div>
                   </label>
@@ -3174,7 +3171,7 @@ export const PerlengkapanTab: React.FC = () => {
                     const accountOfItem = coaAccounts.find(a => a.code === codeToUse);
                     return (
                       <div className="p-3 bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold text-neutral-700 dark:text-neutral-300">
-                        {codeToUse} — {accountOfItem?.name || 'Beban Kerugian Pembelian'}
+                        {codeToUse} — {accountOfItem?.name || 'Beban Lain-lain'}
                         <span className="block text-[9px] font-normal text-neutral-450 dark:text-neutral-550 mt-0.5">
                           (Ditentukan oleh Kategori: {categoryOfItem?.name || 'Umum'})
                         </span>

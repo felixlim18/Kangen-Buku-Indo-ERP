@@ -88,7 +88,10 @@ export const IncomeTab: React.FC = () => {
       const oList: any[] = [];
       snap.forEach((d) => {
         const o = d.data();
-        if (o.paymentMethod === 'Transfer' && o.status !== 'cancelled' && o.status !== 'returned') {
+        // Order Selesai tidak tampil di sini: pendapatannya sudah diakui dan sisa tagihannya ada di Piutang Usaha
+        // (1110). Penerimaan di tab ini selalu mengkredit 2110, jadi hanya untuk order yang belum selesai. Order
+        // Return tetap tampil supaya penerimaannya bisa dibatalkan (dikembalikan ke pembeli) sebelum order dibatalkan.
+        if (o.paymentMethod === 'Transfer' && !['cancelled', 'completed'].includes(o.status)) {
           oList.push({ id: d.id, ...o });
         }
       });
@@ -146,6 +149,8 @@ export const IncomeTab: React.FC = () => {
 
   const totalOutstandingAll = salesOrders.reduce((acc, so) => acc + Math.max(0, getOutstanding(so)), 0);
   const totalCountAll = salesOrders.filter(so => getOutstanding(so) > 0).length;
+  // Uang yang sudah diterima untuk order belum selesai = saldo 2110 Pendapatan Diterima di Muka di GL
+  const totalReceivedAll = salesOrders.reduce((acc, so) => acc + (so.amountPaid || 0), 0);
 
   const outstandingPlatform = activePlatform === 'semua' 
     ? totalOutstandingAll 
@@ -482,6 +487,9 @@ export const IncomeTab: React.FC = () => {
         if (!snap.exists()) throw new Error("Sales order tidak ditemukan");
 
         const order = snap.data();
+        if (['completed', 'cancelled', 'returned'].includes(order.status)) {
+          throw new Error(`${order.orderCode || selectedItem.id} sudah ${order.status === 'completed' ? 'Selesai; terima pelunasannya di Piutang Usaha' : 'dibatalkan/diretur'}.`);
+        }
         const curPaid = order.amountPaid || 0;
         assertNotOverpaid(order, curPaid, payAmountCents, order.orderCode || selectedItem.id);
         const nextPaid = curPaid + payAmountCents;
@@ -731,6 +739,9 @@ export const IncomeTab: React.FC = () => {
           if (!snap.exists()) throw new Error(`Order ${op.order.orderCode} hilang`);
           
           const orderData = snap.data();
+          if (['completed', 'cancelled', 'returned'].includes(orderData.status)) {
+            throw new Error(`${orderData.orderCode || snap.id} sudah ${orderData.status === 'completed' ? 'Selesai; terima pelunasannya di Piutang Usaha' : 'dibatalkan/diretur'}.`);
+          }
           const curPaid = orderData.amountPaid || 0;
           assertNotOverpaid(orderData, curPaid, op.amountCents, orderData.orderCode || snap.id);
           const nextPaid = curPaid + op.amountCents;
@@ -837,9 +848,9 @@ export const IncomeTab: React.FC = () => {
             onClick={() => setActivePlatform('semua')}
           >
             <div className="icon">{icons.users}</div>
-            <div className="label">Total Pendapatan Diterima di Muka</div>
+            <div className="label">Total Transfer Belum Diterima</div>
             <div className="amount num">NT$ {(totalOutstandingAll / 100).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-            <div className="sub">{totalCountAll} order outstanding</div>
+            <div className="sub">{totalCountAll} order outstanding · sudah diterima di muka (2110) NT$ {(totalReceivedAll / 100).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
           </button>
 
           {platformList.map(p => {

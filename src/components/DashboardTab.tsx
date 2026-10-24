@@ -544,7 +544,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
     }, 0);
   }, [monthlyPO]);
 
-  // ROAS Calculation (Matches IklanTab logic)
+  // ROAS Omset = GMV order berkampanye ÷ belanja iklan. Tab Iklan menampilkan ROAS Laba Kotor (gross profit ÷ iklan).
   const monthlyAdSpendNTD = useMemo(() => {
     return adsPurchases.reduce((sum, ad) => {
       const adDate = ad.date || (ad.createdAt?.toDate ? formatToLocalYYYYMMDD(ad.createdAt.toDate()) : '');
@@ -620,6 +620,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
 
     // 2. Revenue & Expenses for the selected month from journal entries
     let revThisMonth = 0;
+    let otherIncomeThisMonth = 0;
     let expThisMonth = 0;
 
     journals.forEach(j => {
@@ -638,7 +639,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
           const debit = (l.debit || 0) / 100;
           const credit = (l.credit || 0) / 100;
 
-          if (code.startsWith('4')) {
+          // Sama dengan tab Laba Rugi: 4104 & 42xx (selisih kurs) = pendapatan lain-lain, bukan omset penjualan,
+          // tetapi tetap ikut laba bersih.
+          if (code === '4104' || code.startsWith('42')) {
+            otherIncomeThisMonth += (credit - debit);
+          } else if (code.startsWith('4')) {
             revThisMonth += (credit - debit);
           } else if (code.startsWith('5')) {
             expThisMonth += (debit - credit);
@@ -647,17 +652,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
       }
     });
 
-    // Fallback revenue from Sales Orders in selected month if journals have not been posted
-    const soRevenueCents = monthlySO
-      .filter(so => so.status === 'completed' || so.status === 'shipped' || so.status === 'packed' || so.status === 'confirmed')
-      .reduce((sum, so) => {
-        const cents = typeof so.totalPrice === 'number' ? so.totalPrice : (typeof so.subtotal === 'number' ? so.subtotal : 0);
-        return sum + cents;
-      }, 0);
-    const soRevenueNTD = soRevenueCents / 100;
-
-    const finalRev = revThisMonth > 0 ? revThisMonth : soRevenueNTD;
-    const labaBersihVal = revThisMonth > 0 ? (revThisMonth - expThisMonth) : (soRevenueNTD - expThisMonth);
+    // Buku besar satu-satunya sumber (sama dengan Laba Rugi). Dulu ada fallback ke total SO Dikemas/Dikirim saat
+    // pendapatan jurnal bulan itu 0, sehingga Dashboard menampilkan omset & laba yang belum diakui di Laba Rugi.
+    const finalRev = revThisMonth;
+    const labaBersihVal = revThisMonth + otherIncomeThisMonth - expThisMonth;
 
     // 3. Balance Sheet check (Status Rekonsiliasi)
     let totalAssets = 0;
@@ -1504,7 +1502,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
             {/* 3. KARTU ROAS BULAN INI */}
             <div className="kpi">
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">ROAS (Bulan Ini)</span>
+                <span className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">ROAS Omset (Bulan Ini)</span>
                 <span className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#f0ecfa] text-[#5b3fa8]">
                   <Target className="w-3.5 h-3.5" />
                 </span>
@@ -1587,7 +1585,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ setTab }) => {
               <div className="font-numeric text-2xl font-bold tracking-tight text-[#2b5a9e] dark:text-blue-400 mb-1">
                 {formatNTDAmount(revenueSelesaiNTD)}
               </div>
-              <div className="text-[11.5px] text-neutral-400">diakui dari order Selesai</div>
+              <div className="text-[11.5px] text-neutral-400">penjualan diakui dari order Selesai</div>
             </div>
 
             <div className="kpi">

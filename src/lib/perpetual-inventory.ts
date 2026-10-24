@@ -350,12 +350,15 @@ type PEvent =
   | { type: 'freight_capitalized'; timeMs: number; freightAllocatedCents: number }
   // costCents = HPP yang benar-benar diposting ke jurnal. null berarti tidak ada
   // jurnal yang mengunci nilainya (data legacy) - fold jatuh ke rata-rata berjalan.
-  | { type: 'outflow'; timeMs: number; qtyDelta: number; costCents: number | null };
+  | { type: 'outflow'; timeMs: number; qtyDelta: number; costCents: number | null }
+  // Koreksi nilai tanpa qty (jurnal inventory_value_adjustment), mis. sisa freight buku yang sudah habis -> HPP.
+  | { type: 'value_adjustment'; timeMs: number; valueCents: number };
 
 const ORDER: Record<PEvent['type'], number> = {
   purchase_received: 1,
   freight_capitalized: 2,
   outflow: 3,
+  value_adjustment: 4,
 };
 
 export interface PerpetualIndex {
@@ -504,6 +507,17 @@ export function buildPerpetualIndex(data: PerpetualData, nowMs: number = Date.no
       : Math.round((fRec.totalKg || 0) * (fRec.ratePerKg || 0) * (fRec.exchangeRate || FALLBACK_NTD_PER_IDR) * 100);
 
     const timeMs = parseEventDate(getCapitalizationTimestamp(fRec, journals, nowMs)).getTime();
+
+    // Jurnal kapitalisasi baru menyimpan pembagian per buku: hanya bagian buku yang masih di gudang yang masuk
+    // persediaan (inventoryCents); bagian buku yang sudah dikirim langsung jadi HPP. Laporan memakai angka itu
+    // persis supaya tetap sama dengan GL 1201.
+    const capJournal = fRec.capitalizationJournalId ? journalById.get(fRec.capitalizationJournalId) : null;
+    if (capJournal && Array.isArray(capJournal.freightAllocations)) {
+      for (const a of capJournal.freightAllocations) {
+        if (a.bookId && a.inventoryCents) push(eventsByBook, a.bookId, { type: 'freight_capitalized', timeMs, freightAllocatedCents: a.inventoryCents });
+      }
+      continue;
+    }
 
     const emit = (bookId: string, qty: number) => {
       if (!bookId || qty <= 0) return;
@@ -662,6 +676,15 @@ export function buildPerpetualIndex(data: PerpetualData, nowMs: number = Date.no
     });
   }
 
+  // Koreksi nilai persediaan per buku (tanpa qty). Jurnalnya D/K 1201 sebesar jumlah bookValueAdjustments.
+  for (const j of journals) {
+    if (j.refType !== 'inventory_value_adjustment' || !Array.isArray(j.bookValueAdjustments)) continue;
+    const timeMs = parseEventDate(j.date).getTime();
+    for (const a of j.bookValueAdjustments) {
+      if (a.bookId && a.valueCents) push(eventsByBook, a.bookId, { type: 'value_adjustment', timeMs, valueCents: a.valueCents });
+    }
+  }
+
   // -- urutkan sekali per buku --------------------------------------------
   for (const evs of eventsByBook.values()) {
     evs.sort((a, b) => (a.timeMs !== b.timeMs ? a.timeMs - b.timeMs : ORDER[a.type] - ORDER[b.type]));
@@ -725,6 +748,9 @@ export function computePerpetualStates(
         currentAverageCost = runningStock > 0 ? runningValueCents / runningStock : 0;
       } else if (ev.type === 'freight_capitalized') {
         runningValueCents += ev.freightAllocatedCents;
+        currentAverageCost = runningStock > 0 ? runningValueCents / runningStock : 0;
+      } else if (ev.type === 'value_adjustment') {
+        runningValueCents += ev.valueCents;
         currentAverageCost = runningStock > 0 ? runningValueCents / runningStock : 0;
       } else {
         // Jurnal yang menang: kalau HPP-nya sudah dikunci di jurnal, kurangi persis
@@ -838,5 +864,67 @@ export function legacyBuildReportRows(
       totalNilaiStok,
       minStock: book.minOrder || 0,
     };
+  });
+}
+
+/**
+ * Pembagian biaya satu Freight-In ke tiap buku menurut qty yang diterima dengan kode freight itu. Aturannya sama
+ * dengan alokasi di buildPerpetualIndex (per penerimaan, dibulatkan per penerimaan), dijumlah per buku. Dipakai saat
+ * menjurnal kapitalisasi untuk memisahkan bagian buku yang masih di gudang (1201) dan yang sudah dikirim (HPP).
+ */
+export function freightBookAllocations(fRec: any, purchaseOrders: any[], totalCents: number): { bookId: string; qty: number; cents: number }[] {
+  const fCode = String(fRec.freightCode || '').toUpperCase().trim();
+  if (!fCode) return [];
+  let totalQty = 0;
+  for (const p of purchaseOrders) {
+    if (p.receipts && p.receipts.length > 0) {
+      for (const rx of p.receipts) if (rx.kodeEkspedisi?.toUpperCase().trim() === fCode) totalQty += rx.receivedQty || 0;
+    } else if (p.kodeEkspedisi?.toUpperCase().trim() === fCode) {
+      totalQty += p.qtyReceived || p.qty || 0;
+    }
+  }
+  if (totalQty <= 0) return [];
+  const byBook = new Map<string, { bookId: string; qty: number; cents: number }>();
+  const add = (bookId: string, qty: number) => {
+    if (!bookId || qty <= 0) return;
+    const cur = byBook.get(bookId) || { bookId, qty: 0, cents: 0 };
+    cur.qty += qty;
+    cur.cents += Math.round((qty / totalQty) * totalCents);
+    byBook.set(bookId, cur);
+  };
+  for (const po of purchaseOrders) {
+    if (po.status === 'cancelled') continue;
+    if (po.receipts && po.receipts.length > 0) {
+      for (const r of po.receipts) {
+        if (!r.kodeEkspedisi || r.kodeEkspedisi.toUpperCase().trim() !== fCode) continue;
+        const bookIds = new Set<string>(po.items && po.items.length > 0 ? po.items.map((it: any) => it.bookId) : [po.bookId]);
+        for (const bid of bookIds) if (bid) add(bid, getBookQtyInReceipt(po, r, bid));
+      }
+      continue;
+    }
+    if (po.kodeEkspedisi && po.kodeEkspedisi.toUpperCase().trim() === fCode) {
+      if (po.items && po.items.length > 0) for (const it of po.items) add(it.bookId, it.qtyReceived || it.qty || 0);
+      else add(po.bookId, po.qtyReceived || po.qty || 0);
+    }
+  }
+  const list = [...byBook.values()];
+  // Sisa pembulatan ke buku dengan qty terbesar supaya jumlahnya persis totalCents.
+  const diff = totalCents - list.reduce((a, x) => a + x.cents, 0);
+  if (diff && list.length) list.sort((a, b) => b.qty - a.qty)[0].cents += diff;
+  return list;
+}
+
+/**
+ * Pisahkan alokasi freight per buku menjadi bagian persediaan dan HPP menurut stok yang masih di gudang
+ * (endingStock, belum dikirim). Buku yang sudah habis/terkirim tidak boleh menahan biaya freight di 1201.
+ */
+export function splitFreightAllocations(
+  allocs: { bookId: string; qty: number; cents: number }[],
+  onHandByBook: Map<string, number>,
+) {
+  return allocs.map((a) => {
+    const onHandQty = Math.max(0, onHandByBook.get(a.bookId) || 0);
+    const inventoryCents = Math.round(a.cents * Math.min(1, a.qty > 0 ? onHandQty / a.qty : 0));
+    return { ...a, onHandQty, inventoryCents, cogsCents: a.cents - inventoryCents };
   });
 }

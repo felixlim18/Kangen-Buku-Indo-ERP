@@ -21,3 +21,4 @@ coverage/
 
 # Backup data dari skrip perbaikan
 scripts/backup-*.json
+.emulator/
