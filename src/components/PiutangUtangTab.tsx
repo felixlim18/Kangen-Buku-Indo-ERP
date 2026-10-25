@@ -314,17 +314,37 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
     };
   }, [unifiedUtangItems]);
 
+  // Utang yang dipinjam/dibeli dalam Rupiah: sisa Rupiah sebanding dengan sisa NT$ (pembayaran
+  // selalu mengurangi amountPaid sebesar porsi Rupiah yang dilunasi, lihat savePayment).
+  const getIdrOutstanding = (item: any): number => {
+    const totalIDR = item?.totalAmountIDR || 0;
+    const total = item?.totalAmount || 0;
+    if (!(totalIDR > 0) || !(total > 0)) return 0;
+    return Math.max(0, Math.round(totalIDR * (total - (item.amountPaid || 0)) / total));
+  };
+
+  // Nominal default = seluruh sisa, dalam mata uang kas yang dipilih (Rp untuk 1102, NT$ untuk 1101).
+  const defaultPayAmount = (item: any, account: '1101' | '1102', rate: number) => {
+    const outstandingCents = (item.totalAmount || 0) - (item.amountPaid || 0) - (item.originalItem?.writtenOff || 0);
+    if (account === '1101') return formatInputWithCommas(String(Math.round(outstandingCents / 100)));
+    const idr = activeSegment === 'utang' ? getIdrOutstanding(item) : 0;
+    return formatInputWithCommas(String(idr > 0 ? idr : Math.round((outstandingCents / 100) * rate)));
+  };
+
   const handleOpenPaymentModal = (item: any) => {
     setSelectedItem(item);
-    const outstanding = item.totalAmount - item.amountPaid;
-    
-    // Default to full outstanding payment (converted from cents to whole NT$)
-    setPayAmount(String(Math.round(outstanding / 100)));
-    const isIdr = (item.originalItem?.purchasePriceIDR || 0) > 0 || item.originalItem?.cashAccount === '1102' || (item.originalItem?.supplierName || item.creditor || '').toLowerCase().includes('shopee');
-    setCashAccount(isIdr ? '1102' : '1101');
+    const isIdr = (item.totalAmountIDR || 0) > 0 || (item.originalItem?.purchasePriceIDR || 0) > 0 || item.originalItem?.cashAccount === '1102' || (item.originalItem?.supplierName || item.creditor || '').toLowerCase().includes('shopee');
+    const account = isIdr ? '1102' : '1101';
+    setCashAccount(account);
     const effectiveRate = item.exchangeRate && item.exchangeRate !== 500 ? item.exchangeRate : (liveExchangeRate || 500);
     setPayRate(String(effectiveRate));
+    setPayAmount(defaultPayAmount(item, account, effectiveRate));
     setIsPayModalOpen(true);
+  };
+
+  const handleChangePayCashAccount = (account: '1101' | '1102') => {
+    setCashAccount(account);
+    if (selectedItem) setPayAmount(defaultPayAmount(selectedItem, account, parseFloat(cleanCommas(payRate)) || FALLBACK_IDR_PER_NTD));
   };
 
   const handleClosePaymentModal = () => {
@@ -353,8 +373,10 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
       return;
     }
 
-    const payAmountCents = Math.round(parsedAmount * 100);
     const fxRate = parseFloat(cleanCommas(payRate)) || FALLBACK_IDR_PER_NTD;
+    // Dibayar dari Kas Rupiah -> nominal diketik dalam Rupiah; nilai NT$-nya = Rp / kurs.
+    const payInRupiah = cashAccount === '1102';
+    const payAmountCents = payInRupiah ? Math.round((parsedAmount / fxRate) * 100) : Math.round(parsedAmount * 100);
 
     // Check closed periods first
     try {
@@ -418,7 +440,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
           // 2. Journal Entry: Dr Cash (1101/1102) | Cr Piutang Usaha (1110)
           const targetCash = cashAccount === '1101' ? liveAccounts.CASH_NTD : liveAccounts.CASH_RUPIAH;
           const isRupiah = cashAccount === '1102';
-          const paidRupiahWhole = isRupiah ? Math.round(parsedAmount * fxRate) : 0;
+          const paidRupiahWhole = isRupiah ? Math.round(parsedAmount) : 0;
 
           transaction.set(journalRef, {
             id: journalId,
@@ -479,7 +501,15 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
     } else {
       // Execute Utang/Loan Payment transaction
       const outstanding = selectedItem.totalAmount - selectedItem.amountPaid;
-      if (payAmountCents > outstanding + 10) {
+      // Utang dalam Rupiah dibayar dari Kas Rupiah: batasnya sisa Rupiah, bukan sisa NT$ (kurs bisa berubah).
+      const idrOutstanding = getIdrOutstanding(selectedItem);
+      const idrTolerance = Math.ceil(fxRate / 100) + 1; // 1 sen NT$ ≈ kurs/100 Rupiah
+      if (payInRupiah && idrOutstanding > 0) {
+        if (parsedAmount > idrOutstanding + idrTolerance) {
+          alert(`Nominal pelunasan melebihi sisa utang: ${formatIDR(idrOutstanding)}`);
+          return;
+        }
+      } else if (payAmountCents > outstanding + 10) {
         alert(`Nominal pelunasan melebihi sisa utang: ${formatNTD(outstanding)}`);
         return;
       }
@@ -502,6 +532,8 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
         await ensureAutoAccountExists(liveAccounts.UTANG_USAHA || { code: '2100', name: 'Utang Usaha', type: 'Liabilities', subType: 'Kewajiban Lancar', systemKey: 'utang_usaha' });
 
         await ensureAutoAccountExists(cashAccount === '1101' ? liveAccounts.CASH_NTD : liveAccounts.CASH_RUPIAH);
+        const fxAccount = liveAccounts.LABA_RUGI_SELISIH_KURS || AUTO_ACCOUNTS.LABA_RUGI_SELISIH_KURS;
+        if (payInRupiah && idrOutstanding > 0) await ensureAutoAccountExists(fxAccount);
 
         await runTransaction(db, async (transaction) => {
           const snap = await transaction.get(targetRef);
@@ -510,9 +542,25 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
           }
           const itemData = snap.data();
           const curPaid = itemData.amountPaid || 0;
-          const nextPaid = curPaid + payAmountCents;
-          
           const limitAmount = isLoan ? (itemData.amountNTD || 0) : (itemData.purchasePriceNTD || 0);
+          const totalIDR = isLoan ? (itemData.amountIDR || 0) : (itemData.purchasePriceIDR || 0);
+
+          // Utang Rupiah dibayar Rupiah: kurangi utang sebesar porsi Rupiah yang dilunasi (nilai buku NT$
+          // dengan kurs saat utang dicatat). Beda dengan nilai NT$ kas yang keluar (kurs hari ini) = selisih kurs.
+          let utangDebitCents = payAmountCents;
+          if (payInRupiah && totalIDR > 0 && limitAmount > 0) {
+            const remainingCents = limitAmount - curPaid;
+            const remainingIDR = Math.round(totalIDR * remainingCents / limitAmount);
+            if (parsedAmount > remainingIDR + idrTolerance) {
+              throw new Error(`Nominal melebihi sisa utang terkini: ${formatIDR(remainingIDR)}`);
+            }
+            utangDebitCents = parsedAmount >= remainingIDR - idrTolerance
+              ? remainingCents
+              : Math.round(parsedAmount / totalIDR * limitAmount);
+          }
+          const fxDiffCents = utangDebitCents - payAmountCents; // + = laba kurs, - = rugi kurs
+
+          const nextPaid = curPaid + utangDebitCents;
           const isFullyPaid = nextPaid >= limitAmount - 5;
 
           // 1. Update Document
@@ -526,9 +574,9 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
           // 2. Journal Entry: Dr Utang Usaha (2100/2100-XXX) | Cr Cash (1101/1102)
           const targetCash = cashAccount === '1101' ? liveAccounts.CASH_NTD : liveAccounts.CASH_RUPIAH;
           const isRupiah = cashAccount === '1102';
-          const paidRupiahWhole = isRupiah ? Math.round(parsedAmount * fxRate) : 0;
+          const paidRupiahWhole = isRupiah ? Math.round(parsedAmount) : 0;
 
-          const descriptionStr = isLoan 
+          const descriptionStr = isLoan
             ? `Pelunasan Pinjaman ${selectedItem.code} - ${selectedItem.creditor}`
             : `Pelunasan Utang PO ${itemData.purchaseCode || selectedItem.id} - ${itemData.supplierName}`;
 
@@ -544,7 +592,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
               {
                 account: debitAccountName,
                 accountCode: debitAccountCode,
-                debit: payAmountCents,
+                debit: utangDebitCents,
                 credit: 0,
                 ...(isRupiah ? {
                   originalCurrency: 'IDR',
@@ -562,7 +610,13 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
                   originalDebitIDR: 0,
                   originalCreditIDR: paidRupiahWhole
                 } : {})
-              }
+              },
+              ...(fxDiffCents !== 0 ? [{
+                account: fxAccount.name,
+                accountCode: fxAccount.code,
+                debit: fxDiffCents < 0 ? -fxDiffCents : 0,
+                credit: fxDiffCents > 0 ? fxDiffCents : 0
+              }] : [])
             ]
           });
 
@@ -1231,6 +1285,9 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
                       </td>
                       <td className="p-4 text-right font-extrabold text-[#7a2f5f] dark:text-[#f2e1ec] font-['Inter'] tabular-nums text-sm">
                         {formatNTD(outstanding)}
+                        {item.totalAmountIDR > 0 && outstanding > 0 && (
+                          <div className="text-[10px] text-neutral-400 font-normal mt-0.5">{formatIDR(getIdrOutstanding(item))}</div>
+                        )}
                       </td>
                       <td className="p-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
@@ -1340,8 +1397,15 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
                 </div>
                 <div className="flex justify-between text-xs pt-2 border-t border-dashed border-neutral-200 dark:border-neutral-800">
                   <span className="text-neutral-450">Sisa Outstanding:</span>
-                  <span className={`font-bold font-['Inter'] tabular-nums ${activeSegment === 'piutang' ? 'text-blue-600 dark:text-blue-400' : 'text-[#7a2f5f] dark:text-[#f2e1ec]'}`}>
-                    {formatNTD(selectedItem.totalAmount - selectedItem.amountPaid)}
+                  <span className={`text-right font-bold font-['Inter'] tabular-nums ${activeSegment === 'piutang' ? 'text-blue-600 dark:text-blue-400' : 'text-[#7a2f5f] dark:text-[#f2e1ec]'}`}>
+                    {activeSegment === 'utang' && getIdrOutstanding(selectedItem) > 0 ? (
+                      <>
+                        <span className="block">{formatIDR(getIdrOutstanding(selectedItem))}</span>
+                        <span className="block text-[10px] font-semibold text-neutral-450">
+                          ≈ {formatNTD(selectedItem.totalAmount - selectedItem.amountPaid)} (kurs awal Rp {selectedItem.exchangeRate})
+                        </span>
+                      </>
+                    ) : formatNTD(selectedItem.totalAmount - selectedItem.amountPaid)}
                   </span>
                 </div>
               </div>
@@ -1366,7 +1430,7 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
                   <label className="block text-[10px] uppercase font-bold text-neutral-500 mb-1">Dibayar dari Kas *</label>
                   <select
                     value={cashAccount}
-                    onChange={(e) => setCashAccount(e.target.value as any)}
+                    onChange={(e) => handleChangePayCashAccount(e.target.value as '1101' | '1102')}
                     className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 rounded-lg text-xs"
                   >
                     <option value="1101">{liveAccounts.CASH_NTD?.code || '1101'} - {liveAccounts.CASH_NTD?.name || 'Cash: NTD'}</option>
@@ -1400,11 +1464,11 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase font-bold text-neutral-500 mb-1">Nominal Pelunasan (NT$) *</label>
+                <label className="block text-[10px] uppercase font-bold text-neutral-500 mb-1">Nominal Pelunasan ({cashAccount === '1102' ? 'Rp' : 'NT$'}) *</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ketik jumlah NT$..."
+                  placeholder={cashAccount === '1102' ? 'Ketik jumlah Rupiah...' : 'Ketik jumlah NT$...'}
                   value={payAmount}
                   onChange={(e) => setPayAmount(formatInputWithCommas(e.target.value))}
                   className="w-full px-4 py-2.5 border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 rounded-lg text-sm font-bold font-['Inter']"
@@ -1415,7 +1479,8 @@ export const PiutangUtangTab: React.FC<PiutangUtangTabProps> = ({ forceMode }) =
                 <div className="bg-amber-50 dark:bg-amber-950/20 text-amber-850 dark:text-amber-400 p-3 rounded-lg text-[10px] leading-relaxed border border-amber-100 dark:border-amber-900/40 flex items-center gap-2">
                   <ArrowRight className="h-4 w-4 text-amber-500 shrink-0" />
                   <span className="font-medium">
-                    Pembayaran Rupiah setara dengan <strong className="font-['Inter']">{formatIDR(Math.round(parseFloat(cleanCommas(payAmount)) * parseFloat(cleanCommas(payRate))))}</strong> akan dikreditkan dari rekening Cash Rupiah (Akun 1102).
+                    <strong className="font-['Inter']">{formatIDR(Math.round(parseFloat(cleanCommas(payAmount)) || 0))}</strong> akan {activeSegment === 'piutang' ? 'didebitkan ke' : 'dikreditkan dari'} rekening Cash Rupiah (Akun 1102), setara <strong className="font-['Inter']">{formatNTD(Math.round(((parseFloat(cleanCommas(payAmount)) || 0) / (parseFloat(cleanCommas(payRate)) || FALLBACK_IDR_PER_NTD)) * 100))}</strong> pada kurs Rp {payRate}.
+                    {activeSegment === 'utang' && getIdrOutstanding(selectedItem) > 0 && ' Selisih dengan kurs awal utang dicatat ke akun Laba/Rugi Selisih Kurs (4210).'}
                   </span>
                 </div>
               )}
