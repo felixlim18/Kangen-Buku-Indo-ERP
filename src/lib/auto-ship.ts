@@ -165,3 +165,27 @@ export const requestPlatformPayment = async (platform: PaymentPlatform, orderNo:
   if (msg.ok && msg.payment) return msg.payment;
   throw new Error(msg.error || `Gagal membaca pelunasan ${site}`);
 };
+
+export const isShopeeImportAvailable = (): boolean =>
+  isAutoShipExtensionInstalled() && document.documentElement.dataset.kbiShopeeImport === '1';
+
+export interface ShopeeImportResult {
+  /** Order 待處理 yang detailnya terbaca (order di `skip` tidak dibuka) */
+  orders: import('./shopee-import').ShopeeImportOrder[];
+  /** Order yang detailnya gagal dibaca */
+  errors: { sn: string; error: string }[];
+  /** Jumlah order di daftar Shopee, dan jumlah yang dilewati karena sudah ada di ERP */
+  listed: number;
+  skipped: number;
+  /** Jumlah 待處理 menurut Shopee (untuk memastikan semua halaman terbaca) */
+  expected: number | null;
+}
+
+const IMPORT_TIMEOUT_MS = 25 * 60000;
+
+/** Buka Seller Center di tab latar belakang dan baca semua order 待出貨 (待處理). `skip` = nomor order yang sudah ada di ERP. */
+export const requestShopeeOrders = async (skip: string[]): Promise<ShopeeImportResult> => {
+  const msg = await callExtension('SHOPEE_IMPORT', { skip }, IMPORT_TIMEOUT_MS, 'Timeout menarik order Shopee');
+  if (!msg.ok) throw new Error(msg.error || 'Gagal menarik order Shopee');
+  return { orders: msg.orders || [], errors: msg.errors || [], listed: msg.listed || 0, skipped: msg.skipped || 0, expected: msg.expected ?? null };
+};

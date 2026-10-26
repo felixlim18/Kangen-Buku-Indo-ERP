@@ -53,12 +53,20 @@ let workerIdleTimer = null;
 const printQueue = [];
 let current = null; // job print yang sedang berjalan
 
+// Tarik order Shopee (SHOPEE_IMPORT): satu job dalam satu waktu, di tab latar belakang sendiri
+const IMPORT_LIST_URL = 'https://seller.shopee.tw/portal/sale/order?type=toship&source=to_process&sort_by=ship_by_date_asc';
+const IMPORT_PAGE_TIMEOUT_MS = 40000; // halaman daftar / detail sampai skrip siap
+const IMPORT_JOB_TIMEOUT_MS = 20 * 60000;
+const importQueue = [];
+let importCurrent = null;
+const importWaiters = new Map(); // tabId -> { page, resolve }
+
 // Chrome mematikan service worker yang menganggur ~30 detik, sehingga status job hilang (mis. saat user
 // lama di dialog cetak). Selama ada job, panggil API extension berkala supaya service worker tetap hidup.
 let keepAlive = null;
 // Tetap hidup juga selama tab kerja menunggu ditutup (timer idle hilang kalau service worker dimatikan)
 const hasWorkerTab = () => Object.values(workerTabs).some((t) => t != null);
-const syncKeepAlive = () => setKeepAlive(Boolean(current) || Boolean(shipCurrent) || shipQueue.length > 0 || hasWorkerTab());
+const syncKeepAlive = () => setKeepAlive(Boolean(current) || Boolean(shipCurrent) || shipQueue.length > 0 || hasWorkerTab() || Boolean(importCurrent) || importQueue.length > 0);
 const shipJobOfTab = (tabId) => (shipCurrent && shipCurrent.tabId === tabId ? shipCurrent : null);
 function setKeepAlive(on) {
   if (on && !keepAlive) keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
@@ -74,6 +82,25 @@ const stepOfTab = (tabId) => (current?.kind === 'print' ? current.steps.find((s)
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
+
+  if (msg.type === 'SHOPEE_IMPORT') {
+    importQueue.push({ id: msg.id, skip: new Set(msg.skip || []), erpTabId: tabId, erpWindowId: sender.tab.windowId });
+    pumpImport();
+    return;
+  }
+  if (msg.type === 'IMPORT_READY') {
+    const w = importWaiters.get(tabId);
+    if (w && w.page === msg.page) w.resolve();
+    return;
+  }
+  if (msg.type === 'IMPORT_SHOW_TAB') {
+    if (importCurrent && importCurrent.tabId === tabId) {
+      importCurrent.shownTab = true;
+      showTab(tabId).then(() => setTimeout(() => sendResponse(true), 500), () => sendResponse(false));
+      return true;
+    }
+    return;
+  }
 
   if (msg.type === 'AUTO_SHIP' || PAYMENT_PLATFORM[msg.type]) {
     const isPayment = msg.type !== 'AUTO_SHIP';
@@ -157,6 +184,11 @@ chrome.tabs.onCreated.addListener((tab) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   for (const p of Object.keys(workerTabs)) if (workerTabs[p] === tabId) workerTabs[p] = null;
   syncKeepAlive();
+  if (importCurrent && importCurrent.tabId === tabId) {
+    importCurrent.aborted = true;
+    importWaiters.get(tabId)?.reject(new Error('Tab Shopee ditutup sebelum selesai'));
+    return;
+  }
   const shipJob = shipJobOfTab(tabId);
   if (shipJob) {
     finishShip(shipJob, { ok: false, error: 'Tab ditutup sebelum resi didapat' });
@@ -364,4 +396,86 @@ function finish(result) {
   current = null;
   sendResult(job, result);
   runNextPrint();
+}
+
+
+// ----- tarik order Shopee: daftar 待處理 -> detail tiap order (satu per satu, satu tab) -----
+function pumpImport() {
+  if (!importCurrent && importQueue.length > 0) runImport(importQueue.shift());
+  syncKeepAlive();
+}
+
+// Daftarkan penunggu SEBELUM halaman dimuat supaya IMPORT_READY pertama tidak terlewat
+function expectImportPage(tabId, page) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      importWaiters.delete(tabId);
+      reject(new Error('Halaman Shopee tidak terbuka. Pastikan sudah login Shopee Seller Center di Chrome ini.'));
+    }, IMPORT_PAGE_TIMEOUT_MS);
+    importWaiters.set(tabId, {
+      page,
+      resolve: () => { clearTimeout(timer); importWaiters.delete(tabId); resolve(); },
+      reject: (e) => { clearTimeout(timer); importWaiters.delete(tabId); reject(e); },
+    });
+  });
+}
+
+async function runImport(job) {
+  importCurrent = job;
+  syncKeepAlive();
+  const orders = [];
+  const errors = [];
+  let listed = 0;
+  let expected = null;
+  const overall = setTimeout(() => {
+    job.aborted = true;
+    importWaiters.get(job.tabId)?.reject(new Error('Timeout tarik order Shopee'));
+  }, IMPORT_JOB_TIMEOUT_MS);
+  try {
+    const tab = await chrome.tabs.create({ url: 'about:blank', active: false, windowId: job.erpWindowId });
+    job.tabId = tab.id;
+
+    let ready = expectImportPage(tab.id, 'list');
+    await chrome.tabs.update(tab.id, { url: IMPORT_LIST_URL });
+    await ready;
+    const list = await chrome.tabs.sendMessage(tab.id, { type: 'IMPORT_LIST' });
+    if (!list?.ok) throw new Error(list?.error || 'Gagal membaca daftar order Shopee');
+    listed = list.orders.length;
+    expected = list.expected;
+
+    const todo = list.orders.filter((o) => !job.skip.has(o.sn));
+    for (const o of todo) {
+      if (job.aborted) throw new Error('Dibatalkan');
+      try {
+        ready = expectImportPage(tab.id, 'detail');
+        await chrome.tabs.update(tab.id, { url: o.url });
+        await ready;
+        const d = await chrome.tabs.sendMessage(tab.id, { type: 'IMPORT_DETAIL', sn: o.sn });
+        if (!d?.ok) throw new Error(d?.error || 'Detail tidak terbaca');
+        orders.push({ ...o, ...d.detail });
+      } catch (err) {
+        if (job.aborted) throw err;
+        errors.push({ sn: o.sn, error: err.message });
+      }
+    }
+    finishImport(job, overall, { ok: true, orders, errors, listed, expected, skipped: listed - todo.length });
+  } catch (err) {
+    finishImport(job, overall, { ok: false, error: err.message, orders, errors, listed, expected });
+  }
+}
+
+function finishImport(job, overall, result) {
+  clearTimeout(overall);
+  if (importCurrent !== job) return;
+  importCurrent = null;
+  importWaiters.delete(job.tabId);
+  if (job.tabId != null) chrome.tabs.remove(job.tabId).catch(() => {});
+  if (job.shownTab) {
+    chrome.tabs
+      .update(job.erpTabId, { active: true })
+      .then((tab) => chrome.windows.update(tab.windowId, { focused: true }))
+      .catch(() => {});
+  }
+  sendResult(job, result);
+  pumpImport();
 }

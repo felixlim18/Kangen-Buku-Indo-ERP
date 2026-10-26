@@ -5,7 +5,9 @@ document.documentElement.dataset.kbiShopeePayment = '1'; // cek pelunasan Shopee
 document.documentElement.dataset.kbiIopenPayment = '1'; // cek pelunasan iOPEN Mall (對帳單 匯款成功 + 撥款金額) tersedia
 document.documentElement.dataset.kbiFamilymartPayment = '1'; // cek pelunasan FamilyMart (匯款成功 + 金額, per nomor resi) tersedia
 
-const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS', 'SHOPEE_PAYMENT', 'IOPEN_PAYMENT', 'FAMILYMART_PAYMENT'];
+document.documentElement.dataset.kbiShopeeImport = '1'; // tarik order 待出貨 Shopee ke Sales Orders tersedia
+
+const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS', 'SHOPEE_PAYMENT', 'IOPEN_PAYMENT', 'FAMILYMART_PAYMENT', 'SHOPEE_IMPORT'];
 
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
