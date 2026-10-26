@@ -54,7 +54,8 @@ const printQueue = [];
 let current = null; // job print yang sedang berjalan
 
 // Tarik order Shopee (SHOPEE_IMPORT): satu job dalam satu waktu, di tab latar belakang sendiri
-const IMPORT_LIST_URL = 'https://seller.shopee.tw/portal/sale/order?type=toship&source=to_process&sort_by=ship_by_date_asc';
+// 待出貨 → 待處理, urutan 訂單確認時間 (最新到最舊)
+const IMPORT_LIST_URL = 'https://seller.shopee.tw/portal/sale/order?type=toship&source=to_process&sort_by=confirmed_date_desc';
 const IMPORT_PAGE_TIMEOUT_MS = 40000; // halaman daftar / detail sampai skrip siap
 const IMPORT_JOB_TIMEOUT_MS = 20 * 60000;
 const importQueue = [];

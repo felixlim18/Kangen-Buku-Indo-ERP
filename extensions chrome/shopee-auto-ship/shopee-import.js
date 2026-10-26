@@ -34,21 +34,33 @@
   };
 
   // ----- daftar order -----
-  // Filter 建議出貨期限 sering tertinggal di 建議今天內出貨 (0) -> daftar kosong. Pilih 全部 di baris itu.
+  // Filter 建議出貨期限: saat halaman dimuat Shopee sendiri memilih 建議今天內出貨 (sering 0 order), dan bisa
+  // menimpa klik kita kalau datanya belum selesai dimuat. Klik 全部 lalu periksa sampai 全部 tetap aktif.
+  const deadlineRadios = () => {
+    const label = [...document.querySelectorAll('label')].find((el) => text(el) === '建議出貨期限');
+    const row = label?.closest('.eds-form-item') || label?.parentElement;
+    return row ? [...row.querySelectorAll('label.eds-radio-button')] : [];
+  };
+  const isActive = (el) => /checked|active/.test(String(el.className));
+
   async function selectDeadlineAll() {
-    const label = await waitFor(
-      () => [...document.querySelectorAll('*')].find((el) => text(el) === '建議出貨期限' && !el.children.length && isShown(el)),
-      20000
-    );
-    if (!label) throw new Error('Filter 建議出貨期限 tidak ditemukan. Pastikan sudah login Shopee Seller Center.');
-    for (let row = label.parentElement, i = 0; row && i < 4; row = row.parentElement, i++) {
-      const all = [...row.querySelectorAll('*')].find((el) => text(el) === '全部' && isShown(el) && ![...el.children].some((c) => text(c) === '全部'));
-      if (all) {
+    const end = Date.now() + 30000;
+    let stableSince = 0;
+    while (Date.now() < end) {
+      const radios = deadlineRadios();
+      const all = radios.find((r) => text(r).startsWith('全部'));
+      if (all && !isActive(all)) {
         all.click();
-        return;
+        stableSince = 0;
+      } else if (all) {
+        // 全部 aktif: tunggu sebentar memastikan Shopee tidak menimpanya lagi
+        if (!stableSince) stableSince = Date.now();
+        else if (Date.now() - stableSince > 2000) return;
       }
+      await sleep(500);
     }
-    throw new Error('Pilihan 全部 pada 建議出貨期限 tidak ditemukan.');
+    if (!deadlineRadios().length) throw new Error('Filter 建議出貨期限 tidak ditemukan. Pastikan sudah login Shopee Seller Center.');
+    throw new Error('Filter 建議出貨期限 tidak bisa diubah ke 全部 (Shopee lambat).');
   }
 
   const expectedCount = () => {

@@ -2932,7 +2932,9 @@ export const SalesTab: React.FC = () => {
     setIsPullingShopee(true);
     setShopeePullProgress('Memulai…');
     try {
-      const known = new Set<string>(orders.map(o => (o.orderNumber || '').trim().toUpperCase()).filter(Boolean));
+      // Nomor order dibandingkan tanpa spasi & huruf besar/kecil. `orders` = snapshot seluruh koleksi salesOrders.
+      const normSn = (v: string) => String(v || '').replace(/\s+/g, '').toUpperCase();
+      const known = new Set<string>(orders.map(o => normSn(o.orderNumber || '')).filter(Boolean));
       const res = await requestShopeeOrders(Array.from(known), text => setShopeePullProgress(text));
       const cogsOf = (bookId: string) => inventories.find(i => i.bookId === bookId)?.movingAverageCost || 0;
       let created = 0;
@@ -2946,9 +2948,12 @@ export const SalesTab: React.FC = () => {
           failed.push({ sn: o.sn, error: 'Nominal 預估訂單進帳 tidak terbaca' });
           continue;
         }
-        // Cek ulang di Firestore (daftar `orders` bisa terfilter tanggal)
+        // Lapis 2: versi ringkas vs semua order (termasuk yang dibuat di putaran ini), lalu cek persis ke Firestore
+        // untuk order yang dibuat di tab/perangkat lain sejak tombol ditekan.
+        if (known.has(normSn(o.sn))) { duplicate++; continue; }
         const dup = await getDocs(query(collection(db, 'salesOrders'), where('orderNumber', '==', o.sn)));
         if (!dup.empty) { duplicate++; continue; }
+        known.add(normSn(o.sn));
         const { fields, issues } = buildShopeeDraft(o, books, cogsOf);
         const orderId = doc(collection(db, 'salesOrders')).id;
         const orderCode = await generateOrderCode('S');
