@@ -74,6 +74,7 @@
     await sleep(800);
     const orders = new Map();
     for (let page = 0; page < 30; page++) {
+      chrome.runtime.sendMessage({ type: 'IMPORT_PROGRESS', text: `Membaca daftar… (halaman ${page + 1})` }).catch(() => {});
       for (const c of cards()) {
         const o = readCard(c);
         if (o.sn) orders.set(o.sn, o);
@@ -82,8 +83,9 @@
       if (!next || next.disabled || next.classList.contains('eds-button--disabled') || next.getAttribute('disabled') != null) break;
       const before = cardSn(cards()[0]);
       next.click();
-      const changed = await waitFor(() => cards()[0] && cardSn(cards()[0]) !== before, 15000);
-      if (!changed) break;
+      const changed = await waitFor(() => cards()[0] && cardSn(cards()[0]) !== before, 20000);
+      // Jangan berhenti diam-diam: order di halaman berikutnya akan terlewat
+      if (!changed) throw new Error(`Halaman daftar ${page + 2} tidak termuat (Shopee lambat).`);
       await sleep(500);
     }
     return { ok: true, orders: [...orders.values()], expected: expectedCount() };
@@ -126,6 +128,21 @@
     return idx < 0 ? null : lines[idx + 1];
   };
 
+  // API internal Seller Center (hanya baca): item_id / model_id / sku tiap item + pesan pembeli. Tidak tampil di halaman.
+  async function fetchOrderApi(orderId) {
+    try {
+      const ck = Object.fromEntries(document.cookie.split('; ').map((c) => [c.slice(0, c.indexOf('=')), c.slice(c.indexOf('=') + 1)]));
+      const q = new URLSearchParams({ SPC_CDS: ck.SPC_CDS || '', SPC_CDS_VER: '2', order_id: orderId });
+      const r = await fetch(`/api/v3/order/get_one_order?${q}`, { credentials: 'include' });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const o = j?.data?.order_info || j?.data;
+      return o?.order_items ? o : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function readDetail(sn) {
     const ready = await waitFor(() => document.body.innerText.includes(sn) && document.body.innerText.includes('訂單歷史') && document.body.innerText.includes('小計'), 20000);
     if (!ready) throw new Error(`Halaman detail order ${sn} tidak termuat.`);
@@ -135,7 +152,7 @@
     let lines = pageLines();
     if (!lines.includes('預估訂單進帳') && !lines.includes('調整後訂單進帳')) {
       await chrome.runtime.sendMessage({ type: 'IMPORT_SHOW_TAB' }).catch(() => {});
-      await waitFor(() => document.body.innerText.includes('預估訂單進帳') || document.body.innerText.includes('調整後訂單進帳'), 8000);
+      await waitFor(() => document.body.innerText.includes('預估訂單進帳') || document.body.innerText.includes('調整後訂單進帳'), 15000);
       lines = pageLines();
     }
 
@@ -153,7 +170,21 @@
       }
     }
 
+    // Samakan item DOM dengan item API (urutan sama; cadangan: nama)
+    const api = await fetchOrderApi(location.pathname.match(/order\/(\d+)/)[1]);
+    const apiItems = api?.order_items || [];
+    items.forEach((it, i) => {
+      const a = apiItems[i]?.product?.name === it.name ? apiItems[i] : apiItems.find((x) => x?.product?.name === it.name);
+      if (a) {
+        it.itemId = String(a.item_id || '');
+        it.modelId = String(a.model_id || '');
+        it.sku = String(a.product?.sku || a.item_model?.sku || '');
+      }
+    });
+
     const net = money(valueAfter(lines, '預估訂單進帳') ?? valueAfter(lines, '調整後訂單進帳'));
+    // Grand Total ERP = 進帳; tanpa angka ini order tidak boleh disimpan (訂單金額 akan salah)
+    if (net == null) throw new Error('Nominal 預估訂單進帳 belum termuat (Shopee lambat).');
     return {
       ok: true,
       detail: {
@@ -164,6 +195,7 @@
         orderAmount: money(valueAfter(lines, '訂單金額')),
         buyerPaid: money(valueAfter(lines, '買家總支付金額')),
         platformFee: money(valueAfter(lines, '成交&金流手續費')),
+        buyerNote: String(api?.note || '').trim(),
       },
     };
   }

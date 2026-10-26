@@ -88,6 +88,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     pumpImport();
     return;
   }
+  if (msg.type === 'SHOPEE_IMPORT_CANCEL') {
+    // Batal dari ERP: order yang sudah terbaca tetap dikirim; job yang masih mengantre dibuang
+    const queued = importQueue.findIndex((j) => j.id === msg.id);
+    if (queued >= 0) {
+      const [job] = importQueue.splice(queued, 1);
+      sendResult(job, { ok: true, cancelled: true, orders: [], errors: [], listed: 0, skipped: 0, expected: null });
+    } else if (importCurrent && importCurrent.id === msg.id) {
+      importCurrent.cancelled = true;
+      importWaiters.get(importCurrent.tabId)?.reject(new ImportCancelled());
+    }
+    return;
+  }
+  if (msg.type === 'IMPORT_PROGRESS') {
+    if (importCurrent && importCurrent.tabId === tabId) sendImportProgress(importCurrent, msg.text);
+    return;
+  }
   if (msg.type === 'IMPORT_READY') {
     const w = importWaiters.get(tabId);
     if (w && w.page === msg.page) w.resolve();
@@ -185,8 +201,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   for (const p of Object.keys(workerTabs)) if (workerTabs[p] === tabId) workerTabs[p] = null;
   syncKeepAlive();
   if (importCurrent && importCurrent.tabId === tabId) {
-    importCurrent.aborted = true;
-    importWaiters.get(tabId)?.reject(new Error('Tab Shopee ditutup sebelum selesai'));
+    // Tab Shopee ditutup user = batal (order yang sudah terbaca tetap disimpan)
+    importCurrent.cancelled = true;
+    importWaiters.get(tabId)?.reject(new ImportCancelled());
     return;
   }
   const shipJob = shipJobOfTab(tabId);
@@ -400,9 +417,22 @@ function finish(result) {
 
 
 // ----- tarik order Shopee: daftar 待處理 -> detail tiap order (satu per satu, satu tab) -----
+// Shopee lambat: tiap halaman dicoba ulang sekali (dimuat ulang) sebelum dianggap gagal.
+// Detail yang tetap gagal dicatat dan dilewati (tidak disimpan ERP, ikut ditarik lagi lain kali);
+// daftar yang gagal menghentikan job, karena tanpa daftar lengkap order bisa terlewat.
+class ImportCancelled extends Error {
+  constructor() {
+    super('Dibatalkan');
+  }
+}
+
 function pumpImport() {
   if (!importCurrent && importQueue.length > 0) runImport(importQueue.shift());
   syncKeepAlive();
+}
+
+function sendImportProgress(job, text) {
+  chrome.tabs.sendMessage(job.erpTabId, { type: 'PROGRESS', id: job.id, text }).catch(() => {});
 }
 
 // Daftarkan penunggu SEBELUM halaman dimuat supaya IMPORT_READY pertama tidak terlewat
@@ -410,7 +440,7 @@ function expectImportPage(tabId, page) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       importWaiters.delete(tabId);
-      reject(new Error('Halaman Shopee tidak terbuka. Pastikan sudah login Shopee Seller Center di Chrome ini.'));
+      reject(new Error('timeout'));
     }, IMPORT_PAGE_TIMEOUT_MS);
     importWaiters.set(tabId, {
       page,
@@ -420,6 +450,39 @@ function expectImportPage(tabId, page) {
   });
 }
 
+// Halaman tidak siap: belum login (dialihkan ke halaman masuk / domain lain) atau Shopee lambat
+async function pageFailReason(tabId) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  const url = tab?.url || '';
+  if (!url.startsWith('https://seller.shopee.tw/') || /signin|login|verify|captcha/i.test(url)) {
+    return 'Belum login Shopee Seller Center di Chrome ini (halaman masuk muncul). Login dulu lalu tekan Tarik Shopee lagi.';
+  }
+  return 'Shopee lambat merespons (halaman tidak termuat setelah dicoba ulang). Coba lagi beberapa saat lagi.';
+}
+
+// Muat `url` lalu kirim `command`; kalau halaman / perintah gagal, muat ulang sekali dan coba lagi
+async function loadAndRun(job, url, page, command) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (job.cancelled) throw new ImportCancelled();
+    try {
+      const ready = expectImportPage(job.tabId, page);
+      await chrome.tabs.update(job.tabId, { url });
+      await ready;
+    } catch (err) {
+      if (err instanceof ImportCancelled || job.cancelled) throw new ImportCancelled();
+      if (err.closed) throw err;
+      lastError = new Error(await pageFailReason(job.tabId));
+      continue;
+    }
+    const res = await chrome.tabs.sendMessage(job.tabId, command).catch((e) => ({ ok: false, error: e.message }));
+    if (job.cancelled) throw new ImportCancelled();
+    if (res?.ok) return res;
+    lastError = new Error(res?.error || 'Tidak ada jawaban dari halaman Shopee');
+  }
+  throw lastError;
+}
+
 async function runImport(job) {
   importCurrent = job;
   syncKeepAlive();
@@ -427,40 +490,48 @@ async function runImport(job) {
   const errors = [];
   let listed = 0;
   let expected = null;
+  let skipped = 0;
   const overall = setTimeout(() => {
-    job.aborted = true;
-    importWaiters.get(job.tabId)?.reject(new Error('Timeout tarik order Shopee'));
+    job.timedOut = true;
+    job.cancelled = true;
+    importWaiters.get(job.tabId)?.reject(new ImportCancelled());
   }, IMPORT_JOB_TIMEOUT_MS);
+  const partial = () => ({ orders, errors, listed, expected, skipped });
   try {
     const tab = await chrome.tabs.create({ url: 'about:blank', active: false, windowId: job.erpWindowId });
     job.tabId = tab.id;
 
-    let ready = expectImportPage(tab.id, 'list');
-    await chrome.tabs.update(tab.id, { url: IMPORT_LIST_URL });
-    await ready;
-    const list = await chrome.tabs.sendMessage(tab.id, { type: 'IMPORT_LIST' });
-    if (!list?.ok) throw new Error(list?.error || 'Gagal membaca daftar order Shopee');
+    sendImportProgress(job, 'Membuka Shopee…');
+    const list = await loadAndRun(job, IMPORT_LIST_URL, 'list', { type: 'IMPORT_LIST' });
     listed = list.orders.length;
     expected = list.expected;
-
     const todo = list.orders.filter((o) => !job.skip.has(o.sn));
-    for (const o of todo) {
-      if (job.aborted) throw new Error('Dibatalkan');
+    skipped = listed - todo.length;
+
+    for (let i = 0; i < todo.length; i++) {
+      const o = todo[i];
+      sendImportProgress(job, `Detail ${i + 1}/${todo.length} · ${o.sn}`);
       try {
-        ready = expectImportPage(tab.id, 'detail');
-        await chrome.tabs.update(tab.id, { url: o.url });
-        await ready;
-        const d = await chrome.tabs.sendMessage(tab.id, { type: 'IMPORT_DETAIL', sn: o.sn });
-        if (!d?.ok) throw new Error(d?.error || 'Detail tidak terbaca');
+        const d = await loadAndRun(job, o.url, 'detail', { type: 'IMPORT_DETAIL', sn: o.sn });
         orders.push({ ...o, ...d.detail });
       } catch (err) {
-        if (job.aborted) throw err;
+        if (err instanceof ImportCancelled || err.closed) throw err;
         errors.push({ sn: o.sn, error: err.message });
       }
     }
-    finishImport(job, overall, { ok: true, orders, errors, listed, expected, skipped: listed - todo.length });
+    finishImport(job, overall, { ok: true, ...partial() });
   } catch (err) {
-    finishImport(job, overall, { ok: false, error: err.message, orders, errors, listed, expected });
+    if (err instanceof ImportCancelled) {
+      // Order yang sudah terbaca tetap disimpan ERP
+      finishImport(job, overall, {
+        ok: true,
+        cancelled: true,
+        note: job.timedOut ? 'Waktu habis (20 menit)' : 'Dibatalkan',
+        ...partial(),
+      });
+    } else {
+      finishImport(job, overall, { ok: false, error: err.message, ...partial() });
+    }
   }
 }
 

@@ -10,7 +10,9 @@ export interface ShopeeImportOrder {
   buyer: string;
   /** YYYY-MM-DD (tanggal 新訂單 di 訂單歷史) */
   orderDate: string;
-  items: { name: string; variation?: string; unit: number; qty: number; subtotal: number }[];
+  items: { name: string; variation?: string; unit: number; qty: number; subtotal: number; itemId?: string; modelId?: string; sku?: string }[];
+  /** Pesan pembeli (Shopee `note`) */
+  buyerNote?: string;
   /** 預估訂單進帳 (setelah fee Shopee) */
   netIncome: number | null;
   /** 訂單金額 (sebelum fee) */
@@ -33,8 +35,21 @@ const tokens = (s: string) => new Set(s.split(' ').filter((w) => w.length > 1));
 
 export interface BookMatch {
   book: Book;
-  how: 'exact' | 'contains' | 'similar';
+  how: 'shopeeId' | 'exact' | 'contains' | 'similar';
 }
+
+const cleanId = (v: unknown) => String(v ?? '').trim().toLowerCase();
+
+/**
+ * Cocokkan lewat kolom Shopee ID di katalog. Nilainya boleh item_id, model_id, atau SKU Shopee
+ * (mana yang Anda isi); hanya dipakai kalau tepat satu buku yang cocok.
+ */
+export const matchBookByShopeeId = (ids: (string | undefined)[], books: Book[]): Book | null => {
+  const wanted = new Set(ids.map(cleanId).filter(Boolean));
+  if (!wanted.size) return null;
+  const hits = books.filter((b) => b.isActive !== false && cleanId(b.shopeeId) && wanted.has(cleanId(b.shopeeId)));
+  return hits.length === 1 ? hits[0] : null;
+};
 
 /**
  * Cocokkan judul listing Shopee ke katalog. Hanya mengembalikan hasil yang yakin (unik);
@@ -87,9 +102,10 @@ export const buildShopeeDraft = (
 
   // Harga mengikuti katalog (shopeePrice) seperti input manual
   let items: SalesOrderItem[] = o.items.map((it) => {
-    const m = matchBook(it.name, books);
+    const byId = matchBookByShopeeId([it.modelId, it.itemId, it.sku], books);
+    const m: BookMatch | null = byId ? { book: byId, how: 'shopeeId' } : matchBook(it.name, books);
     if (!m) {
-      issues.push(`Buku belum cocok: "${it.name}"`);
+      issues.push(`Buku belum cocok: "${it.name}" (item ${it.itemId || '?'}, model ${it.modelId || '?'}, sku ${it.sku || '-'})`);
       const unitPrice = cents(it.unit);
       return { bookId: 'unknown', bookName: it.name, bookCover: '', unitPrice, qty: it.qty, lineTotal: unitPrice * it.qty, cogsSnapshot: 0, isFree: false };
     }
@@ -134,7 +150,7 @@ export const buildShopeeDraft = (
       phoneNumber: '',
       pickupLogistics: '',
       pickupDetails: '',
-      customerNote: issues.length ? `[Import Shopee] ${issues.join('; ')}` : '',
+      customerNote: [o.buyerNote || '', issues.length ? `[Import Shopee] ${issues.join('; ')}` : ''].filter(Boolean).join('\n'),
       orderNumber: o.sn,
       estimatedShippingDate: '',
       perluKonfirmasiSebelumKirim: false,

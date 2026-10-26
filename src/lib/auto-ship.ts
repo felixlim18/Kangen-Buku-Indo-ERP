@@ -48,12 +48,18 @@ export interface PrintLabelsResult {
 }
 
 // Kirim permintaan ke extension dan tunggu balasan KBI_RESULT dengan id yang sama
-const callExtension = (type: string, payload: Record<string, unknown>, timeoutMs: number, timeoutMessage: string): Promise<any> => {
+const callExtension = (
+  type: string,
+  payload: Record<string, unknown>,
+  timeoutMs: number,
+  timeoutMessage: string,
+  opts: { id?: string; onProgress?: (text: string) => void } = {}
+): Promise<any> => {
   if (!isAutoShipExtensionInstalled()) {
     return Promise.reject(new Error('Extension KBI Auto 出貨 belum terpasang / perlu di-reload di Chrome'));
   }
 
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const id = opts.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return new Promise((resolve, reject) => {
     const cleanup = () => {
       window.removeEventListener('message', onMessage);
@@ -61,7 +67,12 @@ const callExtension = (type: string, payload: Record<string, unknown>, timeoutMs
     };
     const onMessage = (event: MessageEvent) => {
       const msg = event.data;
-      if (event.source !== window || msg?.source !== 'kbi-ext' || msg.type !== 'KBI_RESULT' || msg.id !== id) return;
+      if (event.source !== window || msg?.source !== 'kbi-ext' || msg.id !== id) return;
+      if (msg.type === 'KBI_PROGRESS') {
+        opts.onProgress?.(msg.text);
+        return;
+      }
+      if (msg.type !== 'KBI_RESULT') return;
       cleanup();
       resolve(msg);
     };
@@ -167,25 +178,49 @@ export const requestPlatformPayment = async (platform: PaymentPlatform, orderNo:
 };
 
 export const isShopeeImportAvailable = (): boolean =>
-  isAutoShipExtensionInstalled() && document.documentElement.dataset.kbiShopeeImport === '1';
+  isAutoShipExtensionInstalled() && Number(document.documentElement.dataset.kbiShopeeImport) >= 2; // 2 = progres + Batal
 
 export interface ShopeeImportResult {
   /** Order 待處理 yang detailnya terbaca (order di `skip` tidak dibuka) */
   orders: import('./shopee-import').ShopeeImportOrder[];
-  /** Order yang detailnya gagal dibaca */
+  /** Order yang detailnya gagal dibaca (tidak disimpan; ikut ditarik lagi lain kali) */
   errors: { sn: string; error: string }[];
   /** Jumlah order di daftar Shopee, dan jumlah yang dilewati karena sudah ada di ERP */
   listed: number;
   skipped: number;
   /** Jumlah 待處理 menurut Shopee (untuk memastikan semua halaman terbaca) */
   expected: number | null;
+  /** Dihentikan sebelum selesai (Batal / tab Shopee ditutup / waktu habis); `orders` berisi yang sudah terbaca */
+  cancelled?: string;
 }
 
 const IMPORT_TIMEOUT_MS = 25 * 60000;
+let currentImportId: string | null = null;
 
-/** Buka Seller Center di tab latar belakang dan baca semua order 待出貨 (待處理). `skip` = nomor order yang sudah ada di ERP. */
-export const requestShopeeOrders = async (skip: string[]): Promise<ShopeeImportResult> => {
-  const msg = await callExtension('SHOPEE_IMPORT', { skip }, IMPORT_TIMEOUT_MS, 'Timeout menarik order Shopee');
-  if (!msg.ok) throw new Error(msg.error || 'Gagal menarik order Shopee');
-  return { orders: msg.orders || [], errors: msg.errors || [], listed: msg.listed || 0, skipped: msg.skipped || 0, expected: msg.expected ?? null };
+/**
+ * Buka Seller Center di tab latar belakang dan baca semua order 待出貨 (待處理).
+ * `skip` = nomor order yang sudah ada di ERP (detailnya tidak dibuka). `onProgress` menerima teks progres.
+ */
+export const requestShopeeOrders = async (skip: string[], onProgress?: (text: string) => void): Promise<ShopeeImportResult> => {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  currentImportId = id;
+  try {
+    const msg = await callExtension('SHOPEE_IMPORT', { skip }, IMPORT_TIMEOUT_MS, 'Timeout menarik order Shopee', { id, onProgress });
+    if (!msg.ok) throw new Error(msg.error || 'Gagal menarik order Shopee');
+    return {
+      orders: msg.orders || [],
+      errors: msg.errors || [],
+      listed: msg.listed || 0,
+      skipped: msg.skipped || 0,
+      expected: msg.expected ?? null,
+      cancelled: msg.cancelled ? msg.note || 'Dibatalkan' : undefined,
+    };
+  } finally {
+    if (currentImportId === id) currentImportId = null;
+  }
+};
+
+/** Hentikan penarikan yang sedang berjalan; order yang sudah terbaca tetap dikembalikan ke requestShopeeOrders. */
+export const cancelShopeeImport = (): void => {
+  if (currentImportId) window.postMessage({ source: 'kbi-erp', type: 'SHOPEE_IMPORT_CANCEL', id: currentImportId }, '*');
 };

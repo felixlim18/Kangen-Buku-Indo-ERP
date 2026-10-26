@@ -5,9 +5,9 @@ document.documentElement.dataset.kbiShopeePayment = '1'; // cek pelunasan Shopee
 document.documentElement.dataset.kbiIopenPayment = '1'; // cek pelunasan iOPEN Mall (對帳單 匯款成功 + 撥款金額) tersedia
 document.documentElement.dataset.kbiFamilymartPayment = '1'; // cek pelunasan FamilyMart (匯款成功 + 金額, per nomor resi) tersedia
 
-document.documentElement.dataset.kbiShopeeImport = '1'; // tarik order 待出貨 Shopee ke Sales Orders tersedia
+document.documentElement.dataset.kbiShopeeImport = '2'; // tarik order 待出貨 Shopee ke Sales Orders (2 = progres + Batal)
 
-const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS', 'SHOPEE_PAYMENT', 'IOPEN_PAYMENT', 'FAMILYMART_PAYMENT', 'SHOPEE_IMPORT'];
+const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS', 'SHOPEE_PAYMENT', 'IOPEN_PAYMENT', 'FAMILYMART_PAYMENT', 'SHOPEE_IMPORT', 'SHOPEE_IMPORT_CANCEL'];
 
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
@@ -20,6 +20,10 @@ window.addEventListener('message', (event) => {
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === 'PROGRESS') {
+    window.postMessage({ source: 'kbi-ext', type: 'KBI_PROGRESS', id: msg.id, text: msg.text }, '*');
+    return;
+  }
   if (msg?.type !== 'RESULT') return;
   const { type, ...result } = msg;
   window.postMessage({ source: 'kbi-ext', type: 'KBI_RESULT', ...result }, '*');

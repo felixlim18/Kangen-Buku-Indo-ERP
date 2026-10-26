@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "KBI Auto 出貨 (Shopee & iOPEN Mall)",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "Tombol Action & Print Resi di ERP KangenBukuIndo: otomatis 安排出貨 / 取寄件編號, salin nomor resi ke ERP, cetak label, dan cek pelunasan Shopee (款項已完成轉帳) & iOPEN Mall (對帳單 匯款成功) & FamilyMart (匯款成功) untuk Piutang Usaha.",
   "permissions": ["storage"],
   "host_permissions": ["https://seller.shopee.tw/*", "https://sales.iopenmall.tw/*", "https://epayment.7-11.com.tw/*", "https://fmec.famiport.com.tw/*", "https://www.fami.life/*"],

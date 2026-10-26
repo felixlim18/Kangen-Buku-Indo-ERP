@@ -102,7 +102,7 @@ import {
 import QRCode from 'qrcode';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { PackingChecklist } from './PackingChecklist';
-import { formatPrintResult, getPrintSection, requestPrintLabels, isShopeeImportAvailable, requestShopeeOrders } from '../lib/auto-ship';
+import { formatPrintResult, getPrintSection, requestPrintLabels, isShopeeImportAvailable, requestShopeeOrders, cancelShopeeImport } from '../lib/auto-ship';
 import { buildShopeeDraft } from '../lib/shopee-import';
 
 const DEFAULT_ORDER_TYPES = ['Meta Ads', 'Google Ads', 'TikTok Ads', 'Shopee Ads', 'Tokopedia Ads'];
@@ -671,6 +671,7 @@ export const SalesTab: React.FC = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isBulkProcessOpen, setIsBulkProcessOpen] = useState(false);
   const [isPullingShopee, setIsPullingShopee] = useState(false);
+  const [shopeePullProgress, setShopeePullProgress] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [recoOrderData, setRecoOrderData] = useState<{ bookIds: string[], categories: string[] } | null>(null);
@@ -2920,22 +2921,31 @@ export const SalesTab: React.FC = () => {
 
   // Tarik order Shopee 待出貨 lewat extension (tab latar belakang) -> draft Sales Order Marketplace.
   // Order yang nomornya sudah ada di ERP dilewati; semua masuk sebagai Draft untuk dicek lalu Konfirmasi Order.
+  // Batal: order yang sudah terbaca tetap disimpan. Order tanpa 進帳 tidak disimpan (Grand Total akan salah).
   const handlePullShopeeOrders = async () => {
     if (isPullingShopee) return;
     if (!isShopeeImportAvailable()) {
-      safeAlert('Extension KBI Auto 出貨 belum terpasang atau perlu di-reload (versi 1.11.0) di Chrome ini.');
+      safeAlert('Extension KBI Auto 出貨 belum terpasang atau perlu di-reload (versi 1.12.0) di Chrome ini.');
       return;
     }
     if (!window.confirm('Tarik order 待出貨 dari Shopee?\n\nChrome membuka tab Shopee di latar belakang (bisa beberapa menit). Order masuk sebagai Draft.')) return;
     setIsPullingShopee(true);
+    setShopeePullProgress('Memulai…');
     try {
       const known = new Set<string>(orders.map(o => (o.orderNumber || '').trim().toUpperCase()).filter(Boolean));
-      const res = await requestShopeeOrders(Array.from(known));
+      const res = await requestShopeeOrders(Array.from(known), text => setShopeePullProgress(text));
       const cogsOf = (bookId: string) => inventories.find(i => i.bookId === bookId)?.movingAverageCost || 0;
       let created = 0;
       let duplicate = 0;
       const needCheck: string[] = [];
-      for (const o of res.orders) {
+      const failed = [...res.errors];
+      for (let i = 0; i < res.orders.length; i++) {
+        const o = res.orders[i];
+        setShopeePullProgress(`Menyimpan draft ${i + 1}/${res.orders.length}`);
+        if (o.netIncome == null) {
+          failed.push({ sn: o.sn, error: 'Nominal 預估訂單進帳 tidak terbaca' });
+          continue;
+        }
         // Cek ulang di Firestore (daftar `orders` bisa terfilter tanggal)
         const dup = await getDocs(query(collection(db, 'salesOrders'), where('orderNumber', '==', o.sn)));
         if (!dup.empty) { duplicate++; continue; }
@@ -2953,18 +2963,20 @@ export const SalesTab: React.FC = () => {
         created++;
         if (issues.length) needCheck.push(`${orderCode} (${o.sn}): ${issues.join('; ')}`);
       }
+      const incomplete = res.expected != null && res.expected !== res.listed;
       const lines = [
-        `Selesai. Draft baru: ${created}`,
+        `${res.cancelled ? `${res.cancelled} sebelum selesai.` : 'Selesai.'} Draft baru: ${created}`,
         `Sudah ada di ERP (dilewati): ${res.skipped + duplicate}`,
-        `Total 待處理 di Shopee: ${res.expected ?? res.listed}${res.expected != null && res.expected !== res.listed ? ` (terbaca ${res.listed})` : ''}`,
+        `Total 待處理 di Shopee: ${res.expected ?? res.listed}${incomplete ? ` (terbaca ${res.listed}, ada yang terlewat, tarik lagi)` : ''}`,
       ];
-      if (res.errors.length) lines.push('', `Gagal dibaca (${res.errors.length}):`, ...res.errors.slice(0, 10).map(e => `• ${e.sn}: ${e.error}`));
+      if (failed.length) lines.push('', `Gagal dibaca (${failed.length}), tidak disimpan, ikut ditarik lagi lain kali:`, ...failed.slice(0, 10).map(e => `• ${e.sn}: ${e.error}`));
       if (needCheck.length) lines.push('', `Perlu dicek (${needCheck.length}):`, ...needCheck.slice(0, 15).map(n => `• ${n}`));
       safeAlert(lines.join('\n'));
     } catch (err: any) {
       safeAlert(err.message || 'Gagal menarik order Shopee');
     } finally {
       setIsPullingShopee(false);
+      setShopeePullProgress('');
     }
   };
 
@@ -5411,8 +5423,19 @@ export const SalesTab: React.FC = () => {
                 title="Tarik order 待出貨 dari Shopee Seller Center (lewat extension Chrome) sebagai Draft"
               >
                 <ShoppingBag className="w-[15px] h-[15px]" />
-                {isPullingShopee ? 'Menarik…' : 'Tarik Shopee'}
+                {isPullingShopee ? (shopeePullProgress || 'Menarik…') : 'Tarik Shopee'}
               </button>
+              {isPullingShopee && !shopeePullProgress.startsWith('Menyimpan') && (
+                <button
+                  id="cancel-pull-shopee-button"
+                  onClick={() => { setShopeePullProgress('Membatalkan…'); cancelShopeeImport(); }}
+                  className="h-[34px] px-3 rounded-[8px] bg-white dark:bg-neutral-900 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 transition flex items-center gap-1.5 shrink-0 cursor-pointer text-[12.5px] font-medium"
+                  title="Hentikan penarikan; order yang sudah terbaca tetap disimpan sebagai Draft"
+                >
+                  <X className="w-[15px] h-[15px]" />
+                  Batal
+                </button>
+              )}
               <button
                 id="import-sales-button"
                 onClick={() => setIsImportModalOpen(true)}
