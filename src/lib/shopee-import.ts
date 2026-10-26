@@ -20,12 +20,12 @@ export interface ShopeeImportOrder {
 }
 
 // Awalan/akhiran judul listing yang tidak ada di nama katalog
-const NOISE_WORDS = new Set(['original', 'ori', 'ready', 'stock', 'stok', 'promo', 'new', 'baru']);
+const NOISE_WORDS = new Set(['buku', 'original', 'ori', 'ready', 'stock', 'stok', 'promo', 'new', 'baru']);
 
 export const normalizeTitle = (raw: string): string =>
   String(raw || '')
     .toLowerCase()
-    .replace(/【[^】]*】|\[[^\]]*\]|\([^)]*\)|（[^）]*）/g, ' ')
+    .replace(/【[^】]*】|\[[^\]]*\]/g, ' ')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .split(' ')
     .filter((w) => w && !NOISE_WORDS.has(w))

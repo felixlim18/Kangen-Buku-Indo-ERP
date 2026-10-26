@@ -173,8 +173,12 @@
     // Samakan item DOM dengan item API (urutan sama; cadangan: nama)
     const api = await fetchOrderApi(location.pathname.match(/order\/(\d+)/)[1]);
     const apiItems = api?.order_items || [];
+    // Nama di halaman bisa beda spasi/tanda dari nama API -> bandingkan versi ringkas; kalau jumlah item sama,
+    // urutan tabel = urutan API, jadi pasangkan per indeks.
+    const squash = (v) => String(v || '').replace(/\s+/g, '').toLowerCase();
+    const sameCount = apiItems.length === items.length;
     items.forEach((it, i) => {
-      const a = apiItems[i]?.product?.name === it.name ? apiItems[i] : apiItems.find((x) => x?.product?.name === it.name);
+      const a = sameCount ? apiItems[i] : apiItems.find((x) => squash(x?.product?.name) === squash(it.name));
       if (a) {
         it.itemId = String(a.item_id || '');
         it.modelId = String(a.model_id || '');
