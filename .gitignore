@@ -22,3 +22,7 @@ coverage/
 # Backup data dari skrip perbaikan
 scripts/backup-*.json
 .emulator/
+
+# Hasil bundle src/server/line.ts (dibuat ulang saat predeploy) dan secret emulator Functions
+functions/lineWebhook.js
+functions/.secret.local

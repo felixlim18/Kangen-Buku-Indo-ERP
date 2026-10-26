@@ -1,4 +1,4 @@
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -8,21 +8,33 @@ admin.initializeApp();
 
 const META_CAPI_ACCESS_TOKEN = defineSecret("META_CAPI_ACCESS_TOKEN");
 
-exports.sendMetaPurchaseEvent = onDocumentCreated(
+exports.sendMetaPurchaseEvent = onDocumentWritten(
   {
     document: "salesOrders/{orderId}",
     database: "ai-studio-53e52a01-a8d6-4019-9f99-16eb3032e0f7",
+    // Sama dengan yang sudah ter-deploy; tanpa ini deploy bisa membuat salinan di us-central1.
+    region: "asia-east1",
     secrets: [META_CAPI_ACCESS_TOKEN]
   },
   async (event) => {
-    const snap = event.data;
-    if (!snap) {
-      logger.info("No data associated with the event.");
+    const change = event.data;
+    const snap = change && change.after;
+    if (!snap || !snap.exists) {
+      logger.info("Dokumen dihapus / tidak ada data, dilewati.");
       return;
     }
 
     const orderData = snap.data();
     const orderId = event.params.orderId;
+
+    // Jalan hanya saat order dibuat, atau saat orderType BARU berubah jadi "Meta Ads"
+    // (mis. diisi belakangan). Edit lain, termasuk update flag kita sendiri, diabaikan.
+    const beforeType = change.before && change.before.exists
+      ? String(change.before.data().orderType || "").trim()
+      : null;
+    if (beforeType === "Meta Ads") {
+      return;
+    }
 
     // 1. ERROR HANDLING & IDEMPOTENCY: Cek apakah sudah pernah dikirim
     if (orderData.sudahDikirimKeMeta === true) {
@@ -153,7 +165,6 @@ exports.sendMetaPurchaseEvent = onDocumentCreated(
 // (Manajemen User). Claim diisi saat dokumen itu berubah dan saat akun baru
 // pertama kali login.
 // ---------------------------------------------------------------------------
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const functionsV1 = require("firebase-functions/v1");
 const { getFirestore } = require("firebase-admin/firestore");
 
@@ -199,3 +210,19 @@ exports.syncErpRoleOnSignup = functionsV1.auth.user().onCreate(async (user) => {
     logger.info(`Claim role ${user.email} -> ${role} (akun baru)`);
   }
 });
+
+// Webhook LINE + agent pencatat biaya (Freight In / Beban Lain-lain).
+// Server Express (server.ts) hanya jalan lokal dan Hosting hanya file statis, jadi di production
+// /api/line/webhook di-rewrite ke fungsi ini (firebase.json). Handler-nya src/server/line.ts,
+// di-bundle ke ./lineWebhook.js oleh `npm run build:functions` (otomatis saat predeploy).
+// Secret: firebase functions:secrets:set LINE_CHANNEL_SECRET dan GEMINI_API_KEY.
+// Channel Access Token dibaca dari settings/line (Pengaturan -> Integrasi LINE).
+const { onRequest } = require("firebase-functions/v2/https");
+const LINE_CHANNEL_SECRET = defineSecret("LINE_CHANNEL_SECRET");
+const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+
+exports.lineWebhook = onRequest(
+  { region: "asia-east1", secrets: [LINE_CHANNEL_SECRET, GEMINI_API_KEY], timeoutSeconds: 120, memory: "512MiB", invoker: "public" },
+  // req.rawBody disediakan Cloud Functions; dipakai verifikasi signature LINE.
+  (req, res) => require("./lineWebhook").lineWebhookHandler(req, res),
+);

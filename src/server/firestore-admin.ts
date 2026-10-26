@@ -12,11 +12,9 @@
 import { initializeApp, getApps, applicationDefault, App } from 'firebase-admin/app';
 import { getFirestore, Timestamp, Firestore, DocumentReference, CollectionReference, Query, WhereFilterOp, SetOptions } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import fs from 'fs';
-import path from 'path';
-
-const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
-const appletConfig = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
+// Di-bundle esbuild (bukan dibaca dari cwd), supaya Cloud Function di functions/
+// juga memakai database ERP yang benar, bukan database (default).
+import appletConfig from '../../firebase-applet-config.json';
 
 let app: App | null = null;
 let firestore: Firestore | null = null;

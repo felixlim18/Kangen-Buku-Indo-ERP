@@ -9,7 +9,8 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.cjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "build:functions": "esbuild src/server/line.ts --bundle --platform=node --target=node22 --format=cjs --external:firebase-admin --external:@google/genai --outfile=functions/lineWebhook.js"
   },
   "dependencies": {
     "@babel/core": "^8.0.1",

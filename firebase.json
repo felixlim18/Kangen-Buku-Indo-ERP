@@ -18,6 +18,9 @@
         "firebase-debug.log",
         "firebase-debug.*.log",
         "*.local"
+      ],
+      "predeploy": [
+        "\"$PROJECT_DIR/node_modules/.bin/esbuild\" \"$PROJECT_DIR/src/server/line.ts\" --bundle --platform=node --target=node22 --format=cjs --external:firebase-admin --external:@google/genai --outfile=\"$PROJECT_DIR/functions/lineWebhook.js\""
       ]
     }
   ],
@@ -33,6 +36,13 @@
       "**/*.map"
     ],
     "rewrites": [
+      {
+        "source": "/api/line/webhook",
+        "function": {
+          "functionId": "lineWebhook",
+          "region": "asia-east1"
+        }
+      },
       {
         "source": "**",
         "destination": "/index.html"

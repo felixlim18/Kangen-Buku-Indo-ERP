@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { getDb, isAdminConfigured, doc, setDoc, getDoc, getDocs, collection } from './firestore-admin';
+import { isExpenseAgentUser, handleExpenseAgentEvent } from './expenseAgent';
 
 // Firestore lewat firebase-admin (lihat firestore-admin.ts). Tanpa kredensial
 // server, fitur yang butuh database dilewati dengan aman.
@@ -64,7 +65,7 @@ export async function sendLinePushMessage(
 export async function sendLineReplyMessage(
   channelAccessToken: string,
   replyToken: string,
-  messages: Array<{ type: string; text: string }>
+  messages: Array<{ type: string; text?: string; [key: string]: any }>
 ) {
   if (!channelAccessToken || !replyToken) return;
 
@@ -151,6 +152,19 @@ export async function lineWebhookHandler(req: Request, res: Response) {
           } catch (fsErr) {
             console.warn('Failed saving lineUser to Firestore:', fsErr);
           }
+        }
+
+        // ID LINE yang terdaftar (settings/line) dilayani agent pencatat biaya.
+        if (db && accessToken && event.replyToken && await isExpenseAgentUser(userId).catch(() => false)) {
+          let replies;
+          try {
+            replies = await handleExpenseAgentEvent(event, accessToken);
+          } catch (agentErr: any) {
+            console.error('Error in expense agent:', agentErr);
+            replies = [{ type: 'text', text: `⚠️ Agent gagal memproses: ${agentErr.message}` }];
+          }
+          if (replies.length) await sendLineReplyMessage(accessToken, event.replyToken, replies);
+          continue;
         }
 
         // Auto reply on follow or message

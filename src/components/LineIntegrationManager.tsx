@@ -56,10 +56,11 @@ export const LineIntegrationManager: React.FC = () => {
     setEnabled(lineSettings.enabled ?? true);
   }, [lineSettings]);
 
-  // Construct Webhook URL (forcing https to prevent HTTP -> HTTPS 302 redirects by Cloud Run / Nginx)
-  const webhookUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin.replace(/^http:/, 'https:')}/api/line/webhook` 
-    : '/api/line/webhook';
+  // Webhook dilayani Cloud Function lineWebhook lewat rewrite Hosting (firebase.json).
+  // LINE tidak bisa menjangkau localhost, jadi saat dibuka lokal tampilkan domain Hosting.
+  const PROD_ORIGIN = 'https://gen-lang-client-0501656267.web.app';
+  const isLocal = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
+  const webhookUrl = `${typeof window === 'undefined' || isLocal ? PROD_ORIGIN : window.location.origin.replace(/^http:/, 'https:')}/api/line/webhook`;
 
   const fetchRecentUsers = async () => {
     setIsLoadingUsers(true);
