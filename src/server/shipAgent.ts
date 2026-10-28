@@ -105,13 +105,15 @@ export async function findReadyToShipOrders(opts: { onlyUnnotifiedToday?: boolea
 
 const C = { muted: '#8C8C8C', label: '#6B6B6B', red: '#D93025', accent: '#2F6FDB', warnBg: '#FDF1DC', warn: '#9A5B00', line: '#E6E6E6' };
 
+// Label lebar tetap supaya kolom nilai sejajar; "Copy" berupa teks ber-action (tombol Flex terlalu
+// lebar dan terpotong jadi "...", juga membuat tinggi baris tidak rata).
 const infoRow = (label: string, value: string, opts: { copy?: boolean; color?: string } = {}) => ({
   type: 'box', layout: 'horizontal', spacing: 'sm', alignItems: 'center',
   contents: [
-    { type: 'text', text: label, size: 'sm', color: C.label, flex: 3 },
-    { type: 'text', text: value || '-', size: 'sm', wrap: true, flex: opts.copy ? 5 : 7, color: opts.color || '#111111' },
+    { type: 'box', layout: 'vertical', width: '84px', contents: [{ type: 'text', text: label, size: 'sm', color: C.label }] },
+    { type: 'text', text: value || '-', size: 'sm', wrap: true, flex: 1, color: opts.color || (value ? '#111111' : C.muted) },
     ...(opts.copy && value
-      ? [{ type: 'button', style: 'link', height: 'sm', flex: 2, action: { type: 'clipboard', label: 'Copy', clipboardText: value } }]
+      ? [{ type: 'text', text: 'Copy', size: 'sm', weight: 'bold', color: C.accent, flex: 0, action: { type: 'clipboard', label: 'Copy', clipboardText: value } }]
       : []),
   ],
 });
@@ -122,7 +124,17 @@ const titleOf = (o: any) => isMarketplace(o)
 const buyerOf = (o: any) => o.customerPlatformName || o.customerName || '';
 const payOf = (o: any) => `${o.paymentMethod || '-'} · ${fmtNTD(o.totalPrice || 0)}`;
 
-const coverUrl = (u: any) => (typeof u === 'string' && /^https:\/\//.test(u) ? u : '');
+// LINE hanya bisa menampilkan gambar https (JPEG/PNG). Cover base64 lama & gambar default Unsplash dilewati.
+const coverUrl = (u: any) => (typeof u === 'string' && /^https:\/\//.test(u) && !u.includes('images.unsplash.com') ? u : '');
+
+// SO menyimpan bookCover kosong (dibuang saat simpan, lihat SalesTab.tsx); cover diambil dari catalog/{bookId}.
+export async function withCovers(orders: any[]): Promise<any[]> {
+  const ids = [...new Set(orders.flatMap((o) => (o.items || []).filter((it: any) => !coverUrl(it.bookCover) && it.bookId).map((it: any) => String(it.bookId))))];
+  if (!ids.length) return orders;
+  const snaps = await db().getAll(...ids.map((id) => db().doc(`catalog/${id}`)));
+  const covers = new Map(snaps.filter((d) => d.exists).map((d) => [d.id, d.data()?.cover]));
+  return orders.map((o) => ({ ...o, items: (o.items || []).map((it: any) => coverUrl(it.bookCover) ? it : { ...it, bookCover: covers.get(String(it.bookId)) || '' }) }));
+}
 
 const bookRow = (it: any) => {
   const qty = it.qty || 1;
@@ -173,7 +185,7 @@ export function readyOrderBubble(o: any) {
           infoRow('Kode toko', o.pickupDetails || '', { copy: true }),
           infoRow('Pengiriman', o.pickupLogistics || '-'),
           infoRow('Bayar', payOf(o)),
-          infoRow('Note', o.customerNote || '-', { color: o.customerNote ? '#111111' : C.muted }),
+          infoRow('Note', o.customerNote || ''),
         ] },
         { type: 'separator', margin: 'md', color: C.line },
         ...shown.map(bookRow),
@@ -253,7 +265,7 @@ export async function notifyReadyToShip(opts: { orderId?: string } = {}): Promis
   }
   if (!orders.length) return { sent: 0 };
   try {
-    await pushLine(token, s.ownerUserId, readyOrdersMessages(orders));
+    await pushLine(token, s.ownerUserId, readyOrdersMessages(await withCovers(orders)));
   } catch (e) {
     await Promise.all(orders.map((o) => noticeRef(o.id).delete()));
     throw e;
@@ -420,7 +432,7 @@ async function receiveOrderNumber(lineUserId: string, session: any, raw: string)
   o.orderNumber = orderNumber;
   if (session.resi) return [text(`✅ Nomor order ${orderNumber} tersimpan.`), ...(await showConfirm(lineUserId, o, session.resi))];
   await sessionRef(lineUserId).delete();
-  return [text(`✅ Nomor order ${orderNumber} tersimpan.`), flex(`SO ${o.orderCode} siap dikirim`, readyOrderBubble(o))];
+  return [text(`✅ Nomor order ${orderNumber} tersimpan.`), flex(`SO ${o.orderCode} siap dikirim`, readyOrderBubble((await withCovers([o]))[0]))];
 }
 
 async function receiveResi(lineUserId: string, session: any, raw: string): Promise<LineMessage[]> {
@@ -466,7 +478,7 @@ export async function handleShipAgentEvent(event: any): Promise<LineMessage[] | 
 
   if (LIST_WORDS.test(msg)) {
     const orders = await findReadyToShipOrders();
-    return orders.length ? readyOrdersMessages(orders) : [text('Belum ada SO yang siap dikirim.')];
+    return orders.length ? readyOrdersMessages(await withCovers(orders)) : [text('Belum ada SO yang siap dikirim.')];
   }
 
   const session = (await sessionRef(lineUserId).get()).data();
