@@ -228,14 +228,29 @@ exports.lineWebhook = onRequest(
 );
 
 // Card "SO siap dikirim" ke owner LINE (src/server/shipAgent.ts): SO Pending yang stoknya cukup,
-// sudah waktunya kirim dan (kalau Transfer) sudah lunas. Tiap SO dikabari sekali; tombol di card
-// dilayani lineWebhook. Owner juga bisa mengetik "siap kirim" di LINE untuk melihat semuanya.
+// sudah waktunya kirim dan (kalau Transfer) sudah lunas. Dikirim langsung saat SO baru jadi Pending,
+// lalu dicek ulang tiap 30 menit (24 jam) untuk SO yang baru siap belakangan. Tiap SO paling banyak
+// sekali per hari; tombol di card dilayani lineWebhook. Ketik "siap kirim" di LINE untuk melihat semuanya.
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 
 exports.notifyReadyToShip = onSchedule(
-  { schedule: "every 30 minutes from 08:00 to 22:00", timeZone: "Asia/Taipei", region: "asia-east1", timeoutSeconds: 120, memory: "512MiB" },
+  { schedule: "every 30 minutes", timeZone: "Asia/Taipei", region: "asia-east1", timeoutSeconds: 120, memory: "512MiB" },
   async () => {
     const { sent } = await require("./lineWebhook").notifyReadyToShip();
     if (sent) logger.info(`Card SO siap kirim terkirim: ${sent}`);
+  },
+);
+
+exports.notifyReadyToShipOnWrite = onDocumentWritten(
+  { document: "salesOrders/{orderId}", database: ERP_DATABASE, region: "asia-east1", timeoutSeconds: 120, memory: "512MiB" },
+  async (event) => {
+    const { isShipCandidate, notifyReadyToShip } = require("./lineWebhook");
+    const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+    const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+    // Hanya saat SO BARU memenuhi syarat (dibuat, draft jadi Pending, tanggal/pembayaran diubah);
+    // edit lain pada SO yang sudah memenuhi syarat (mis. nomor order dari LINE) dilewati.
+    if (!after || !isShipCandidate(after) || (before && isShipCandidate(before))) return;
+    const { sent } = await notifyReadyToShip({ orderId: event.params.orderId });
+    if (sent) logger.info(`Card SO siap kirim langsung: ${event.params.orderId}`);
   },
 );

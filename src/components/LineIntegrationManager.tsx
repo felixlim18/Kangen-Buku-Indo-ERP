@@ -368,7 +368,7 @@ export const LineIntegrationManager: React.FC = () => {
                 />
                 <span>
                   <span className="font-bold">Card SO siap dikirim</span>
-                  <span className="block text-[10px] text-neutral-400">Stok cukup & sudah waktunya kirim. Isi nomor order/resi lalu Send langsung dari LINE.</span>
+                  <span className="block text-[10px] text-neutral-400">Dikirim langsung saat SO siap (stok cukup & sudah waktunya), maks. sekali per hari per SO. Isi nomor order/resi lalu Send dari LINE.</span>
                 </span>
               </label>
 

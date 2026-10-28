@@ -6,8 +6,10 @@
 // -> "Send" menjalankan Konfirmasi Kirim yang sama dengan tombol di SalesTab.tsx
 // (confirmSalesOrderTransaction + status shipped): stok, ledger, jurnal Barang Dikirim.
 //
-// SO yang sudah dikabari dicatat di lineShipNotices/{orderId} (bukan di dokumen SO, supaya
-// tidak memicu trigger salesOrders). Satu sesi input per user di lineShipSessions/{lineUserId}.
+// Card dikirim begitu SO baru jadi Pending dan siap (trigger notifyReadyToShipOnWrite), plus
+// jadwal tiap 30 menit untuk SO yang baru siap belakangan (stok masuk, tanggal tiba, lunas).
+// Tiap SO paling banyak sekali per hari (tanggal Taipei): dicatat di lineShipNotices/{orderId}_{tanggal},
+// bukan di dokumen SO, supaya tidak memicu trigger salesOrders. Satu sesi input per user di lineShipSessions/{lineUserId}.
 
 import type { Transaction } from 'firebase-admin/firestore';
 import { Decimal } from 'decimal.js';
@@ -66,14 +68,20 @@ export async function isShipAgentUser(lineUserId: string): Promise<boolean> {
 
 // ---- Deteksi SO siap kirim ----------------------------------------------------
 
-export async function findReadyToShipOrders(opts: { onlyUnnotified?: boolean } = {}): Promise<any[]> {
-  const pendingSnap = await db().collection('salesOrders').where('status', '==', 'draft').get();
-  let candidates = pendingSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any))
-    .filter((o) => isPending(o) && activeItems(o).length > 0 && !isShipDateFuture(o.estimatedShippingDate) && !isUnpaidTransfer(o));
-  if (opts.onlyUnnotified && candidates.length) {
-    const notices = await db().getAll(...candidates.map((o) => db().doc(`lineShipNotices/${o.id}`)));
-    const done = new Set(notices.filter((s) => s.exists).map((s) => s.id));
-    candidates = candidates.filter((o) => !done.has(o.id));
+const noticeRef = (orderId: string) => db().doc(`lineShipNotices/${orderId}_${todayTaipei()}`);
+
+export const isShipCandidate = (o: any) =>
+  isPending(o) && activeItems(o).length > 0 && !isShipDateFuture(o.estimatedShippingDate) && !isUnpaidTransfer(o);
+
+export async function findReadyToShipOrders(opts: { onlyUnnotifiedToday?: boolean; orderId?: string } = {}): Promise<any[]> {
+  const pendingDocs = opts.orderId
+    ? [await db().doc(`salesOrders/${opts.orderId}`).get()].filter((d) => d.exists)
+    : (await db().collection('salesOrders').where('status', '==', 'draft').get()).docs;
+  let candidates = pendingDocs.map((d) => ({ id: d.id, ...d.data() } as any)).filter(isShipCandidate);
+  if (opts.onlyUnnotifiedToday && candidates.length) {
+    const notices = await db().getAll(...candidates.map((o) => noticeRef(o.id)));
+    const done = new Set(notices.filter((s) => s.exists).map((s) => s.ref.path));
+    candidates = candidates.filter((o) => !done.has(noticeRef(o.id).path));
   }
   if (!candidates.length) return [];
 
@@ -228,17 +236,28 @@ async function pushLine(token: string, to: string, messages: LineMessage[]) {
   if (!res.ok) throw new Error(`Gagal push LINE (${res.status}): ${await res.text()}`);
 }
 
-export async function notifyReadyToShip(): Promise<{ sent: number }> {
+// Tanpa orderId: semua SO siap yang belum dikabari hari ini (jadwal). Dengan orderId: SO itu saja (trigger).
+export async function notifyReadyToShip(opts: { orderId?: string } = {}): Promise<{ sent: number }> {
   const s = (await db().doc('settings/line').get()).data() || {};
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN || s.channelAccessToken;
   if (!s.enabled || s.notifyReadyToShip === false || !s.ownerUserId || !token) return { sent: 0 };
 
-  const orders = (await findReadyToShipOrders({ onlyUnnotified: true })).slice(0, 60);
+  const ready = (await findReadyToShipOrders({ onlyUnnotifiedToday: true, orderId: opts.orderId })).slice(0, 60);
+  // Klaim dulu (create gagal kalau sudah ada), supaya trigger & jadwal yang jalan bersamaan tidak kirim dobel.
+  const orders: any[] = [];
+  for (const o of ready) {
+    try {
+      await noticeRef(o.id).create({ orderId: o.id, orderCode: o.orderCode || '', date: todayTaipei(), notifiedAt: Timestamp.now() });
+      orders.push(o);
+    } catch { /* sudah dikabari hari ini */ }
+  }
   if (!orders.length) return { sent: 0 };
-  await pushLine(token, s.ownerUserId, readyOrdersMessages(orders));
-  const batch = db().batch();
-  orders.forEach((o) => batch.set(db().doc(`lineShipNotices/${o.id}`), { orderCode: o.orderCode || '', notifiedAt: Timestamp.now() }));
-  await batch.commit();
+  try {
+    await pushLine(token, s.ownerUserId, readyOrdersMessages(orders));
+  } catch (e) {
+    await Promise.all(orders.map((o) => noticeRef(o.id).delete()));
+    throw e;
+  }
   return { sent: orders.length };
 }
 
