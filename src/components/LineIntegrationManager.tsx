@@ -30,6 +30,7 @@ export const LineIntegrationManager: React.FC = () => {
   const [resellerUserId, setResellerUserId] = useState(lineSettings.resellerUserId || '');
   const [notifyOwnerNewOrder, setNotifyOwnerNewOrder] = useState(lineSettings.notifyOwnerNewOrder ?? true);
   const [notifyResellerNewOrder, setNotifyResellerNewOrder] = useState(lineSettings.notifyResellerNewOrder ?? true);
+  const [notifyReadyToShip, setNotifyReadyToShip] = useState(lineSettings.notifyReadyToShip ?? true);
   const [enabled, setEnabled] = useState(lineSettings.enabled ?? true);
 
   const [copiedWebhook, setCopiedWebhook] = useState(false);
@@ -53,6 +54,7 @@ export const LineIntegrationManager: React.FC = () => {
     setResellerUserId(lineSettings.resellerUserId || '');
     setNotifyOwnerNewOrder(lineSettings.notifyOwnerNewOrder ?? true);
     setNotifyResellerNewOrder(lineSettings.notifyResellerNewOrder ?? true);
+    setNotifyReadyToShip(lineSettings.notifyReadyToShip ?? true);
     setEnabled(lineSettings.enabled ?? true);
   }, [lineSettings]);
 
@@ -128,6 +130,7 @@ export const LineIntegrationManager: React.FC = () => {
       resellerUserId: resellerUserId.trim(),
       notifyOwnerNewOrder,
       notifyResellerNewOrder,
+      notifyReadyToShip,
       enabled
     };
 
@@ -355,6 +358,19 @@ export const LineIntegrationManager: React.FC = () => {
                   <span>Notifikasi Aktif</span>
                 </label>
               </div>
+
+              <label className="flex items-start gap-2 cursor-pointer text-xs text-neutral-700 dark:text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={notifyReadyToShip}
+                  onChange={(e) => setNotifyReadyToShip(e.target.checked)}
+                  className="mt-0.5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                />
+                <span>
+                  <span className="font-bold">Card SO siap dikirim</span>
+                  <span className="block text-[10px] text-neutral-400">Stok cukup & sudah waktunya kirim. Isi nomor order/resi lalu Send langsung dari LINE.</span>
+                </span>
+              </label>
 
               <div className="space-y-1">
                 <label className="block text-[11px] font-bold text-neutral-600 dark:text-neutral-400">

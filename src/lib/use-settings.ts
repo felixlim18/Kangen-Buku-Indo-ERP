@@ -68,6 +68,7 @@ export interface LineSettings {
   resellerUserId: string;
   notifyOwnerNewOrder: boolean;
   notifyResellerNewOrder: boolean;
+  notifyReadyToShip?: boolean; // card "SO siap dikirim" ke owner (Cloud Function notifyReadyToShip)
   enabled: boolean;
 }
 

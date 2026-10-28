@@ -226,3 +226,16 @@ exports.lineWebhook = onRequest(
   // req.rawBody disediakan Cloud Functions; dipakai verifikasi signature LINE.
   (req, res) => require("./lineWebhook").lineWebhookHandler(req, res),
 );
+
+// Card "SO siap dikirim" ke owner LINE (src/server/shipAgent.ts): SO Pending yang stoknya cukup,
+// sudah waktunya kirim dan (kalau Transfer) sudah lunas. Tiap SO dikabari sekali; tombol di card
+// dilayani lineWebhook. Owner juga bisa mengetik "siap kirim" di LINE untuk melihat semuanya.
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+
+exports.notifyReadyToShip = onSchedule(
+  { schedule: "every 30 minutes from 08:00 to 22:00", timeZone: "Asia/Taipei", region: "asia-east1", timeoutSeconds: 120, memory: "512MiB" },
+  async () => {
+    const { sent } = await require("./lineWebhook").notifyReadyToShip();
+    if (sent) logger.info(`Card SO siap kirim terkirim: ${sent}`);
+  },
+);

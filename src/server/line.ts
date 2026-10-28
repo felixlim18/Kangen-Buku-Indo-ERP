@@ -2,6 +2,9 @@ import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { getDb, isAdminConfigured, doc, setDoc, getDoc, getDocs, collection } from './firestore-admin';
 import { isExpenseAgentUser, handleExpenseAgentEvent } from './expenseAgent';
+import { isShipAgentUser, handleShipAgentEvent } from './shipAgent';
+
+export { notifyReadyToShip } from './shipAgent';
 
 // Firestore lewat firebase-admin (lihat firestore-admin.ts). Tanpa kredensial
 // server, fitur yang butuh database dilewati dengan aman.
@@ -151,6 +154,21 @@ export async function lineWebhookHandler(req: Request, res: Response) {
             }, { merge: true });
           } catch (fsErr) {
             console.warn('Failed saving lineUser to Firestore:', fsErr);
+          }
+        }
+
+        // Owner: agent SO siap kirim (tombol card & input resi) didahulukan, sisanya agent pencatat biaya.
+        if (db && accessToken && event.replyToken && await isShipAgentUser(userId).catch(() => false)) {
+          let replies;
+          try {
+            replies = await handleShipAgentEvent(event);
+          } catch (agentErr: any) {
+            console.error('Error in ship agent:', agentErr);
+            replies = [{ type: 'text', text: `⚠️ Agent gagal memproses: ${agentErr.message}` }];
+          }
+          if (replies) {
+            if (replies.length) await sendLineReplyMessage(accessToken, event.replyToken, replies);
+            continue;
           }
         }
 
