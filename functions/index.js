@@ -254,3 +254,12 @@ exports.notifyReadyToShipOnWrite = onDocumentWritten(
     if (sent) logger.info(`Card SO siap kirim langsung: ${event.params.orderId}`);
   },
 );
+
+// Laporan pagi ke owner LINE: jumlah orderan kemarin per channel (tanpa Cancelled & draft).
+exports.dailyOrderReport = onSchedule(
+  { schedule: "every day 08:00", timeZone: "Asia/Taipei", region: "asia-east1", timeoutSeconds: 120, memory: "512MiB" },
+  async () => {
+    const r = await require("./lineWebhook").sendDailyOrderReport();
+    if (r) logger.info(`Laporan orderan harian terkirim: ${r.total}`);
+  },
+);

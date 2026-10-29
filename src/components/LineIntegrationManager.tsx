@@ -31,6 +31,7 @@ export const LineIntegrationManager: React.FC = () => {
   const [notifyOwnerNewOrder, setNotifyOwnerNewOrder] = useState(lineSettings.notifyOwnerNewOrder ?? true);
   const [notifyResellerNewOrder, setNotifyResellerNewOrder] = useState(lineSettings.notifyResellerNewOrder ?? true);
   const [notifyReadyToShip, setNotifyReadyToShip] = useState(lineSettings.notifyReadyToShip ?? true);
+  const [notifyDailyOrderReport, setNotifyDailyOrderReport] = useState(lineSettings.notifyDailyOrderReport ?? true);
   const [enabled, setEnabled] = useState(lineSettings.enabled ?? true);
 
   const [copiedWebhook, setCopiedWebhook] = useState(false);
@@ -55,6 +56,7 @@ export const LineIntegrationManager: React.FC = () => {
     setNotifyOwnerNewOrder(lineSettings.notifyOwnerNewOrder ?? true);
     setNotifyResellerNewOrder(lineSettings.notifyResellerNewOrder ?? true);
     setNotifyReadyToShip(lineSettings.notifyReadyToShip ?? true);
+    setNotifyDailyOrderReport(lineSettings.notifyDailyOrderReport ?? true);
     setEnabled(lineSettings.enabled ?? true);
   }, [lineSettings]);
 
@@ -131,6 +133,7 @@ export const LineIntegrationManager: React.FC = () => {
       notifyOwnerNewOrder,
       notifyResellerNewOrder,
       notifyReadyToShip,
+      notifyDailyOrderReport,
       enabled
     };
 
@@ -369,6 +372,19 @@ export const LineIntegrationManager: React.FC = () => {
                 <span>
                   <span className="font-bold">Card SO siap dikirim</span>
                   <span className="block text-[10px] text-neutral-400">Dikirim langsung saat SO siap (stok cukup & sudah waktunya), maks. sekali per hari per SO. Isi nomor order/resi lalu Send dari LINE.</span>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-2 cursor-pointer text-xs text-neutral-700 dark:text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={notifyDailyOrderReport}
+                  onChange={(e) => setNotifyDailyOrderReport(e.target.checked)}
+                  className="mt-0.5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                />
+                <span>
+                  <span className="font-bold">Laporan orderan jam 08:00</span>
+                  <span className="block text-[10px] text-neutral-400">Jumlah orderan kemarin per channel, tiap pagi.</span>
                 </span>
               </label>
 

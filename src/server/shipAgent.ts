@@ -489,3 +489,86 @@ export async function handleShipAgentEvent(event: any): Promise<LineMessage[] | 
   // Teks saat card konfirmasi terbuka dianggap koreksi resi.
   return receiveResi(lineUserId, session, msg);
 }
+
+// ---- Laporan pagi: jumlah orderan kemarin per channel (Cloud Function dailyOrderReport, 08:00) ----
+
+// Sama dengan getChannelColor di SalesTab.tsx.
+const channelColor = (name: string, configured?: string) => {
+  if (configured) return configured;
+  const n = (name || '').trim().toLowerCase();
+  if (!n || n === '-') return '#6B7280';
+  if (n.includes('whatsapp') || n.includes('wa')) return '#25D366';
+  if (n.includes('shopee')) return '#EE4D2D';
+  if (n.includes('tokopedia')) return '#42B549';
+  if (n.includes('tiktok')) return '#000000';
+  if (n.includes('messenger') || n.includes('facebook')) return '#0084FF';
+  if (n.includes('instagram') || n.includes('ig')) return '#E1306C';
+  if (n.includes('line')) return '#00B900';
+  if (n.includes('website') || n.includes('web')) return '#6366F1';
+  if (n.includes('reseller')) return '#8B5CF6';
+  return '#3B82F6';
+};
+
+const taipeiDateOf = (ms: number) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+
+// Orderan dengan tanggal order = `date` (YYYY-MM-DD, Taipei), tanpa Cancelled & draft Tarik Shopee.
+export async function countOrdersByChannel(date: string) {
+  const [sos, cats] = await Promise.all([db().collection('salesOrders').get(), db().collection('categories').get()]);
+  const configs = cats.docs.filter((d) => d.id.startsWith('config_channel_')).map((d) => d.data() as any);
+  const counts = new Map<string, number>();
+  sos.forEach((d) => {
+    const o = d.data();
+    if (o.status === 'cancelled' || o.isDraft) return;
+    const ms = tsMs(o.orderDate) ?? tsMs(o.createdAt);
+    if (!ms || taipeiDateOf(ms) !== date) return;
+    const ch = String(o.platformChannel || '').trim() || 'Lainnya';
+    counts.set(ch, (counts.get(ch) || 0) + 1);
+  });
+  // Urutan sama dengan daftar channel di Data Master, channel lain di belakang.
+  const pos = (name: string) => {
+    const c = configs.find((x) => String(x.name || '').toLowerCase() === name.toLowerCase());
+    return c ? (typeof c.position === 'number' ? c.position : 999) : 10000;
+  };
+  const rows = [...counts.entries()]
+    .map(([name, count]) => ({ name, count, color: channelColor(name, configs.find((x) => String(x.name || '').toLowerCase() === name.toLowerCase())?.color) }))
+    .sort((a, b) => pos(a.name) - pos(b.name) || b.count - a.count);
+  return { date, total: rows.reduce((a, r) => a + r.count, 0), rows };
+}
+
+export function dailyReportBubble(r: { date: string; total: number; rows: Array<{ name: string; count: number; color: string }> }) {
+  const G = { bg: '#0F6E56', soft: '#9FE1CB' };
+  return {
+    type: 'bubble', size: 'mega',
+    body: {
+      type: 'box', layout: 'vertical', backgroundColor: G.bg, paddingAll: '16px', spacing: 'none',
+      contents: [
+        { type: 'text', text: `📊 Orderan kemarin · ${r.date.replace(/-/g, '/')}`, size: 'xs', color: G.soft },
+        { type: 'box', layout: 'baseline', spacing: 'sm', margin: 'sm', contents: [
+          { type: 'text', text: String(r.total), size: '4xl', weight: 'bold', color: '#FFFFFF', flex: 0 },
+          { type: 'text', text: 'orderan', size: 'sm', color: G.soft, flex: 0 },
+        ] },
+        { type: 'box', layout: 'vertical', backgroundColor: '#FFFFFF', cornerRadius: '12px', paddingStart: '14px', paddingEnd: '14px', paddingTop: '4px', paddingBottom: '4px', margin: 'lg',
+          contents: r.rows.length ? r.rows.flatMap((row, i) => [
+            ...(i ? [{ type: 'separator', color: '#EEEEEE' }] : []),
+            { type: 'box', layout: 'horizontal', alignItems: 'center', spacing: 'md', paddingTop: '8px', paddingBottom: '8px', contents: [
+              { type: 'box', layout: 'vertical', contents: [], width: '8px', height: '8px', cornerRadius: '4px', backgroundColor: row.color, flex: 0 },
+              { type: 'text', text: row.name, size: 'sm', color: '#111111', flex: 1 },
+              { type: 'text', text: String(row.count), size: 'sm', weight: 'bold', color: '#111111', flex: 0 },
+            ] },
+          ]) : [{ type: 'text', text: 'Tidak ada orderan masuk.', size: 'sm', color: '#8C8C8C', margin: 'md', wrap: true }],
+        },
+      ],
+    },
+  };
+}
+
+export async function sendDailyOrderReport(): Promise<{ total: number } | null> {
+  const s = (await db().doc('settings/line').get()).data() || {};
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN || s.channelAccessToken;
+  if (!s.enabled || s.notifyDailyOrderReport === false || !s.ownerUserId || !token) return null;
+  const yesterday = taipeiDateOf(Date.now() - 86400000);
+  const report = await countOrdersByChannel(yesterday);
+  const alt = `📊 Orderan ${yesterday.replace(/-/g, '/')}: ${report.total} (${report.rows.map((r) => `${r.name} ${r.count}`).join(', ') || '-'})`;
+  await pushLine(token, s.ownerUserId, [flex(alt, dailyReportBubble(report))]);
+  return { total: report.total };
+}
