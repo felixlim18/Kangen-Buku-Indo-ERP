@@ -572,3 +572,89 @@ export async function sendDailyOrderReport(): Promise<{ total: number } | null> 
   await pushLine(token, s.ownerUserId, [flex(alt, dailyReportBubble(report))]);
   return { total: report.total };
 }
+
+// ---- Card SO return (Cloud Function notifyReturnOnWrite) -----------------------
+
+// Halaman cek status per ekspedisi; nomor resi tetap ditempel manual di situsnya.
+const TRACKING_PAGES: Record<string, { label: string; url: string }> = {
+  FamilyMart: { label: 'FamilyMart', url: 'https://fmec.famiport.com.tw/FP_Entrance/QueryBox' },
+  '7-11': { label: '7-11', url: 'https://eservice.7-11.com.tw/e-tracking/search.aspx' },
+  'Shopee Express': { label: 'Shopee Express', url: 'https://spx.tw/' },
+  'Hi-Life': { label: 'Hi-Life', url: 'https://www.hilife.com.tw/shipment-status' },
+};
+
+// Ekspedisi dari pola resi; kalau tidak dikenali, dari nama Pengiriman di SO.
+export function trackingPageFor(resi: string, pickupLogistics?: string) {
+  const key = detectLogisticsFromResi(resi);
+  if (TRACKING_PAGES[key]) return TRACKING_PAGES[key];
+  const n = String(pickupLogistics || '').toLowerCase();
+  if (n.includes('family') || n.includes('全家')) return TRACKING_PAGES.FamilyMart;
+  if (n.includes('7-11') || n.includes('7-eleven') || n.includes('seven') || n.includes('7-elevent')) return TRACKING_PAGES['7-11'];
+  if (n.includes('shopee') || n.includes('spx') || n.includes('蝦皮')) return TRACKING_PAGES['Shopee Express'];
+  if (n.includes('hi-life') || n.includes('hilife') || n.includes('萊爾富')) return TRACKING_PAGES['Hi-Life'];
+  return null;
+}
+
+const resiOf = (o: any) => String(o.shipment?.shippingNumber || o.shippingNumber || '').trim();
+
+export function returnBubble(o: any) {
+  const resi = resiOf(o);
+  const page = trackingPageFor(resi, o.pickupLogistics);
+  const detected = detectLogisticsFromResi(resi);
+  const items = activeItems(o);
+  const shown = items.slice(0, 10);
+  const R = { bg: '#FCE8E8', fg: '#A32D2D' };
+  return {
+    type: 'bubble', size: 'mega',
+    header: {
+      type: 'box', layout: 'horizontal', backgroundColor: R.bg, paddingAll: '12px',
+      contents: [
+        { type: 'text', text: '↩️ SO dikembalikan', size: 'sm', weight: 'bold', color: R.fg, flex: 1 },
+        { type: 'text', text: 'Return', size: 'sm', color: R.fg, align: 'end', flex: 0 },
+      ],
+    },
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'xs',
+      contents: [
+        { type: 'text', text: [o.platformChannel, buyerOf(o)].filter(Boolean).join(' · ') || '-', size: 'xs', color: C.muted, wrap: true },
+        { type: 'text', text: `#${String(o.orderCode || '').replace(/^#/, '')}`, size: 'xl', weight: 'bold' },
+        { type: 'separator', margin: 'md', color: C.line },
+        { type: 'box', layout: 'vertical', spacing: 'xs', margin: 'md', contents: [
+          infoRow('Tgl return', fmtDate(o.returnedAt || Date.now())),
+          infoRow('No. order', o.orderNumber || '', { copy: true }),
+          infoRow('No. resi', resi, { copy: true }),
+          infoRow('Ekspedisi', detected !== 'Unknown' ? detected : (o.pickupLogistics || '')),
+        ] },
+        { type: 'separator', margin: 'md', color: C.line },
+        ...shown.map(bookRow),
+        ...(items.length > shown.length ? [{ type: 'text', text: `...dan ${items.length - shown.length} buku lainnya`, size: 'xs', color: C.muted, margin: 'sm' }] : []),
+      ],
+    },
+    ...(page ? { footer: { type: 'box', layout: 'vertical', contents: [
+      { type: 'button', style: 'primary', height: 'sm', color: C.accent, action: { type: 'uri', label: `Cek status ${page.label}`, uri: page.url } },
+    ] } } : {}),
+  };
+}
+
+// Dipanggil trigger saat SO baru berstatus returned. Tiap SO sekali (lineReturnNotices/{orderId}).
+export async function notifyReturn(orderId: string): Promise<boolean> {
+  const s = (await db().doc('settings/line').get()).data() || {};
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN || s.channelAccessToken;
+  if (!s.enabled || s.notifyReturn === false || !s.ownerUserId || !token) return false;
+  const o = await loadOrder(orderId);
+  if (!o || o.status !== 'returned') return false;
+  const ref = db().doc(`lineReturnNotices/${orderId}`);
+  try {
+    await ref.create({ orderId, orderCode: o.orderCode || '', notifiedAt: Timestamp.now() });
+  } catch {
+    return false; // sudah pernah dikabari
+  }
+  try {
+    const [withCover] = await withCovers([o]);
+    await pushLine(token, s.ownerUserId, [flex(`↩️ SO ${o.orderCode} dikembalikan`, returnBubble(withCover))]);
+  } catch (e) {
+    await ref.delete();
+    throw e;
+  }
+  return true;
+}

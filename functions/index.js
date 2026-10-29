@@ -263,3 +263,17 @@ exports.dailyOrderReport = onSchedule(
     if (r) logger.info(`Laporan orderan harian terkirim: ${r.total}`);
   },
 );
+
+// Card "SO dikembalikan" ke owner LINE saat status SO baru berubah jadi returned (sekali per SO),
+// dengan nomor order/resi dan tombol cek status sesuai ekspedisi.
+exports.notifyReturnOnWrite = onDocumentWritten(
+  { document: "salesOrders/{orderId}", database: ERP_DATABASE, region: "asia-east1", timeoutSeconds: 60, memory: "256MiB" },
+  async (event) => {
+    const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+    const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+    if (!after || after.status !== "returned" || (before && before.status === "returned")) return;
+    if (await require("./lineWebhook").notifyReturn(event.params.orderId)) {
+      logger.info(`Card SO return terkirim: ${event.params.orderId}`);
+    }
+  },
+);

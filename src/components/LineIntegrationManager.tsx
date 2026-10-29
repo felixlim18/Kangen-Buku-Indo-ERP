@@ -32,6 +32,7 @@ export const LineIntegrationManager: React.FC = () => {
   const [notifyResellerNewOrder, setNotifyResellerNewOrder] = useState(lineSettings.notifyResellerNewOrder ?? true);
   const [notifyReadyToShip, setNotifyReadyToShip] = useState(lineSettings.notifyReadyToShip ?? true);
   const [notifyDailyOrderReport, setNotifyDailyOrderReport] = useState(lineSettings.notifyDailyOrderReport ?? true);
+  const [notifyReturn, setNotifyReturn] = useState(lineSettings.notifyReturn ?? true);
   const [enabled, setEnabled] = useState(lineSettings.enabled ?? true);
 
   const [copiedWebhook, setCopiedWebhook] = useState(false);
@@ -57,6 +58,7 @@ export const LineIntegrationManager: React.FC = () => {
     setNotifyResellerNewOrder(lineSettings.notifyResellerNewOrder ?? true);
     setNotifyReadyToShip(lineSettings.notifyReadyToShip ?? true);
     setNotifyDailyOrderReport(lineSettings.notifyDailyOrderReport ?? true);
+    setNotifyReturn(lineSettings.notifyReturn ?? true);
     setEnabled(lineSettings.enabled ?? true);
   }, [lineSettings]);
 
@@ -134,6 +136,7 @@ export const LineIntegrationManager: React.FC = () => {
       notifyResellerNewOrder,
       notifyReadyToShip,
       notifyDailyOrderReport,
+      notifyReturn,
       enabled
     };
 
@@ -385,6 +388,19 @@ export const LineIntegrationManager: React.FC = () => {
                 <span>
                   <span className="font-bold">Laporan orderan jam 08:00</span>
                   <span className="block text-[10px] text-neutral-400">Jumlah orderan kemarin per channel, tiap pagi.</span>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-2 cursor-pointer text-xs text-neutral-700 dark:text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={notifyReturn}
+                  onChange={(e) => setNotifyReturn(e.target.checked)}
+                  className="mt-0.5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                />
+                <span>
+                  <span className="font-bold">Card SO return</span>
+                  <span className="block text-[10px] text-neutral-400">Saat SO jadi Return: nomor order/resi + tombol cek status ekspedisi.</span>
                 </span>
               </label>
 

@@ -69,6 +69,7 @@ export interface LineSettings {
   notifyOwnerNewOrder: boolean;
   notifyResellerNewOrder: boolean;
   notifyReadyToShip?: boolean; // card "SO siap dikirim" ke owner (Cloud Function notifyReadyToShip)
+  notifyReturn?: boolean; // card "SO dikembalikan" saat SO jadi Return (Cloud Function notifyReturnOnWrite)
   notifyDailyOrderReport?: boolean; // laporan jumlah orderan kemarin jam 08:00 (Cloud Function dailyOrderReport)
   enabled: boolean;
 }
