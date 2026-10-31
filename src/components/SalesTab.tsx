@@ -105,7 +105,7 @@ import QRCode from 'qrcode';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { PackingChecklist } from './PackingChecklist';
 import { formatPrintResult, getPrintSection, requestPrintLabels, isShopeeImportAvailable, requestShopeeOrders, cancelShopeeImport } from '../lib/auto-ship';
-import { buildShopeeDraft, shopeeIdsToLearn, shopeeListingKey, normalizeTitle } from '../lib/shopee-import';
+import { buildShopeeDraft, shopeeIdsToLearn, shopeeListingKey, normalizeTitle, matchBookByShopeeId } from '../lib/shopee-import';
 import { createCatalogBook } from '../lib/catalog-create';
 
 const DEFAULT_ORDER_TYPES = ['Meta Ads', 'Google Ads', 'TikTok Ads', 'Shopee Ads', 'Tokopedia Ads'];
@@ -629,6 +629,10 @@ export const SalesTab: React.FC = () => {
   const canViewAmount = hasPerm('sales.viewAmount');
 
   const [orders, setOrders] = useState<SalesOrder[]>([]);
+  // Tarik Shopee butuh daftar order (cek dobel) & katalog (cocokkan Shopee ID) yang sudah termuat:
+  // ditekan sebelum itu, semua buku jadi "belum cocok" dan order yang sudah ada ikut dibuka lagi.
+  const ordersLoadedRef = useRef(false);
+  const booksLoadedRef = useRef(false);
   const [books, setBooks] = useState<Book[]>([]);
   const [inventories, setInventories] = useState<InventoryRecord[]>([]);
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
@@ -1263,6 +1267,7 @@ export const SalesTab: React.FC = () => {
     const unsub = onSnapshot(collection(db, 'salesOrders'), (snap) => {
       const oList: any[] = [];
       snap.forEach((d) => oList.push({ id: d.id, ...d.data() }));
+      ordersLoadedRef.current = true;
       setOrders(oList.sort((a, b) => {
         const dateDiff = getOrderDateMs(b) - getOrderDateMs(a);
         if (dateDiff !== 0) return dateDiff;
@@ -1304,6 +1309,7 @@ export const SalesTab: React.FC = () => {
           }
         });
         setBooks(bList);
+        booksLoadedRef.current = true;
 
 
         const lList = [];
@@ -1664,6 +1670,22 @@ export const SalesTab: React.FC = () => {
     setCartItems(nextItems);
     setMatchingCartIdx(null);
   };
+
+  // Draft Tarik Shopee yang bukunya "belum cocok" padahal Shopee ID listing-nya sudah ada di katalog (mis. katalog
+  // belum termuat saat ditarik, atau ID baru diisi belakangan): cocokkan otomatis saat draft dibuka, judul &
+  // cover dari katalog. Harga tetap harga order supaya total tidak berubah; tersimpan saat order disimpan.
+  const resolveUnknownByShopeeId = (items: SalesOrderItem[]): SalesOrderItem[] => items.map(it => {
+    if (it.bookId !== 'unknown') return it;
+    const book = matchBookByShopeeId([it.shopeeModelId, it.shopeeItemId, it.shopeeSku], books);
+    if (!book) return it;
+    return {
+      ...it,
+      bookId: book.id,
+      bookName: book.bookName,
+      bookCover: book.cover || '',
+      cogsSnapshot: inventories.find(i => i.bookId === book.id)?.movingAverageCost || 0,
+    };
+  });
 
   // Buku Shopee yang belum ada di katalog: buat bukunya (judul, harga Shopee, ID listing) lalu pasangkan.
   const handleAddUnknownToCatalog = async (idx: number) => {
@@ -3023,6 +3045,10 @@ export const SalesTab: React.FC = () => {
     if (isPullingShopee) return;
     if (!isShopeeImportAvailable()) {
       safeAlert('Extension KBI Auto 出貨 belum terpasang atau perlu di-reload (versi 1.12.0) di Chrome ini.');
+      return;
+    }
+    if (!ordersLoadedRef.current || !booksLoadedRef.current || books.length === 0) {
+      safeAlert('Daftar order dan katalog masih dimuat. Tunggu beberapa detik, lalu tekan Tarik Shopee lagi.');
       return;
     }
     if (!window.confirm('Tarik order 待出貨 dari Shopee?\n\nChrome membuka tab Shopee di latar belakang (bisa beberapa menit). Order masuk sebagai Draft.')) return;
@@ -4529,7 +4555,7 @@ export const SalesTab: React.FC = () => {
     setPhoneNumber((order.phoneNumber || '').replace(/\D/g, '').slice(0, 10));
     setPickupLogistics(order.pickupLogistics || resolvedLogistics[0]?.name || '');
     setPickupDetails(order.pickupDetails || '');
-    setCartItems(order.items || []);
+    setCartItems(resolveUnknownByShopeeId(order.items || []));
     setDiscountInput(String((order.discount || 0) / 100));
     setPlatformFeeInput(String((order.platformFee || 0) / 100));
     setGrandTotalInput('');
