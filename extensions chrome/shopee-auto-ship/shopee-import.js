@@ -168,10 +168,48 @@
       lines = pageLines();
     }
 
-    const items = parseItems(lines);
-    if (!items.length) throw new Error(`Item order ${sn} tidak terbaca (tabel 編號/商品/單價 tidak ditemukan).`);
+    // Item diambil dari API (nama, variasi, harga satuan, qty, ID listing): tabel item di halaman sering tidak
+    // dirender di tab latar belakang, sehingga sebagian besar order gagal dibaca. Tabel halaman jadi cadangan.
+    const api = await fetchOrderApi(location.pathname.match(/order\/(\d+)/)[1]);
+    const apiItems = (api?.order_items || []).filter((a) => a?.product?.name && Number(a.amount) > 0);
+    let items = apiItems.map((a) => {
+      const unit = parseInt(String(a.order_price ?? '').replace(/,/g, ''), 10);
+      const qty = Number(a.amount);
+      return {
+        name: String(a.product.name).trim(),
+        variation: String(a.item_model?.name || '').trim(),
+        unit,
+        qty,
+        subtotal: unit * qty,
+        itemId: String(a.item_id || ''),
+        modelId: String(a.model_id || ''),
+        sku: String(a.product?.sku || a.item_model?.sku || ''),
+      };
+    });
+    if (!items.length || items.some((it) => !Number.isFinite(it.unit))) {
+      items = parseItems(lines);
+      if (!items.length) {
+        await chrome.runtime.sendMessage({ type: 'IMPORT_SHOW_TAB' }).catch(() => {});
+        await waitFor(() => parseItems(pageLines()).length > 0, 15000);
+        lines = pageLines();
+        items = parseItems(lines);
+      }
+      if (!items.length) throw new Error(`Item order ${sn} tidak terbaca (API & tabel 編號/商品/單價 kosong).`);
+      // Nama di halaman bisa beda spasi/tanda dari nama API -> bandingkan versi ringkas; kalau jumlah item sama,
+      // urutan tabel = urutan API, jadi pasangkan per indeks.
+      const all = api?.order_items || [];
+      const squash = (v) => String(v || '').replace(/\s+/g, '').toLowerCase();
+      items.forEach((it, i) => {
+        const a = all.length === items.length ? all[i] : all.find((x) => squash(x?.product?.name) === squash(it.name));
+        if (a) {
+          it.itemId = String(a.item_id || '');
+          it.modelId = String(a.model_id || '');
+          it.sku = String(a.product?.sku || a.item_model?.sku || '');
+        }
+      });
+    }
 
-    // 訂單歷史: baris pertama (terbawah/terlama) 新訂單 + tanggal
+    // 訂單歷史: baris pertama (terbawah/terlama) 新訂單 + tanggal; cadangan: create_time API (zona Taipei)
     const histStart = lines.indexOf('訂單歷史');
     let orderDate = '';
     for (let k = histStart; k >= 0 && k < lines.length; k++) {
@@ -181,22 +219,9 @@
         break;
       }
     }
-
-    // Samakan item DOM dengan item API (urutan sama; cadangan: nama)
-    const api = await fetchOrderApi(location.pathname.match(/order\/(\d+)/)[1]);
-    const apiItems = api?.order_items || [];
-    // Nama di halaman bisa beda spasi/tanda dari nama API -> bandingkan versi ringkas; kalau jumlah item sama,
-    // urutan tabel = urutan API, jadi pasangkan per indeks.
-    const squash = (v) => String(v || '').replace(/\s+/g, '').toLowerCase();
-    const sameCount = apiItems.length === items.length;
-    items.forEach((it, i) => {
-      const a = sameCount ? apiItems[i] : apiItems.find((x) => squash(x?.product?.name) === squash(it.name));
-      if (a) {
-        it.itemId = String(a.item_id || '');
-        it.modelId = String(a.model_id || '');
-        it.sku = String(a.product?.sku || a.item_model?.sku || '');
-      }
-    });
+    if (!orderDate && api?.create_time) {
+      orderDate = new Date(api.create_time * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    }
 
     const net = money(valueAfter(lines, '預估訂單進帳') ?? valueAfter(lines, '調整後訂單進帳'));
     // Grand Total ERP = 進帳; tanpa angka ini order tidak boleh disimpan (訂單金額 akan salah)
