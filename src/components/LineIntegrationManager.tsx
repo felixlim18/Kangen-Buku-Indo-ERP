@@ -400,7 +400,7 @@ export const LineIntegrationManager: React.FC = () => {
                 />
                 <span>
                   <span className="font-bold">Card SO return</span>
-                  <span className="block text-[10px] text-neutral-400">Saat SO jadi Return: nomor order/resi + tombol cek status ekspedisi.</span>
+                  <span className="block text-[10px] text-neutral-400">Saat SO jadi Return, lalu tiap pagi 08:00 sampai Diambil: nomor order/resi + tombol cek status ekspedisi.</span>
                 </span>
               </label>
 

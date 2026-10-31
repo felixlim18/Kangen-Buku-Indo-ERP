@@ -255,12 +255,26 @@ exports.notifyReadyToShipOnWrite = onDocumentWritten(
   },
 );
 
-// Laporan pagi ke owner LINE: jumlah orderan kemarin per channel (tanpa Cancelled & draft).
+// Laporan pagi ke owner LINE: jumlah orderan kemarin per channel (tanpa Cancelled & draft),
+// lalu pengingat semua SO yang masih berstatus Return.
 exports.dailyOrderReport = onSchedule(
   { schedule: "every day 08:00", timeZone: "Asia/Taipei", region: "asia-east1", timeoutSeconds: 120, memory: "512MiB" },
   async () => {
-    const r = await require("./lineWebhook").sendDailyOrderReport();
-    if (r) logger.info(`Laporan orderan harian terkirim: ${r.total}`);
+    const { sendDailyOrderReport, sendDailyReturnReminder } = require("./lineWebhook");
+    // Dua kiriman terpisah: gagal satu tidak membatalkan yang lain.
+    try {
+      const r = await sendDailyOrderReport();
+      if (r) logger.info(`Laporan orderan harian terkirim: ${r.total}`);
+    } catch (err) {
+      logger.error("Laporan orderan harian gagal:", err);
+    }
+    // Pengingat SO yang masih Return: card per SO, tiap pagi sampai SO itu Diambil.
+    try {
+      const ret = await sendDailyReturnReminder();
+      if (ret) logger.info(`Pengingat SO return terkirim: ${ret.count}`);
+    } catch (err) {
+      logger.error("Pengingat SO return gagal:", err);
+    }
   },
 );
 

@@ -4,7 +4,7 @@ import { getDb, isAdminConfigured, doc, setDoc, getDoc, getDocs, collection } fr
 import { isExpenseAgentUser, handleExpenseAgentEvent } from './expenseAgent';
 import { isShipAgentUser, handleShipAgentEvent } from './shipAgent';
 
-export { notifyReadyToShip, isShipCandidate, sendDailyOrderReport, notifyReturn } from './shipAgent';
+export { notifyReadyToShip, isShipCandidate, sendDailyOrderReport, notifyReturn, sendDailyReturnReminder } from './shipAgent';
 
 // Firestore lewat firebase-admin (lihat firestore-admin.ts). Tanpa kredensial
 // server, fitur yang butuh database dilewati dengan aman.

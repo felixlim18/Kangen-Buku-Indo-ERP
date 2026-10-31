@@ -595,6 +595,14 @@ export function trackingPageFor(resi: string, pickupLogistics?: string) {
   return null;
 }
 
+// "Return" saat baru berubah; di pengingat harian berapa hari sejak return.
+const returnAgeLabel = (o: any) => {
+  const ms = tsMs(o.returnedAt);
+  if (!ms) return 'Return';
+  const days = Math.floor((Date.now() - ms) / 86400000);
+  return days > 0 ? `Return ${days} hari` : 'Return hari ini';
+};
+
 const resiOf = (o: any) => String(o.shipment?.shippingNumber || o.shippingNumber || '').trim();
 
 export function returnBubble(o: any) {
@@ -610,7 +618,7 @@ export function returnBubble(o: any) {
       type: 'box', layout: 'horizontal', backgroundColor: R.bg, paddingAll: '12px',
       contents: [
         { type: 'text', text: '↩️ SO dikembalikan', size: 'sm', weight: 'bold', color: R.fg, flex: 1 },
-        { type: 'text', text: 'Return', size: 'sm', color: R.fg, align: 'end', flex: 0 },
+        { type: 'text', text: returnAgeLabel(o), size: 'sm', color: R.fg, align: 'end', flex: 0 },
       ],
     },
     body: {
@@ -657,4 +665,25 @@ export async function notifyReturn(orderId: string): Promise<boolean> {
     throw e;
   }
   return true;
+}
+
+// Pengingat harian (bersama dailyOrderReport, 08:00): semua SO yang masih berstatus returned,
+// yaitu belum "Diambil" (diambil mengubah status jadi cancelled). Satu card per SO, terlama dulu.
+export async function sendDailyReturnReminder(): Promise<{ count: number } | null> {
+  const s = (await db().doc('settings/line').get()).data() || {};
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN || s.channelAccessToken;
+  if (!s.enabled || s.notifyReturn === false || !s.ownerUserId || !token) return null;
+  const snap = await db().collection('salesOrders').where('status', '==', 'returned').get();
+  const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() } as any))
+    .sort((a, b) => (tsMs(a.returnedAt) || 0) - (tsMs(b.returnedAt) || 0));
+  if (!orders.length) return { count: 0 };
+  const withCover = await withCovers(orders.slice(0, 60));
+  const msgs: LineMessage[] = [];
+  for (let i = 0; i < withCover.length && msgs.length < 5; i += 12) {
+    const chunk = withCover.slice(i, i + 12);
+    const alt = `↩️ ${orders.length} SO masih Return: ${chunk.map((o) => o.orderCode).join(', ')}`;
+    msgs.push(flex(alt, chunk.length === 1 ? returnBubble(chunk[0]) : { type: 'carousel', contents: chunk.map(returnBubble) }));
+  }
+  await pushLine(token, s.ownerUserId, msgs);
+  return { count: orders.length };
 }
