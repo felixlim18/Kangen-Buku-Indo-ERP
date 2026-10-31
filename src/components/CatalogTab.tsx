@@ -23,6 +23,7 @@ import { Book, Category, Supplier } from '../types';
 import { formatNTD, formatNumber } from '../lib/decimal-utils';
 import { useAuth } from '../lib/auth-context';
 import { propagateBookNameChange } from '../lib/db-helpers';
+import { createCatalogBook } from '../lib/catalog-create';
 import { logUserActivity } from '../lib/activity-logger';
 import { CategoryAiModal } from "./CategoryAiModal";
 import { 
@@ -1241,43 +1242,8 @@ export const CatalogTab: React.FC = () => {
           await propagateBookNameChange(editingBook.id, capitalizedName);
         }
       } else {
-        // Create new book
-        const bookId = doc(collection(db, 'catalog')).id;
-        const bookRef = doc(db, 'catalog', bookId);
-        
-        let currentMaxSeq = getTodayMaxSeq(books);
-        const now = new Date();
-        const dateStr = now.getFullYear().toString().slice(-2) + 
-                        (now.getMonth() + 1).toString().padStart(2, '0') + 
-                        now.getDate().toString().padStart(2, '0');
-        const prefix = `KB-${dateStr}-`;
-        const newProductId = `${prefix}${(currentMaxSeq + 1).toString().padStart(4, '0')}`;
-
-        await setDoc(bookRef, {
-          ...bookPayload,
-          id: bookId,
-          productId: newProductId,
-          createdAt: Timestamp.now()
-        });
-
-        // Initialize inventory for new book
-        const invRef = doc(db, 'inventory', bookId);
-        await setDoc(invRef, {
-          bookId,
-          initialStock: 0,
-          totalPurchased: 0,
-          totalDispatched: 0,
-          endingStock: 0,
-          readyStock: 0,
-          shippedStock: 0,
-          inTransitStock: 0,
-          ordersPlaced: 0,
-          ordersShipped: 0,
-          movingAverageCost: 0,
-          totalInventoryValue: 0,
-          stockStatus: 'sold_out',
-          lastUpdated: Timestamp.now()
-        });
+        // Create new book (+ record inventory awal)
+        const { id: bookId } = await createCatalogBook(bookPayload, books);
 
         logUserActivity(user?.email || '', profile?.name || '', profile?.role || '', 'CREATE', 'CATALOG', bookId, `Buku ${capitalizedName} dibuat`);
       }

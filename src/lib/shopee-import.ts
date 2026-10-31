@@ -38,17 +38,50 @@ export interface BookMatch {
   how: 'shopeeId' | 'exact' | 'contains' | 'similar';
 }
 
-const cleanId = (v: unknown) => String(v ?? '').trim().toLowerCase();
+// "0" bukan ID: model_id listing tanpa variasi selalu 0, dan sebagian buku di katalog berisi Shopee ID "0".
+// Kalau dihitung, setiap listing tanpa variasi bentrok dengan buku-buku itu dan pencocokan lewat ID gagal.
+const cleanId = (v: unknown) => {
+  const id = String(v ?? '').trim().toLowerCase();
+  return id === '0' ? '' : id;
+};
+
+// Semua ID Shopee milik buku: kolom Shopee ID (diisi manual) + ID yang dipelajari dari draft.
+const bookShopeeIds = (b: Book) => [b.shopeeId, ...(b.shopeeIds || [])].map(cleanId).filter(Boolean);
 
 /**
- * Cocokkan lewat kolom Shopee ID di katalog. Nilainya boleh item_id, model_id, atau SKU Shopee
- * (mana yang Anda isi); hanya dipakai kalau tepat satu buku yang cocok.
+ * Cocokkan lewat kolom Shopee ID di katalog (atau ID yang sudah dipelajari). Nilainya boleh item_id,
+ * model_id, atau SKU Shopee; hanya dipakai kalau tepat satu buku yang cocok.
  */
 export const matchBookByShopeeId = (ids: (string | undefined)[], books: Book[]): Book | null => {
   const wanted = new Set(ids.map(cleanId).filter(Boolean));
   if (!wanted.size) return null;
-  const hits = books.filter((b) => b.isActive !== false && cleanId(b.shopeeId) && wanted.has(cleanId(b.shopeeId)));
+  const hits = books.filter((b) => b.isActive !== false && bookShopeeIds(b).some((id) => wanted.has(id)));
   return hits.length === 1 ? hits[0] : null;
+};
+
+/**
+ * ID yang diingat untuk satu listing: model_id kalau listing punya variasi (model 0 = tanpa variasi),
+ * selain itu item_id. Dipakai saat buku di draft dicocokkan manual / ditambahkan ke katalog.
+ */
+export const shopeeListingKey = (it: Pick<SalesOrderItem, 'shopeeItemId' | 'shopeeModelId'>): string => {
+  return cleanId(it.shopeeModelId) || cleanId(it.shopeeItemId);
+};
+
+/**
+ * Pasangan buku <-> listing Shopee yang perlu disimpan setelah draft disimpan: item yang punya ID Shopee
+ * tapi belum bisa dicocokkan lewat ID ke buku itu. `others` = buku lain yang masih memegang ID tersebut
+ * (ID dipindah, supaya satu listing tidak menunjuk dua buku).
+ */
+export const shopeeIdsToLearn = (items: SalesOrderItem[], books: Book[]) => {
+  const out: { bookId: string; key: string; others: string[] }[] = [];
+  for (const it of items) {
+    const key = shopeeListingKey(it);
+    if (!key || !it.bookId || it.bookId === 'unknown') continue;
+    if (matchBookByShopeeId([it.shopeeModelId, it.shopeeItemId, it.shopeeSku], books)?.id === it.bookId) continue;
+    const others = books.filter((b) => b.id !== it.bookId && (b.shopeeIds || []).map(cleanId).includes(key)).map((b) => b.id);
+    if (!out.some((x) => x.bookId === it.bookId && x.key === key)) out.push({ bookId: it.bookId, key, others });
+  }
+  return out;
 };
 
 /**
@@ -102,12 +135,14 @@ export const buildShopeeDraft = (
 
   // Harga mengikuti katalog (shopeePrice) seperti input manual
   let items: SalesOrderItem[] = o.items.map((it) => {
+    // ID listing ikut disimpan di item, supaya saat Felix mencocokkan buku manual pasangannya bisa diingat
+    const shopeeRef = { shopeeItemId: it.itemId || '', shopeeModelId: it.modelId || '', shopeeSku: it.sku || '' };
     const byId = matchBookByShopeeId([it.modelId, it.itemId, it.sku], books);
     const m: BookMatch | null = byId ? { book: byId, how: 'shopeeId' } : matchBook(it.name, books);
     if (!m) {
       issues.push(`Buku belum cocok: "${it.name}" (item ${it.itemId || '?'}, model ${it.modelId || '?'}, sku ${it.sku || '-'})`);
       const unitPrice = cents(it.unit);
-      return { bookId: 'unknown', bookName: it.name, bookCover: '', unitPrice, qty: it.qty, lineTotal: unitPrice * it.qty, cogsSnapshot: 0, isFree: false };
+      return { bookId: 'unknown', bookName: it.name, bookCover: '', unitPrice, qty: it.qty, lineTotal: unitPrice * it.qty, cogsSnapshot: 0, isFree: false, ...shopeeRef };
     }
     const unitPrice = m.book.shopeePrice || m.book.generalPrice || cents(it.unit);
     return {
@@ -119,6 +154,7 @@ export const buildShopeeDraft = (
       lineTotal: unitPrice * it.qty,
       cogsSnapshot: cogsOf(m.book.id),
       isFree: false,
+      ...shopeeRef,
     };
   });
 

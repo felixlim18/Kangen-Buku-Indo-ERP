@@ -13,6 +13,7 @@ export interface Book {
   minOrder: number;           // Safety stock threshold
   websiteId?: string;
   shopeeId?: string;
+  shopeeIds?: string[];       // ID listing Shopee yang dipelajari dari draft Tarik Shopee (lihat shopee-import.ts)
   isActive: boolean;
   createdAt: any;             // Timestamp or Date
   updatedAt: any;             // Timestamp or Date
@@ -47,6 +48,10 @@ export interface SalesOrderItem {
   // Skenario C: komisi per-item (diinput manual di BusinessPartner tab)
   itemKomisiMode?: 'persen' | 'nominal'; // 'persen' = % dari lineTotal, 'nominal' = NT$ per unit
   itemKomisiValue?: number;              // nilai komisi
+  // ID listing Shopee dari Tarik Shopee, supaya buku yang dicocokkan manual bisa diingat di katalog
+  shopeeItemId?: string;
+  shopeeModelId?: string;
+  shopeeSku?: string;
 }
 
 export interface OrderTypeConfig {

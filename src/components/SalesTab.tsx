@@ -38,7 +38,9 @@ import {
   where,
   Timestamp,
   getDocs,
-  writeBatch
+  writeBatch,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
 import { Book, SalesOrder, SalesOrderItem, InventoryRecord, OrderTypeConfig, ChannelConfig, PlatformOrderConfig, LogisticsConfig, BusinessPartner } from '../types';
 import { confirmSalesOrderTransaction, packSalesOrderTransaction, isUnpaidTransferOrder, generateOrderCode, completeSalesOrderTransaction, reverseSalesOrderTransaction, revertCompletedSalesOrderToShipped, splitSalesOrderTransaction, processMarketplaceRefundTransaction, revertDiambilToReturned } from '../lib/db-helpers';
@@ -103,7 +105,8 @@ import QRCode from 'qrcode';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { PackingChecklist } from './PackingChecklist';
 import { formatPrintResult, getPrintSection, requestPrintLabels, isShopeeImportAvailable, requestShopeeOrders, cancelShopeeImport } from '../lib/auto-ship';
-import { buildShopeeDraft } from '../lib/shopee-import';
+import { buildShopeeDraft, shopeeIdsToLearn, shopeeListingKey, normalizeTitle } from '../lib/shopee-import';
+import { createCatalogBook } from '../lib/catalog-create';
 
 const DEFAULT_ORDER_TYPES = ['Meta Ads', 'Google Ads', 'TikTok Ads', 'Shopee Ads', 'Tokopedia Ads'];
 const DEFAULT_CHANNELS_WITH_COLOR = [
@@ -1639,8 +1642,93 @@ export const SalesTab: React.FC = () => {
     b.author?.toLowerCase().includes(bookSearch.toLowerCase())
   ) : [];
 
+  // Baris draft Tarik Shopee yang bukunya belum cocok dan sedang dicocokkan lewat kotak cari buku:
+  // buku yang dipilih berikutnya menggantikan baris itu (qty & ID Shopee tetap), bukan menambah baris baru.
+  const [matchingCartIdx, setMatchingCartIdx] = useState<number | null>(null);
+  const bookSearchInputRef = useRef<HTMLInputElement>(null);
+
+  const replaceUnknownCartItem = (idx: number, book: Book) => {
+    const old = cartItems[idx];
+    if (!old) return;
+    const price = book.shopeePrice || book.generalPrice || 0;
+    const nextItems = [...cartItems];
+    nextItems[idx] = {
+      ...old,
+      bookId: book.id,
+      bookName: book.bookName,
+      bookCover: book.cover || '',
+      unitPrice: old.isFree ? 0 : price,
+      lineTotal: old.isFree ? 0 : price * old.qty,
+      cogsSnapshot: inventories.find(i => i.bookId === book.id)?.movingAverageCost || 0,
+    };
+    setCartItems(nextItems);
+    setMatchingCartIdx(null);
+  };
+
+  // Buku Shopee yang belum ada di katalog: buat bukunya (judul, harga Shopee, ID listing) lalu pasangkan.
+  const handleAddUnknownToCatalog = async (idx: number) => {
+    const it = cartItems[idx];
+    if (!it) return;
+    const suggested = it.bookName.replace(/^\s*buku\s+/i, '').trim();
+    const name = window.prompt('Judul buku di katalog (bisa diedit):', suggested)?.trim();
+    if (!name) return;
+    const dup = books.find(b => normalizeTitle(b.bookName) === normalizeTitle(name));
+    if (dup && !window.confirm(`"${dup.bookName}" sudah ada di katalog. Tetap buat buku baru?\n\nPilih Cancel lalu tekan "Cocokkan" untuk memakai buku yang sudah ada.`)) return;
+    const titled = name.replace(/(^|\s)(\S)/g, (_, sp, ch) => sp + ch.toUpperCase());
+    const price = Math.round((it.unitPrice || 0));
+    try {
+      const book = await createCatalogBook({
+        bookName: titled,
+        bookNameLower: titled.toLowerCase(),
+        author: '',
+        category: [],
+        shopeePrice: price,
+        generalPrice: price,
+        minOrder: 0,
+        description: '',
+        cover: '',
+        shopeeId: shopeeListingKey(it),
+        websiteId: '',
+        isActive: true,
+        updatedAt: Timestamp.now(),
+      }, books);
+      setBooks(prev => [...prev, book]);
+      replaceUnknownCartItem(idx, book);
+      safeAlert(`"${titled}" ditambahkan ke katalog (stok 0). Lengkapi cover, penulis & kategori di tab Katalog.`);
+    } catch (err: any) {
+      safeAlert(`Gagal menambah ke katalog: ${err.message || err}`);
+    }
+  };
+
+  // Simpan pasangan buku <-> listing Shopee setelah draft disimpan, supaya Tarik Shopee berikutnya
+  // langsung cocok lewat ID. Gagal di sini tidak menggagalkan penyimpanan order.
+  const rememberShopeeIds = async (items: SalesOrderItem[]) => {
+    const learn = shopeeIdsToLearn(items, books);
+    if (!learn.length) return;
+    try {
+      for (const { bookId, key, others } of learn) {
+        await updateDoc(doc(db, 'catalog', bookId), { shopeeIds: arrayUnion(key) });
+        for (const otherId of others) await updateDoc(doc(db, 'catalog', otherId), { shopeeIds: arrayRemove(key) });
+      }
+      setBooks(prev => prev.map(b => {
+        const add = learn.filter(l => l.bookId === b.id).map(l => l.key);
+        const remove = learn.filter(l => l.others.includes(b.id)).map(l => l.key);
+        if (!add.length && !remove.length) return b;
+        return { ...b, shopeeIds: [...new Set([...(b.shopeeIds || []).filter(k => !remove.includes(k)), ...add])] };
+      }));
+    } catch (err) {
+      console.warn('Gagal menyimpan ID Shopee ke katalog:', err);
+    }
+  };
+
   // Add book item to cart helper
   const handleAddBookToCart = (book: Book, isFree = false) => {
+    if (matchingCartIdx !== null && cartItems[matchingCartIdx]?.bookId === 'unknown') {
+      replaceUnknownCartItem(matchingCartIdx, book);
+      setBookSearch('');
+      setShowSearchResults(false);
+      return;
+    }
     // Auto pricing resolve
     let finalPrice = 0;
     if (!isFree) {
@@ -2095,6 +2183,12 @@ export const SalesTab: React.FC = () => {
       return;
     }
 
+    const unmatched = cartItems.filter(it => it.bookId === 'unknown');
+    if (unmatched.length && !options.isDraft) {
+      safeAlert(`Ada ${unmatched.length} buku yang belum cocok dengan katalog:\n${unmatched.map(it => `• ${it.bookName}`).join('\n')}\n\nTekan "Cocokkan" untuk memilih buku di katalog, atau "Tambah ke katalog" kalau bukunya belum ada. Order belum bisa dikonfirmasi sebelum semua buku cocok.`);
+      return;
+    }
+
     try {
       setIsOrderSubmitting(true);
       const orderDateTs = orderDateInput
@@ -2202,6 +2296,7 @@ export const SalesTab: React.FC = () => {
           updatedAt: Timestamp.now()
         };
         await updateDoc(orderRef, updatePayload);
+        rememberShopeeIds(cartItems);
         setIsNewOrderOpen(false);
         setEditingOrder(null);
         resetOrderForm();
@@ -2252,6 +2347,7 @@ export const SalesTab: React.FC = () => {
         };
 
         await setDoc(orderRef, orderPayload);
+        rememberShopeeIds(cartItems);
 
         // Dispatch LINE notification asynchronously
         // Server yang memutuskan (settings/line hanya bisa dibaca owner).
@@ -2290,6 +2386,7 @@ export const SalesTab: React.FC = () => {
   };
 
   const resetOrderForm = () => {
+    setMatchingCartIdx(null);
     setOrderDateInput(toLocalDateStr());
     setCustomerName('');
     setCustomerPlatformName('');
@@ -2987,8 +3084,15 @@ export const SalesTab: React.FC = () => {
 
   const UNPAID_TRANSFER_KEMAS_MSG = 'Order Transfer ini belum lunas. Cek dan catat dulu di "Penerimaan Transfer" sebelum dikemas.';
 
+  const hasUnmatchedBook = (o: SalesOrder) => (o.items || []).some(it => it.bookId === 'unknown' && !it.markedRefund && !it.markedTertinggal);
+  const UNMATCHED_BOOK_KEMAS_MSG = 'Order ini masih punya buku yang belum cocok dengan katalog. Edit order, tekan "Cocokkan" atau "Tambah ke katalog" dulu sebelum dikemas.';
+
   const handleConfirmKemas = async () => {
     if (!confirmingKemasOrder) return;
+    if (hasUnmatchedBook(confirmingKemasOrder)) {
+      safeAlert(UNMATCHED_BOOK_KEMAS_MSG);
+      return;
+    }
     if (isUnpaidTransferOrder(confirmingKemasOrder)) {
       safeAlert(UNPAID_TRANSFER_KEMAS_MSG);
       return;
@@ -3049,6 +3153,7 @@ export const SalesTab: React.FC = () => {
       else if (isUnpaidTransferOrder(order)) holdReason = 'Transfer belum lunas';
       else if (isShippingDateFuture(order.estimatedShippingDate)) holdReason = `request kirim ${order.estimatedShippingDate?.replace(/-/g, '/')}`;
       else if (order.perluKonfirmasiSebelumKirim) holdReason = 'perlu konfirmasi customer sebelum kirim';
+      else if (hasUnmatchedBook(order)) holdReason = 'ada buku belum cocok dengan katalog';
 
       let reason = '';
       if (items.length === 0) reason = 'tidak ada buku untuk dikemas';
@@ -7979,7 +8084,8 @@ export const SalesTab: React.FC = () => {
               <input
                 className="kbi-so-ledger-input pl-10"
                 disabled={isFinancialsLocked}
-                placeholder="Cari buku aktif untuk ditambahkan..."
+                ref={bookSearchInputRef}
+                placeholder={matchingCartIdx !== null ? `Cari buku untuk "${cartItems[matchingCartIdx]?.bookName || ''}"...` : "Cari buku aktif untuk ditambahkan..."}
                 value={bookSearch}
                 onChange={e => { setBookSearch(e.target.value); setShowSearchResults(true); }}
                 onFocus={() => setShowSearchResults(true)}
@@ -8051,6 +8157,11 @@ export const SalesTab: React.FC = () => {
                           {it.bookName.length > 30 ? `${it.bookName.slice(0, 30)}...` : it.bookName}
                         </TruncatedTooltip>
                         {it.isFree && <span className="kbi-so-gratis-tag shrink-0">GRATIS</span>}
+                        {it.bookId === 'unknown' && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 border border-red-300 dark:border-red-800 shrink-0">
+                            BELUM COCOK
+                          </span>
+                        )}
                         {(it.markedTertinggal || it.markedRefund) && (
                           <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shrink-0">
                             Tertinggal
@@ -8061,10 +8172,34 @@ export const SalesTab: React.FC = () => {
                         <div className={`kbi-so-item-stock-note ${backorder ? 'warn' : 'ok'}`}>
                           Stok {stok} pcs
                         </div>
-                        {backorder && (
+                        {backorder && it.bookId !== 'unknown' && (
                           <span className="kbi-so-backorder-tag shrink-0">BACKORDER</span>
                         )}
                       </div>
+                      {it.bookId === 'unknown' && !isFinancialsLocked && (
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <button
+                            type="button"
+                            className={`px-2 py-0.5 text-[10.5px] font-semibold rounded border transition cursor-pointer ${matchingCartIdx === idx ? 'bg-brand-600 text-white border-brand-600' : 'border-brand-500 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-950/30'}`}
+                            onClick={() => {
+                              if (matchingCartIdx === idx) { setMatchingCartIdx(null); return; }
+                              setMatchingCartIdx(idx);
+                              setBookSearch(normalizeTitle(it.bookName).split(' ').slice(0, 3).join(' '));
+                              setShowSearchResults(true);
+                              requestAnimationFrame(() => bookSearchInputRef.current?.focus());
+                            }}
+                          >
+                            {matchingCartIdx === idx ? 'Batal cocokkan' : 'Cocokkan'}
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-0.5 text-[10.5px] font-semibold rounded border border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition cursor-pointer"
+                            onClick={() => handleAddUnknownToCatalog(idx)}
+                          >
+                            Tambah ke katalog
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-col justify-center items-end pr-3 gap-1 border-l border-neutral-100 dark:border-neutral-800/50 pl-2 shrink-0">
                       <div className="kbi-so-qty-stepper !p-0">
@@ -8085,6 +8220,7 @@ export const SalesTab: React.FC = () => {
                         const newItems = [...cartItems];
                         newItems.splice(idx, 1);
                         setCartItems(newItems);
+                        setMatchingCartIdx(null);
                       }}><Trash className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
