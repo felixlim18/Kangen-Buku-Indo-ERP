@@ -62,8 +62,24 @@ function setValue(el, value) {
 
 // ---------------- mall.iopenmall.tw ----------------
 const pageAction = () => new URL(location.href).searchParams.get('action') || 'index';
-// Header (會員中心 / 登出) dibuat skrip situs setelah halaman dimuat, jadi ditunggu dulu
-const isLoggedIn = () => !!document.querySelector('li.logout a') || /登出/.test(document.body?.innerText || '');
+// Header situs (會員中心 / 登出 / 購物車(n)) dibuat skrip setelah halaman dimuat dan kadang tidak muncul di tab
+// latar belakang, jadi status login & isi keranjang ditanyakan langsung ke server.
+async function isLoggedIn() {
+  const r = await fetch(`${location.origin}/member/index.php?action=member_account`, { credentials: 'include' });
+  return r.ok && new URL(r.url).searchParams.get('action') === 'member_account';
+}
+// Jumlah satu produk di keranjang menurut halaman keranjang server
+async function serverCartQty(prodNo) {
+  const html = await (await fetch(`${location.origin}/050497/index.php?action=shopping_cart`, { credentials: 'include' })).text();
+  const d = new DOMParser().parseFromString(html, 'text/html');
+  let qty = 0;
+  for (const cb of d.querySelectorAll('input[name="check_product[]"]')) {
+    const tr = cb.closest('tr');
+    if (tr?.innerHTML.match(/P\d{13}/)?.[0] !== prodNo) continue;
+    qty += Number(tr.querySelector('.i_setP_quantity input:not([type=button])')?.value || 0);
+  }
+  return qty;
+}
 const headerCartCount = () => {
   const m = (document.body?.innerText || '').match(/購物車\s*\(\s*(\d+)\s*\)/);
   return m ? Number(m[1]) : null;
@@ -75,7 +91,7 @@ async function runMall(job) {
   // 請選擇取貨門市 mengirim form ke halaman checkout yang sama, yang langsung meneruskan ke peta 7-11
   // (tanpa header situs). Halaman perantara ini dibiarkan berjalan sendiri.
   if (job.phase === 'emap') return;
-  if (!(await waitFor(isLoggedIn, 15000))) throw new Error('Akun pembeli iOPEN Mall belum login di Chrome ini (tidak ada tombol 登出).');
+  if (job.phase === 'catalog' && !(await isLoggedIn())) throw new Error('Akun pembeli iOPEN Mall belum login di Chrome ini.');
   const action = pageAction();
   const expect = {
     catalog: ['index'],
@@ -154,13 +170,18 @@ async function runAdd(job) {
   setValue(qty, String(item.qty));
   if (qty.value !== String(item.qty)) throw new Error(`Jumlah ${item.name} tidak bisa diisi ${item.qty} (terbaca ${qty.value}).`);
   const before = headerCartCount();
+  const beforeQty = await serverCartQty(item.no);
   pageClick(btn);
-  const added = await waitFor(() => {
+  // Masuk keranjang: angka 購物車(n) di header berubah, atau (header tidak tampil) jumlah di keranjang server bertambah
+  let added = false;
+  for (const end = Date.now() + 20000; !added && Date.now() < end; ) {
+    await sleep(700);
     const extra = document.getElementById('box_button'); // "不需優惠，直接加入購物車" kalau muncul
     if (visible(extra)) pageClick(extra);
     const now = headerCartCount();
-    return now != null && now !== before;
-  }, 15000);
+    if (before != null && now != null) added = now !== before;
+    else added = (await serverCartQty(item.no)) > beforeQty;
+  }
   if (!added) {
     const alerts = capturedAlerts();
     throw new Error(`${item.name} tidak masuk keranjang${alerts.length ? `: ${alerts.join(' | ')}` : ''}.`);
