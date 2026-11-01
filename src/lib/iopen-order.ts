@@ -49,6 +49,16 @@ export const isIopenOrderCandidate = (o: any): boolean =>
   !String(o.orderNumber ?? '').trim() &&
   (!o.status || o.status === 'draft');
 
+/** Alasan SO Direct Order tidak bisa dibuatkan order iOPEN (null = bisa). Untuk keterangan tombol di kartu SO. */
+export const iopenOrderBlockReason = (o: any): string | null => {
+  if (!o || o.buyerType !== 'langsung') return 'Bukan Direct Order';
+  if (logisticsKey(o.pickupLogistics) !== '7eleven') return 'Pengiriman bukan 7-Eleven';
+  if (o.paymentMethod !== 'COD') return 'Pembayaran bukan COD';
+  if (String(o.orderNumber ?? '').trim()) return 'Nomor Order sudah terisi';
+  if (o.status && o.status !== 'draft') return 'Status SO bukan Draft/Pending';
+  return null;
+};
+
 /**
  * Nama penerima: nama depan (singkatan seperti "M." dilewati), huruf besar, minimal 4 huruf
  * (huruf terakhir diulang: ANA -> ANAA). Nama Mandarin dipakai utuh tanpa spasi (minimal 1 karakter).

@@ -106,7 +106,7 @@ import QRCode from 'qrcode';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { PackingChecklist } from './PackingChecklist';
 import { formatPrintResult, getPrintSection, requestPrintLabels, isShopeeImportAvailable, requestShopeeOrders, cancelShopeeImport, isIopenOrderAvailable } from '../lib/auto-ship';
-import { isIopenOrderCandidate, buildIopenOrderRequest } from '../lib/iopen-order';
+import { isIopenOrderCandidate, iopenOrderBlockReason, buildIopenOrderRequest } from '../lib/iopen-order';
 import { runIopenOrder, IOPEN_AUTO_SETTINGS_DOC, type IopenAutoSettings } from '../lib/iopen-auto-order';
 import { buildShopeeDraft, shopeeIdsToLearn, shopeeListingKey, normalizeTitle, matchBookByShopeeId } from '../lib/shopee-import';
 import { createCatalogBook } from '../lib/catalog-create';
@@ -5102,7 +5102,9 @@ export const SalesTab: React.FC = () => {
                 {(() => {
                   const info = (o as any).iopenAutoOrder;
                   const candidate = isIopenOrderCandidate(o);
-                  if (!info && !candidate) return null;
+                  const blockReason = iopenOrderBlockReason(o);
+                  const showButtons = (o as any).buyerType === 'langsung' && isStaffValue;
+                  if (!info && !showButtons) return null;
                   const busyHere = iopenBusy?.id === o.id;
                   const label: Record<string, string> = { running: 'Auto Order iOPEN: sedang diproses', done: `Auto Order iOPEN: ${info?.orderNo || 'selesai'}`, failed: 'Auto Order iOPEN gagal', unknown: 'Auto Order iOPEN perlu dicek' };
                   const color = info?.state === 'done' ? 'text-emerald-600' : info?.state === 'running' ? 'text-sky-600' : 'text-red-600';
@@ -5114,14 +5116,15 @@ export const SalesTab: React.FC = () => {
                         </div>
                       )}
                       {busyHere && <div className="text-sky-600">{iopenBusy!.text}</div>}
-                      {candidate && isStaffValue && !busyHere && (
-                        <div className="flex gap-1.5">
-                          <button type="button" disabled={!!iopenBusy} onClick={() => handleIopenOrder(o, true)} className="px-2 py-0.5 rounded border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50 cursor-pointer" title="Jalankan semua langkah di iOPEN sampai sebelum 前往結帳 terakhir, tanpa membuat order">
+                      {showButtons && !busyHere && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button type="button" disabled={!!iopenBusy || !candidate} onClick={() => handleIopenOrder(o, true)} className="px-2 py-0.5 rounded border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" title="Jalankan semua langkah di iOPEN sampai sebelum 前往結帳 terakhir, tanpa membuat order">
                             Latihan
                           </button>
-                          <button type="button" disabled={!!iopenBusy} onClick={() => handleIopenOrder(o, false)} className="px-2 py-0.5 rounded border border-orange-300 text-orange-700 dark:border-orange-800 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950 disabled:opacity-50 cursor-pointer" title="Buat order di iOPEN Mall dan isi Nomor Order">
+                          <button type="button" disabled={!!iopenBusy || !candidate} onClick={() => handleIopenOrder(o, false)} className="px-2 py-0.5 rounded border border-orange-300 text-orange-700 dark:border-orange-800 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" title="Buat order di iOPEN Mall dan isi Nomor Order">
                             Buat Order iOPEN
                           </button>
+                          {blockReason && <span className="text-neutral-500">{blockReason}</span>}
                         </div>
                       )}
                     </div>
@@ -6594,6 +6597,24 @@ export const SalesTab: React.FC = () => {
                         {order.orderNumber && (
                           <div className="font-['Inter'] text-[11px] text-[#9ca3af] font-numeric mt-0.5" title={order.orderNumber}>
                             {order.orderNumber}
+                          </div>
+                        )}
+                        {isStaffValue && isIopenOrderCandidate(order) && (
+                          <div className="mt-1 text-[11px] font-['Inter']" onClick={(e) => e.stopPropagation()}>
+                            {iopenBusy?.id === order.id ? (
+                              <span className="text-sky-600">{iopenBusy.text}</span>
+                            ) : (
+                              <>
+                                <button type="button" disabled={!!iopenBusy} onClick={() => handleIopenOrder(order, false)} className="px-2 py-0.5 rounded border border-orange-300 text-orange-700 dark:border-orange-800 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" title="Buat order di iOPEN Mall dan isi Nomor Order">
+                                  Buat Order iOPEN
+                                </button>
+                                {(order as any).iopenAutoOrder?.state && (order as any).iopenAutoOrder.state !== 'done' && (
+                                  <div className={(order as any).iopenAutoOrder.state === 'running' ? 'text-sky-600 mt-0.5' : 'text-red-600 mt-0.5'} title={(order as any).iopenAutoOrder.error || ''}>
+                                    {(order as any).iopenAutoOrder.state === 'running' ? 'sedang diproses' : (order as any).iopenAutoOrder.state === 'unknown' ? 'perlu dicek' : 'gagal'}
+                                  </div>
+                                )}
+                              </>
+                            )}
                           </div>
                         )}
                       </td>
