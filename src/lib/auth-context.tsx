@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signOut, onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { auth, db, USE_EMULATOR } from './firebase';
 
 interface AuthContextType {
   user: User | null;
@@ -257,7 +257,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await signInWithEmailAndPassword(auth, email, pass);
     } catch (err: any) {
       console.warn("Firebase email auth attempt notice:", err?.code || err);
-      setAuthError("Email atau password salah.");
+      // Gagal jaringan bukan password salah (mis. mode emulator aktif padahal emulator tidak jalan).
+      setAuthError(err?.code === 'auth/network-request-failed'
+        ? (USE_EMULATOR
+          ? "Mode emulator aktif tapi emulator tidak jalan. Buka ?emulator=0 untuk kembali ke data asli."
+          : "Tidak bisa terhubung ke server login. Cek koneksi internet.")
+        : "Email atau password salah.");
       setLoading(false);
     }
   };

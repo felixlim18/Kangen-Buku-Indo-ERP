@@ -57,8 +57,8 @@ function LessonForm({ situasi, jawaban, sumber, onDone }: { situasi: string; jaw
     <div className="mt-2 space-y-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-sm">
       <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">Situasi (kapan aturan ini dipakai)</label>
       <input className={input} value={s} onChange={(e) => setS(e.target.value)} />
-      <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">Jawaban yang benar</label>
-      <textarea className={input} rows={3} value={j} onChange={(e) => setJ(e.target.value)} />
+      <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">Jawaban yang benar (pisahkan bubble dengan baris "---")</label>
+      <textarea className={input} rows={5} value={j} onChange={(e) => setJ(e.target.value)} />
       <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">Catatan / alasan (opsional)</label>
       <input className={input} value={c} onChange={(e) => setC(e.target.value)} placeholder="Mis. jangan pernah janji tanggal tiba" />
       <div className="flex gap-2">
@@ -111,7 +111,12 @@ function PracticePanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      setTurns([...history, { from: 'toko', text: data.balasan, meta: data }]);
+      // Satu balasan bisa beberapa bubble; info (buku, pesanan, tombol) ditempel di bubble terakhir.
+      const bubbles: string[] = data.balasan || [];
+      const customerText = [...history].reverse().find((h) => h.from === 'pelanggan')?.text || '';
+      setTurns([...history, ...bubbles.map((b, k) => ({
+        from: 'toko' as const, text: b, meta: k === bubbles.length - 1 ? { ...data, customerText } : undefined,
+      }))]);
     } catch (e: any) {
       setTurns(history);
       setError(e.message);
@@ -128,8 +133,9 @@ function PracticePanel() {
     void ask([...turns, { from: 'pelanggan', text: t }]);
   };
   const retry = () => {
-    const last = turns.length - 1;
-    if (last >= 0 && turns[last].from === 'toko') void ask(turns.slice(0, last));
+    let end = turns.length;
+    while (end > 0 && turns[end - 1].from === 'toko') end--;
+    if (end < turns.length) void ask(turns.slice(0, end));
   };
 
   return (
@@ -168,8 +174,8 @@ function PracticePanel() {
                 )}
                 {fixIdx === i && (
                   <LessonForm
-                    situasi={`Pelanggan bertanya: "${turns[i - 1]?.text || ''}"`}
-                    jawaban={t.text}
+                    situasi={`Pelanggan bertanya: "${t.meta.customerText}"`}
+                    jawaban={(t.meta.balasan || [t.text]).join('\n---\n')}
                     sumber="latihan"
                     onDone={() => { setFixIdx(null); setSaved('Pelajaran tersimpan & langsung dipakai. Tekan "Ulangi jawaban" untuk mencoba lagi.'); }}
                   />

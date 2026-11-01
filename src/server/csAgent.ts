@@ -45,6 +45,15 @@ const tsMs = (v: any): number => (v && typeof v.toMillis === 'function' ? v.toMi
 const text = (t: string): LineMessage => ({ type: 'text', text: t.slice(0, 5000) });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Balasan bisa beberapa bubble (maks MAX_BUBBLES). Owner menulis beberapa bubble (ubah draft, pelajaran) dengan
+// baris "---" sebagai pemisah; di notifikasi bubble ditampilkan bernomor.
+const MAX_BUBBLES = 3;
+export const BUBBLE_SEPARATOR = '---';
+export const splitBubbles = (t: string): string[] =>
+  String(t || '').split(/\n\s*-{3,}\s*\n/).map((b) => b.trim()).filter(Boolean).slice(0, 5);
+const showBubbles = (bubbles: string[]) =>
+  bubbles.length > 1 ? bubbles.map((b, i) => `[${i + 1}] ${b}`).join('\n\n') : (bubbles[0] || '');
+
 async function pushLine(token: string, to: string, messages: LineMessage[]) {
   const res = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
@@ -174,6 +183,8 @@ function buildSystemPrompt(settings: any, lessons: any[]): string {
 
   return `Anda customer service toko buku "KangenBukuIndo" di Taiwan yang menjual buku-buku Indonesia.
 Pelanggan umumnya orang Indonesia di Taiwan. Tulis balasan untuk pesan TERAKHIR pelanggan, dengan konteks riwayat chat.
+Balasan berupa 1-3 bubble chat LINE (array "balasan"). Pakai 1 bubble untuk jawaban singkat; pecah jadi 2-3 bubble hanya kalau
+ada bagian yang berbeda, mis. bubble 1 menjawab pertanyaan, bubble 2 berisi formulir data pesanan yang tinggal diisi pelanggan.
 
 Gaya bawaan: Bahasa Indonesia santai tapi sopan (panggil "Kak"), singkat seperti chat LINE (maks ~5 kalimat), boleh 1-2 emoji.
 Kalau pelanggan menulis bahasa lain (Mandarin/Inggris), balas dengan bahasa itu. Gaya dari owner (di bawah) lebih diutamakan.
@@ -181,7 +192,7 @@ Kalau pelanggan menulis bahasa lain (Mandarin/Inggris), balas dengan bahasa itu.
 ## Pengetahuan toko dari owner
 ${[infoText, legacy].filter(Boolean).join('\n\n') || '(belum diisi)'}
 
-## Pelajaran dari owner (WAJIB diikuti; lebih diutamakan daripada aturan umum)
+## Pelajaran dari owner (WAJIB diikuti; lebih diutamakan daripada aturan umum; baris "---" di jawaban = bubble baru)
 ${lessonText || '(belum ada)'}
 
 ## Aturan
@@ -193,11 +204,13 @@ ${lessonText || '(belum ada)'}
 - Buku tidak ada di data katalog -> minta judul/penulis yang lebih lengkap, atau bilang admin akan cek dulu.
 - Pertanyaan status pesanan, pembayaran, komplain, retur, atau apa pun yang tidak ada datanya -> jawab sopan bahwa admin akan cek,
   dan set perluOwner = true.
-- balasan = teks yang dikirim ke pelanggan. catatanOwner = catatan singkat untuk owner (apa yang perlu dicek), string kosong jika tidak ada.
+- balasan = daftar bubble yang dikirim ke pelanggan (urut). catatanOwner = catatan singkat untuk owner (apa yang perlu dicek), string kosong jika tidak ada.
 
 ## Pesanan
 - Pelanggan mau pesan -> konfirmasi judul, jumlah, total harga buku (harga katalog x jumlah), lalu minta data pengiriman
   (ikuti "Data wajib untuk pesanan" kalau ada; bawaan: nama penerima, nomor HP Taiwan, toko 7-11 tujuan, bayar COD atau transfer).
+  Permintaan data dikirim sebagai bubble tersendiri berbentuk formulir (satu baris per data, mis. "Nama :"). Kalau owner menulis
+  format formulir di "Data wajib untuk pesanan", salin format itu apa adanya.
 - Isi objek "pesanan" dari SELURUH riwayat chat: items = buku yang dipesan (bookId HANYA dari data katalog), nama, hp, tokoTujuan,
   logistik (mis. "7-Eleven"), bayar ("COD" / "Transfer" / "" kalau belum disebut).
   tokoTujuan = nama atau nomor toko saja seperti ditulis pelanggan, TANPA awalan "7-11"/"7-Eleven" (mis. "中正門市" atau "123456").
@@ -220,7 +233,7 @@ const PesananSchema = z.object({
   bayar: z.string(),
 });
 const CsDraftSchema = z.object({
-  balasan: z.string(),
+  balasan: z.array(z.string()),
   perluOwner: z.boolean(),
   catatanOwner: z.string(),
   pesanan: PesananSchema,
@@ -263,8 +276,12 @@ export async function draftReply(history: ChatTurn[], books: any[], config: { se
   });
   if (response.stop_reason === 'refusal') throw new Error('Claude menolak membuat balasan untuk chat ini.');
   const parsed = response.parsed_output;
-  if (!parsed?.balasan.trim()) throw new Error(`Claude tidak mengembalikan balasan (${response.stop_reason}).`);
-  return { ...parsed, balasan: parsed.balasan.trim(), catatanOwner: parsed.catatanOwner.trim() };
+  const bubbles = (parsed?.balasan || []).map((b) => b.trim()).filter(Boolean);
+  if (!parsed || !bubbles.length) throw new Error(`Claude tidak mengembalikan balasan (${response.stop_reason}).`);
+  // Lebih dari MAX_BUBBLES: sisanya digabung ke bubble terakhir.
+  const balasan = bubbles.length > MAX_BUBBLES
+    ? [...bubbles.slice(0, MAX_BUBBLES - 1), bubbles.slice(MAX_BUBBLES - 1).join('\n\n')] : bubbles;
+  return { ...parsed, balasan, catatanOwner: parsed.catatanOwner.trim() };
 }
 
 // ---- SO Draft dari chat -------------------------------------------------------------------------
@@ -356,7 +373,7 @@ const draftButtons = (id: string, userId: string) => ({
 });
 
 const draftMessage = (id: string, d: any): LineMessage => ({
-  ...text(`💬 Chat CS dari ${d.customerName}:\n"${d.customerText}"\n\n🤖 Draft balasan:\n${d.reply}`
+  ...text(`💬 Chat CS dari ${d.customerName}:\n"${d.customerText}"\n\n🤖 Draft balasan:\n${showBubbles(d.replies || [d.reply])}`
     + (d.ownerNote ? `\n\n📝 ${d.ownerNote}` : '')),
   quickReply: draftButtons(id, d.lineUserId),
 });
@@ -433,18 +450,19 @@ async function handleCustomerEvent(event: any) {
 
   const ref = db().collection('lineCsDrafts').doc();
   const ownerNote = draft.catatanOwner || (draft.perluOwner ? 'Perlu dicek owner.' : '');
-  const data = { lineUserId: userId, customerName: name, customerText, reply: draft.balasan, ownerNote, perluOwner: draft.perluOwner, createdAt: Timestamp.now() };
+  const replyText = draft.balasan.join('\n\n');
+  const data = { lineUserId: userId, customerName: name, customerText, reply: replyText, replies: draft.balasan, ownerNote, perluOwner: draft.perluOwner, createdAt: Timestamp.now() };
 
   if (!auto) {
     await ref.set({ ...data, status: 'pending' });
     await notifyOwner([draftMessage(ref.id, data)]);
   } else {
-    await replyOrPush(event.replyToken, userId, [text(draft.balasan)]);
-    await ref.set({ ...data, status: 'auto', sentReply: draft.balasan, sentAt: Timestamp.now() });
+    await replyOrPush(event.replyToken, userId, draft.balasan.map(text));
+    await ref.set({ ...data, status: 'auto', sentReply: replyText, sentAt: Timestamp.now() });
     await db().runTransaction(async (t) => {
       const cur = (await t.get(chatRef)).data() || {};
       t.set(chatRef, {
-        history: [...(cur.history || []), { from: 'toko', text: draft.balasan }].slice(-HISTORY_LIMIT),
+        history: [...(cur.history || []), ...draft.balasan.map((b) => ({ from: 'toko', text: b }))].slice(-HISTORY_LIMIT),
         aiReplyTimes: [...recent, Date.now()], rateLimitNotified: false, updatedAt: Timestamp.now(),
       }, { merge: true });
     });
@@ -468,7 +486,7 @@ async function handleCustomerEvent(event: any) {
   }
 
   if (auto && (draft.perluOwner || orderNote)) {
-    const parts = [`💬 Chat CS dari ${name}:\n"${customerText}"`, `🤖 Sudah dibalas AI:\n${draft.balasan}`];
+    const parts = [`💬 Chat CS dari ${name}:\n"${customerText}"`, `🤖 Sudah dibalas AI:\n${showBubbles(draft.balasan)}`];
     if (ownerNote) parts.push(`📝 ${ownerNote}`);
     if (orderNote) parts.push(orderNote);
     await notifyOwner([{ ...text(parts.join('\n\n')), quickReply: { items: [pauseAction(userId)] } }]);
@@ -626,12 +644,12 @@ async function sendDraft(id: string, ownerId: string): Promise<string> {
   if (!d) return 'Draft tidak ditemukan.';
   if (d.status !== 'pending') return `Draft ini sudah ${d.status === 'sent' ? 'terkirim' : d.status === 'superseded' ? 'diganti draft yang lebih baru' : 'diabaikan'}.`;
   if (!csToken()) return '⚠️ LINE_CS_CHANNEL_ACCESS_TOKEN belum diatur di server.';
-  const reply: string = d.reply;
-  await pushLine(csToken(), d.lineUserId, [text(reply)]);
-  await ref.update({ status: 'sent', sentReply: reply, sentBy: ownerId, sentAt: Timestamp.now() });
+  const bubbles: string[] = d.replies?.length ? d.replies : [d.reply];
+  await pushLine(csToken(), d.lineUserId, bubbles.map(text));
+  await ref.update({ status: 'sent', sentReply: bubbles.join('\n\n'), sentBy: ownerId, sentAt: Timestamp.now() });
   const chatRef = db().doc(`lineCsChats/${d.lineUserId}`);
   const chat = (await chatRef.get()).data() || {};
-  await chatRef.set({ history: [...(chat.history || []), { from: 'toko', text: reply }].slice(-HISTORY_LIMIT), updatedAt: Timestamp.now() }, { merge: true });
+  await chatRef.set({ history: [...(chat.history || []), ...bubbles.map((b) => ({ from: 'toko', text: b }))].slice(-HISTORY_LIMIT), updatedAt: Timestamp.now() }, { merge: true });
   return `✅ Terkirim ke ${d.customerName}.`;
 }
 
@@ -660,7 +678,7 @@ export async function handleCsOwnerEvent(event: any): Promise<LineMessage[] | nu
     }
     if (action === 'edit') {
       await sessionRef(ownerId).set({ draftId: id, updatedAt: Timestamp.now() });
-      return [text('Ketik balasan yang mau dikirim ke pelanggan (atau "batal").')];
+      return [text('Ketik balasan yang mau dikirim ke pelanggan (atau "batal"). Untuk beberapa bubble, pisahkan dengan baris "---".')];
     }
     if (action === 'pause') {
       const until = Timestamp.fromMillis(Date.now() + PAUSE_HOURS * 3600_000);
@@ -708,6 +726,7 @@ export async function handleCsOwnerEvent(event: any): Promise<LineMessage[] | nu
   const ref = db().doc(`lineCsDrafts/${session.draftId}`);
   const d = (await ref.get()).data();
   if (!d || d.status !== 'pending') return [text('Draft ini sudah tidak aktif.')];
-  await ref.update({ reply: msg, editedAt: Timestamp.now() });
-  return [draftMessage(session.draftId, { ...d, reply: msg })];
+  const bubbles = splitBubbles(msg);
+  await ref.update({ reply: bubbles.join('\n\n'), replies: bubbles, editedAt: Timestamp.now() });
+  return [draftMessage(session.draftId, { ...d, replies: bubbles })];
 }
