@@ -86,6 +86,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg?.type) {
     case 'IOPEN_ORDER':
       ioQueue.push({ id: msg.id, soId: msg.soId, req: msg.req, dryRun: !!msg.dryRun, erpTabId: tabId, erpWindowId: sender.tab.windowId });
+      // Tanda terima: ERP menganggap permintaan hilang kalau tidak ada kabar dalam beberapa detik
+      if (ioCurrent) ioProgress(ioQueue[ioQueue.length - 1], `menunggu order ${ioCurrent.req.soCode} selesai`);
       ioPump();
       return;
     case 'IOPEN_ORDER_PENDING':

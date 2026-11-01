@@ -3,7 +3,7 @@
 import { doc, runTransaction, Timestamp } from 'firebase/firestore';
 import { db } from './firebase';
 import { buildIopenOrderRequest, isIopenOrderCandidate, type IopenAutoOrderInfo } from './iopen-order';
-import { requestIopenOrder, ackIopenResult, type IopenOrderResult } from './auto-ship';
+import { requestIopenOrder, ackIopenResult, ExtensionNoResponse, type IopenOrderResult } from './auto-ship';
 
 /** settings/iopenAutoOrder: saklar otomatis. SO yang dibuat sebelum activeFrom tidak diproses otomatis. */
 export const IOPEN_AUTO_SETTINGS_DOC = 'iopenAutoOrder';
@@ -108,6 +108,11 @@ export async function runIopenOrder(
   try {
     result = await requestIopenOrder(so.id, req, { onProgress: opts.onProgress });
   } catch (err: any) {
+    if (err instanceof ExtensionNoResponse) {
+      result = { ok: false, state: 'failed', error: err.message };
+      await applyIopenResult(so.id, result, opts.trigger);
+      return result;
+    }
     // Timeout di sisi ERP: extension mungkin masih berjalan dan menyimpan hasilnya (diambil saat ERP dibuka lagi)
     result = { ok: false, state: 'unknown', error: `${err.message}. Hasil akan diambil otomatis kalau extension sempat menyelesaikannya; cek iOPEN.` };
     await applyIopenResult(so.id, result, opts.trigger);

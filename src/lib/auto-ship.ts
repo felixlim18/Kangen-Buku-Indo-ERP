@@ -48,12 +48,15 @@ export interface PrintLabelsResult {
 }
 
 // Kirim permintaan ke extension dan tunggu balasan KBI_RESULT dengan id yang sama
+/** Permintaan tidak pernah diterima extension: aman diulang, tidak ada yang dikerjakan. */
+export class ExtensionNoResponse extends Error {}
+
 const callExtension = (
   type: string,
   payload: Record<string, unknown>,
   timeoutMs: number,
   timeoutMessage: string,
-  opts: { id?: string; onProgress?: (text: string) => void } = {}
+  opts: { id?: string; onProgress?: (text: string) => void; ackTimeoutMs?: number } = {}
 ): Promise<any> => {
   if (!isAutoShipExtensionInstalled()) {
     return Promise.reject(new Error('Extension KBI Auto 出貨 belum terpasang / perlu di-reload di Chrome'));
@@ -64,10 +67,12 @@ const callExtension = (
     const cleanup = () => {
       window.removeEventListener('message', onMessage);
       clearTimeout(timer);
+      clearTimeout(ackTimer);
     };
     const onMessage = (event: MessageEvent) => {
       const msg = event.data;
       if (event.source !== window || msg?.source !== 'kbi-ext' || msg.id !== id) return;
+      clearTimeout(ackTimer);
       if (msg.type === 'KBI_PROGRESS') {
         opts.onProgress?.(msg.text);
         return;
@@ -80,6 +85,13 @@ const callExtension = (
       cleanup();
       reject(new Error(timeoutMessage));
     }, timeoutMs);
+    // Tanpa kabar sama sekali: permintaan tidak sampai ke extension (belum di-reload / sedang di-reload)
+    const ackTimer = opts.ackTimeoutMs
+      ? setTimeout(() => {
+          cleanup();
+          reject(new ExtensionNoResponse('Extension tidak merespons. Reload extension KBI Auto 出貨 di chrome://extensions, refresh ERP, lalu coba lagi.'));
+        }, opts.ackTimeoutMs)
+      : undefined;
 
     window.addEventListener('message', onMessage);
     window.postMessage({ source: 'kbi-erp', type, id, ...payload }, '*');
@@ -256,6 +268,7 @@ export const requestIopenOrder = async (
 ): Promise<IopenOrderResult> => {
   const msg = await callExtension('IOPEN_ORDER', { soId, req, dryRun: !!opts.dryRun }, IOPEN_ORDER_TIMEOUT_MS, 'Timeout menunggu iOPEN Mall', {
     onProgress: opts.onProgress,
+    ackTimeoutMs: 20000,
   });
   return {
     ok: !!msg.ok,
