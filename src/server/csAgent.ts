@@ -1,9 +1,11 @@
 // Agent AI balas chat pelanggan di LINE OA "Kangenbukuindo CS" (channel terpisah dari bot ERP).
 //
-// Mode DRAFT: pelanggan chat ke bot CS -> Claude Sonnet menyusun balasan dari katalog (harga & stok) dan
-// riwayat chat -> owner menerima draft lewat bot ERP (settings/line.ownerUserId) dengan tombol
-// ✅ Kirim / ✏️ Ubah / ❌ Abaikan -> baru setelah "Kirim" balasan di-push ke pelanggan lewat bot CS.
-// Tidak ada pesan yang sampai ke pelanggan tanpa persetujuan owner.
+// Pelanggan chat ke bot CS -> Claude Sonnet menyusun balasan dari katalog (harga & stok) dan riwayat chat.
+// settings/csAgent.mode:
+// - 'auto' (default): balasan langsung dikirim ke pelanggan. Owner dikabari lewat bot ERP
+//   (settings/line.ownerUserId) hanya kalau AI menandai chat itu perlu dicek (status pesanan, komplain, dll).
+// - 'draft': owner menerima draft lewat bot ERP dengan tombol ✅ Kirim / ✏️ Ubah / ❌ Abaikan, dan balasan
+//   baru di-push ke pelanggan setelah "Kirim".
 //
 // Kredensial: LINE_CS_CHANNEL_SECRET & LINE_CS_CHANNEL_ACCESS_TOKEN (npm run line-cs:setup).
 // Info toko untuk AI (ongkir, cara bayar, jam buka, dll) diisi bebas di settings/csAgent.storeInfo.
@@ -37,6 +39,29 @@ async function pushLine(token: string, to: string, messages: LineMessage[]) {
     body: JSON.stringify({ to, messages }),
   });
   if (!res.ok) throw new Error(`Gagal push LINE (${res.status}): ${await res.text()}`);
+}
+
+// Reply token gratis (tidak memakai kuota push), tapi kedaluwarsa; kalau gagal, pakai push.
+async function replyOrPush(replyToken: string | undefined, to: string, messages: LineMessage[]) {
+  if (replyToken) {
+    const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${csToken()}` },
+      body: JSON.stringify({ replyToken, messages }),
+    });
+    if (res.ok) return;
+    console.warn(`Reply LINE CS gagal (${res.status}), pakai push.`);
+  }
+  await pushLine(csToken(), to, messages);
+}
+
+// Animasi "sedang mengetik" di chat pelanggan selama AI menyusun balasan.
+async function showLoading(chatId: string) {
+  await fetch('https://api.line.me/v2/bot/chat/loading/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${csToken()}` },
+    body: JSON.stringify({ chatId, loadingSeconds: 20 }),
+  }).catch(() => { /* hanya kosmetik */ });
 }
 
 // Token & ID owner di bot ERP (sama dengan shipAgent.ts).
@@ -125,6 +150,7 @@ Aturan:
 - HANYA pakai harga, stok, dan info toko di atas. JANGAN mengarang harga, stok, ongkir, waktu kirim, diskon, atau kebijakan.
 - stok kosong -> bilang stok sedang kosong dan tawarkan untuk dicek/di-PO-kan admin.
 - Pelanggan mau pesan -> konfirmasi judul, jumlah, dan total harga buku, lalu minta data pengiriman sesuai info toko.
+  Pesanan baru atau data pengiriman/pembayaran dari pelanggan -> set perluOwner = true (owner yang membuat SO).
 - Buku tidak ada di data -> minta judul/penulis yang lebih lengkap, atau bilang admin akan cek dulu.
 - Pertanyaan status pesanan, pembayaran, komplain, retur, atau apa pun yang tidak ada datanya -> jawab sopan bahwa admin akan cek, dan set perluOwner = true.
 - balasan = teks yang dikirim ke pelanggan. catatanOwner = catatan singkat untuk owner (mis. apa yang perlu dicek), string kosong jika tidak ada.`;
@@ -168,13 +194,16 @@ async function handleCustomerEvent(event: any) {
   const userId: string = event.source?.userId;
   if (!userId || event.type !== 'message') return;
   const { token, ownerId } = await ownerTarget();
-  if (!token || !ownerId) throw new Error('Bot ERP / ownerUserId belum diatur di Pengaturan -> Integrasi LINE.');
+  const notifyOwner = async (messages: LineMessage[]) => {
+    if (token && ownerId) await pushLine(token, ownerId, messages);
+    else console.warn('Bot ERP / ownerUserId belum diatur di Pengaturan -> Integrasi LINE; owner tidak dikabari.');
+  };
 
   const name = await customerName(userId);
   const msg = event.message || {};
   if (msg.type !== 'text') {
-    // Stiker/foto/dll tidak dibuatkan draft, cukup dikabari supaya owner balas manual.
-    await pushLine(token, ownerId, [text(`💬 ${name} mengirim ${msg.type} di LINE CS. Balas manual lewat aplikasi LINE Official Account.`)]);
+    // Stiker/foto/dll tidak dijawab AI, cukup dikabari supaya owner balas manual.
+    await notifyOwner([text(`💬 ${name} mengirim ${msg.type} di LINE CS. Balas manual lewat aplikasi LINE Official Account.`)]);
     return;
   }
 
@@ -185,29 +214,39 @@ async function handleCustomerEvent(event: any) {
   await chatRef.set({ lineUserId: userId, customerName: name, history, updatedAt: Timestamp.now() }, { merge: true });
 
   const recentCustomerText = history.filter((h: any) => h.from === 'pelanggan').slice(-3).map((h: any) => h.text).join(' ');
-  const [books, settings] = await Promise.all([findCandidateBooks(recentCustomerText), db().doc('settings/csAgent').get()]);
-  const storeInfo = String(settings.data()?.storeInfo || '');
+  const [books, settingsSnap] = await Promise.all([findCandidateBooks(recentCustomerText), db().doc('settings/csAgent').get()]);
+  const settings = settingsSnap.data() || {};
+  const auto = settings.mode !== 'draft';
+  if (auto) await showLoading(userId);
 
   let draft: CsDraft;
   try {
-    draft = await draftReply(history, books, storeInfo);
+    draft = await draftReply(history, books, String(settings.storeInfo || ''));
   } catch (e: any) {
-    await pushLine(token, ownerId, [text(`💬 Chat CS dari ${name}:\n"${customerText}"\n\n⚠️ AI gagal membuat draft (${e.message}). Balas manual ya.`)]);
+    await notifyOwner([text(`💬 Chat CS dari ${name}:\n"${customerText}"\n\n⚠️ AI gagal membuat balasan (${e.message}). Balas manual ya.`)]);
     return;
   }
 
-  // Draft lama pelanggan ini yang belum diputuskan dianggap usang (draft baru sudah memuat konteksnya).
+  // Draft lama pelanggan ini yang belum diputuskan dianggap usang (balasan baru sudah memuat konteksnya).
   const old = await db().collection('lineCsDrafts').where('lineUserId', '==', userId).where('status', '==', 'pending').get();
   await Promise.all(old.docs.map((d) => d.ref.update({ status: 'superseded' })));
 
   const ref = db().collection('lineCsDrafts').doc();
-  const data = {
-    lineUserId: userId, customerName: name, customerText, reply: draft.balasan,
-    ownerNote: draft.catatanOwner || (draft.perluOwner ? 'Perlu dicek owner.' : ''),
-    status: 'pending', createdAt: Timestamp.now(),
-  };
-  await ref.set(data);
-  await pushLine(token, ownerId, [draftMessage(ref.id, data)]);
+  const ownerNote = draft.catatanOwner || (draft.perluOwner ? 'Perlu dicek owner.' : '');
+  const data = { lineUserId: userId, customerName: name, customerText, reply: draft.balasan, ownerNote, createdAt: Timestamp.now() };
+
+  if (!auto) {
+    await ref.set({ ...data, status: 'pending' });
+    await notifyOwner([draftMessage(ref.id, data)]);
+    return;
+  }
+
+  await replyOrPush(event.replyToken, userId, [text(draft.balasan)]);
+  await ref.set({ ...data, status: 'auto', sentReply: draft.balasan, sentAt: Timestamp.now() });
+  await chatRef.set({ history: [...history, { from: 'toko', text: draft.balasan }].slice(-HISTORY_LIMIT), updatedAt: Timestamp.now() }, { merge: true });
+  if (draft.perluOwner) {
+    await notifyOwner([text(`💬 Chat CS dari ${name}:\n"${customerText}"\n\n🤖 Sudah dibalas AI:\n${draft.balasan}\n\n📝 ${ownerNote}`)]);
+  }
 }
 
 export async function lineCsWebhookHandler(req: Request, res: Response) {
