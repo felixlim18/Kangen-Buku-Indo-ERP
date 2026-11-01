@@ -105,7 +105,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return;
     case 'IO_READY': {
       const job = ioCurrent && ioCurrent.tabId === tabId ? ioCurrent : null;
-      if (job) clearTimeout(job.readyTimer);
+      if (job) {
+        job.pageReady = true;
+        clearTimeout(job.readyTimer);
+      }
       sendResponse({ job: job ? ioJobView(job) : null });
       return;
     }
@@ -137,12 +140,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+// Halaman baru harus melapor (IO_READY) dalam beberapa detik setelah selesai dimuat. IO_READY bisa datang
+// sebelum status 'complete', jadi yang dicek tanda pageReady per halaman, bukan urutan kejadiannya.
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   const job = ioCurrent && ioCurrent.tabId === tabId ? ioCurrent : null;
-  if (!job || info.status !== 'complete') return;
+  if (!job) return;
+  if (info.status === 'loading') {
+    job.pageReady = false;
+    clearTimeout(job.readyTimer);
+    return;
+  }
+  if (info.status !== 'complete' || job.pageReady) return;
   clearTimeout(job.readyTimer);
   job.readyTimer = setTimeout(() => {
-    if (ioCurrent !== job) return;
+    if (ioCurrent !== job || job.pageReady) return;
     chrome.tabs.get(tabId).then(
       (tab) => ioFail(job, `Halaman tidak dikenal (${(tab.url || '').split('?')[0]}). Pastikan akun pembeli iOPEN Mall sudah login di Chrome ini.`),
       () => {}

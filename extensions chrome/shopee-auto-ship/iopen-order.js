@@ -65,6 +65,9 @@ const cartRows = () => [...document.querySelectorAll('input[name="check_product[
 
 async function runMall(job) {
   await waitFor(() => document.body, 10000);
+  // 請選擇取貨門市 mengirim form ke halaman checkout yang sama, yang langsung meneruskan ke peta 7-11
+  // (tanpa header situs). Halaman perantara ini dibiarkan berjalan sendiri.
+  if (job.phase === 'emap') return;
   if (!(await waitFor(isLoggedIn, 15000))) throw new Error('Akun pembeli iOPEN Mall belum login di Chrome ini (tidak ada tombol 登出).');
   const action = pageAction();
   const expect = {
