@@ -173,7 +173,11 @@ async function runAdd(job) {
   const btn = await waitFor(() => document.getElementById('add_cart'), 15000);
   const qty = document.querySelector('input[name="scar_count[]"]');
   if (!btn || !qty) throw new Error(`Tombol 加入購物車 / kolom jumlah tidak ada di halaman ${item.name}.`);
-  setValue(qty, String(item.qty));
+  // Jangan dikosongkan dulu (setValue): kolom kosong langsung memunculkan 最低購買數量為1 dan menghentikan langkah ini
+  if (qty.value !== String(item.qty)) {
+    qty.value = String(item.qty);
+    for (const t of ['input', 'change', 'blur']) qty.dispatchEvent(new Event(t, { bubbles: true }));
+  }
   if (qty.value !== String(item.qty)) throw new Error(`Jumlah ${item.name} tidak bisa diisi ${item.qty} (terbaca ${qty.value}).`);
   const before = headerCartCount();
   const beforeQty = await serverCartQty(item.no);
