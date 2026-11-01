@@ -307,8 +307,13 @@ async function runFill(job) {
   pageClick(g('btn_submit'));
   // Kalau berhasil, halaman pindah ke 完成訂購 (skrip ini berhenti). Kalau masih di sini -> ditolak / macet.
   const alerts = await waitFor(() => (capturedAlerts().length ? capturedAlerts() : null), 30000, 500);
+  // sco_submit mengunci tombol (請稍候, tanpa onclick) tepat sebelum form dikirim. Pesan validasi + tombol
+  // masih utuh = form ditolak sebelum dikirim, jadi pasti tidak ada order.
+  const btn = g('btn_submit');
+  const rejected = !!alerts && !!btn?.getAttribute('onclick') && !/請稍候/.test(btn.value || btn.textContent || '');
   await step('result', {
     ok: false,
+    rejected,
     error: alerts ? `iOPEN menolak saat 前往結帳: ${alerts.join(' | ')}` : 'Halaman tidak berpindah setelah 前往結帳 ditekan.',
   });
 }

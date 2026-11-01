@@ -25,7 +25,11 @@ test('nama', () => {
   assert.equal(iopenReceiverName('m.  handi saputra'), 'HANDI');
   assert.equal(iopenReceiverName('ANA'), 'ANAA');
   assert.equal(iopenReceiverName('Al'), 'ALLL');
-  assert.equal(iopenReceiverName("NUR'AINI"), 'NURAINI');
+  assert.equal(iopenReceiverName("NUR'AINI"), 'NURAIN');
+  assert.equal(iopenReceiverName('BAKIYATUSSOLIHA'), 'BAKIYA');
+  assert.equal(iopenReceiverName('Bakiyatus Soliha'), 'BAKIYA');
+  assert.equal(iopenReceiverName('RIYAWAN'), 'RIYAWA');
+  assert.equal(iopenReceiverName('ANDIKA'), 'ANDIKA');
   assert.equal(iopenReceiverName('林治昇'), '林治昇');
   assert.equal(iopenReceiverName('王'), '王');
   assert.throws(() => iopenReceiverName(''));

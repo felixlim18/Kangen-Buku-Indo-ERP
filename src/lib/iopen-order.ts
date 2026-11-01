@@ -64,8 +64,9 @@ export const iopenOrderBlockReason = (o: any): string | null => {
 };
 
 /**
- * Nama penerima: nama depan (singkatan seperti "M." dilewati), huruf besar, minimal 4 huruf
- * (huruf terakhir diulang: ANA -> ANAA). Nama Mandarin dipakai utuh tanpa spasi (minimal 1 karakter).
+ * Nama penerima: nama depan (singkatan seperti "M." dilewati), huruf besar, 4-6 huruf (iOPEN menolak nama
+ * Latin yang lebih panjang): huruf terakhir diulang (ANA -> ANAA), kelebihan dipotong (BAKIYATUSSOLIHA -> BAKIYA).
+ * Nama Mandarin dipakai utuh tanpa spasi (minimal 1 karakter).
  */
 export const iopenReceiverName = (raw: unknown): string => {
   const full = String(raw ?? '').trim();
@@ -80,7 +81,7 @@ export const iopenReceiverName = (raw: unknown): string => {
   let name = (words.find((w) => w.length >= 2) || '').toUpperCase();
   if (!name) throw new Error(`Nama depan tidak terbaca: ${full}`);
   while (name.length < 4) name += name[name.length - 1];
-  return name;
+  return name.slice(0, 6);
 };
 
 /** Nomor HP Taiwan 10 digit 09xxxxxxxx (+886 / 886 / tanpa 0 / spasi / strip dirapikan). */

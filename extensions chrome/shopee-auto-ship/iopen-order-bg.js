@@ -229,7 +229,7 @@ async function ioStart(job) {
 async function ioOnStep(job, msg) {
   if (msg.phase !== job.phase) return { proceed: false }; // laporan terlambat dari halaman sebelumnya
   if (!msg.ok) {
-    ioFail(job, msg.error || `Gagal di langkah "${job.phase}"`);
+    ioFinish(job, { ok: false, error: msg.error || `Gagal di langkah "${job.phase}"`, rejected: !!msg.rejected });
     return { proceed: false };
   }
   switch (job.phase) {
@@ -329,8 +329,10 @@ async function ioFinish(job, result) {
     items: ioItemsText(job.plan),
     submitted: !!job.submitted,
     ...result,
-    state: result.ok ? 'done' : job.submitted ? 'unknown' : 'failed',
+    // rejected: iOPEN menolak form (pesan validasi, tombol 前往結帳 tidak terkunci) -> pasti belum ada order
+    state: result.ok ? 'done' : job.submitted && !result.rejected ? 'unknown' : 'failed',
   };
+  delete final.rejected;
   if (final.state === 'unknown') final.error = `${final.error} (setelah 前往結帳 ditekan: cek di iOPEN apakah order sudah terbuat)`;
   if (!job.dryRun) {
     await ioSaveResult(job.soId, final);
