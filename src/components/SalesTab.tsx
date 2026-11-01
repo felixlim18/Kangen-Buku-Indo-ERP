@@ -106,7 +106,7 @@ import QRCode from 'qrcode';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { PackingChecklist } from './PackingChecklist';
 import { formatPrintResult, getPrintSection, requestPrintLabels, isShopeeImportAvailable, requestShopeeOrders, cancelShopeeImport, isIopenOrderAvailable } from '../lib/auto-ship';
-import { isIopenOrderCandidate, iopenOrderBlockReason, buildIopenOrderRequest } from '../lib/iopen-order';
+import { isIopenManualCandidate, iopenOrderBlockReason, buildIopenOrderRequest } from '../lib/iopen-order';
 import { runIopenOrder, IOPEN_AUTO_SETTINGS_DOC, type IopenAutoSettings } from '../lib/iopen-auto-order';
 import { buildShopeeDraft, shopeeIdsToLearn, shopeeListingKey, normalizeTitle, matchBookByShopeeId } from '../lib/shopee-import';
 import { createCatalogBook } from '../lib/catalog-create';
@@ -2323,8 +2323,8 @@ export const SalesTab: React.FC = () => {
           partnerProfitShare: partnerProfitShareVal,
           updatedAt: Timestamp.now()
         };
-        // Nomor Order bisa diisi Auto Order iOPEN selagi form ini terbuka: jangan ditimpa kosong
-        if (!updatePayload.orderNumber.trim() && !editingOrder.orderNumber?.trim()) {
+        // Nomor Order bisa diisi/diganti Auto Order iOPEN selagi form ini terbuka: kalau user tidak mengubahnya, pakai yang terbaru
+        if (updatePayload.orderNumber.trim() === (editingOrder.orderNumber || '').trim()) {
           const latest = (await getDoc(orderRef)).data();
           if (latest?.orderNumber && latest.orderNumber === latest.iopenAutoOrder?.orderNo) updatePayload.orderNumber = latest.orderNumber;
         }
@@ -3078,17 +3078,17 @@ export const SalesTab: React.FC = () => {
     }
     const info = (o as any).iopenAutoOrder;
     const summary = `SO ${req.soCode}\nTotal: NT$${req.amount}\nNama: ${req.name}\nHP: ${req.phone}\nToko 7-11: ${req.store.id ? `門市店號 ${req.store.id}` : `門市名稱 ${req.store.names[0]}`}`;
-    let force = false;
     if (!dryRun) {
-      if (info?.state === 'running' || info?.state === 'unknown') {
-        if (!window.confirm(`⚠️ SO ini tercatat "${info.state === 'running' ? 'sedang diproses' : 'perlu dicek'}" (${info.error || 'tanpa keterangan'}).\n\nOrder iOPEN MUNGKIN SUDAH TERBUAT. Pastikan dulu di iOPEN bahwa belum ada order dengan 備註 ${req.soCode}.\n\nTetap buat order baru?`)) return;
-        force = true;
-      }
-      if (!window.confirm(`Buat order iOPEN Mall sungguhan?\n\n${summary}`)) return;
+      const currentNo = String(o.orderNumber || '').trim();
+      const notes = [
+        currentNo && `SO ini sudah punya Nomor Order ${currentNo}. Order baru dibuat dan Nomor Order diganti nomor baru.`,
+        info?.state === 'running' && 'SO ini tercatat sedang diproses Auto Order iOPEN.',
+      ].filter(Boolean);
+      if (!window.confirm(`Buat order iOPEN Mall sungguhan?\n\n${summary}${notes.length ? `\n\n⚠️ ${notes.join('\n⚠️ ')}` : ''}`)) return;
     }
     setIopenBusy({ id: o.id, text: dryRun ? 'Latihan…' : 'Membuat order…' });
     try {
-      const r = await runIopenOrder(o, { trigger: 'manual', dryRun, force, onProgress: (t) => setIopenBusy({ id: o.id, text: t }) });
+      const r = await runIopenOrder(o, { trigger: 'manual', dryRun, onProgress: (t) => setIopenBusy({ id: o.id, text: t }) });
       if (dryRun) {
         const p = r.preview || {};
         safeAlert(r.ok
@@ -5101,12 +5101,12 @@ export const SalesTab: React.FC = () => {
                 </div>
                 {(() => {
                   const info = (o as any).iopenAutoOrder;
-                  const candidate = isIopenOrderCandidate(o);
+                  const candidate = isIopenManualCandidate(o);
                   const blockReason = iopenOrderBlockReason(o);
                   const showButtons = (o as any).buyerType === 'langsung' && isStaffValue;
                   if (!info && !showButtons) return null;
                   const busyHere = iopenBusy?.id === o.id;
-                  const label: Record<string, string> = { running: 'Auto Order iOPEN: sedang diproses', done: `Auto Order iOPEN: ${info?.orderNo || 'selesai'}`, failed: 'Auto Order iOPEN gagal', unknown: 'Auto Order iOPEN perlu dicek' };
+                  const label: Record<string, string> = { running: 'Auto Order iOPEN: sedang diproses', done: `Auto Order iOPEN: ${info?.orderNo || 'selesai'}${info?.replacedOrderNo ? ` (menggantikan ${info.replacedOrderNo})` : ''}`, failed: 'Auto Order iOPEN gagal', unknown: 'Auto Order iOPEN perlu dicek' };
                   const color = info?.state === 'done' ? 'text-emerald-600' : info?.state === 'running' ? 'text-sky-600' : 'text-red-600';
                   return (
                     <div className="mt-1 space-y-1 text-[11.5px] font-['Inter']" onClick={(e) => e.stopPropagation()}>
@@ -6599,7 +6599,7 @@ export const SalesTab: React.FC = () => {
                             {order.orderNumber}
                           </div>
                         )}
-                        {isStaffValue && isIopenOrderCandidate(order) && (
+                        {isStaffValue && isIopenManualCandidate(order) && (
                           <div className="mt-1 text-[11px] font-['Inter']" onClick={(e) => e.stopPropagation()}>
                             {iopenBusy?.id === order.id ? (
                               <span className="text-sky-600">{iopenBusy.text}</span>

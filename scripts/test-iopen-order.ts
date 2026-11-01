@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInThisContext } from 'node:vm';
-import { iopenReceiverName, iopenPhone, iopenStore, iopenAmount, isIopenOrderCandidate } from '../src/lib/iopen-order';
+import { iopenReceiverName, iopenPhone, iopenStore, iopenAmount, isIopenOrderCandidate, isIopenManualCandidate } from '../src/lib/iopen-order';
 
 runInThisContext(readFileSync(new URL('../extensions chrome/shopee-auto-ship/iopen-order-plan.js', import.meta.url), 'utf8'));
 const planIopenItems = (globalThis as any).planIopenItems as (p: any[], amount: number) => any[] | null;
@@ -73,6 +73,10 @@ test('syarat SO', () => {
   assert.equal(isIopenOrderCandidate({ ...so, isDraft: true }), true);
   assert.equal(isIopenOrderCandidate({ ...so, pickupLogistics: '7-11' }), true);
   assert.equal(isIopenOrderCandidate({ ...so, orderNumber: ' 503510398 ' }), false);
+  // tombol manual: Nomor Order boleh sudah terisi (diganti), syarat lain tetap
+  assert.equal(isIopenManualCandidate({ ...so, orderNumber: '503510398' }), true);
+  assert.equal(isIopenManualCandidate({ ...so, orderNumber: '503510398', paymentMethod: 'Transfer' }), false);
+  assert.equal(isIopenManualCandidate({ ...so, orderNumber: '503510398', status: 'shipped' }), false);
   assert.equal(isIopenOrderCandidate({ ...so, paymentMethod: 'Transfer' }), false);
   assert.equal(isIopenOrderCandidate({ ...so, pickupLogistics: 'FamilyMart' }), false);
   assert.equal(isIopenOrderCandidate({ ...so, buyerType: 'reseller' }), false);

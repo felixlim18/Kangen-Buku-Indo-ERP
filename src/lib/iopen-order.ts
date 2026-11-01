@@ -31,6 +31,8 @@ export interface IopenAutoOrderInfo {
   items?: string[];
   /** manual = tombol, auto = pemantau otomatis */
   trigger?: 'auto' | 'manual';
+  /** Nomor Order lama yang diganti order baru dari tombol manual */
+  replacedOrderNo?: string;
 }
 
 const CJK = /[㐀-鿿豈-﫿]/;
@@ -49,12 +51,14 @@ export const isIopenOrderCandidate = (o: any): boolean =>
   !String(o.orderNumber ?? '').trim() &&
   (!o.status || o.status === 'draft');
 
-/** Alasan SO Direct Order tidak bisa dibuatkan order iOPEN (null = bisa). Untuk keterangan tombol di kartu SO. */
+/** Tombol manual "Buat Order iOPEN": syarat sama, tapi Nomor Order boleh sudah terisi (diganti nomor baru). */
+export const isIopenManualCandidate = (o: any): boolean => !!o && isIopenOrderCandidate({ ...o, orderNumber: '' });
+
+/** Alasan SO Direct Order tidak bisa dibuatkan order iOPEN lewat tombol (null = bisa). Untuk keterangan tombol di kartu SO. */
 export const iopenOrderBlockReason = (o: any): string | null => {
   if (!o || o.buyerType !== 'langsung') return 'Bukan Direct Order';
   if (logisticsKey(o.pickupLogistics) !== '7eleven') return 'Pengiriman bukan 7-Eleven';
   if (o.paymentMethod !== 'COD') return 'Pembayaran bukan COD';
-  if (String(o.orderNumber ?? '').trim()) return 'Nomor Order sudah terisi';
   if (o.status && o.status !== 'draft') return 'Status SO bukan Draft/Pending';
   return null;
 };
