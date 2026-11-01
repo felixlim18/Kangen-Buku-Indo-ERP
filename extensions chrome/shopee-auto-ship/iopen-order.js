@@ -103,6 +103,12 @@ async function runMall(job) {
     fill: ['shopping_checkout_2'],
     result: ['shopping_checkout_ok', 'shopping_checkout_2'],
   }[job.phase];
+  // Setelah 前往結帳 iOPEN bisa lewat halaman lain dulu (mis. shopping_checkout_3) sebelum 完成訂購. Order mungkin
+  // sudah terbuat: tunggu halaman pindah sendiri; kalau tidak, pastikan lewat 我的訂單 (bukan dianggap error).
+  if (job.phase === 'result' && !expect.includes(action)) {
+    await sleep(20000);
+    return settleByOrderList(job, `Berhenti di halaman iOPEN action=${action} setelah 前往結帳`);
+  }
   if (!expect || !expect.includes(action)) throw new Error(`Halaman iOPEN tidak terduga di langkah "${job.phase}": action=${action}`);
 
   if (job.phase === 'catalog') return runCatalog(job);
