@@ -38,6 +38,7 @@ import {
   where,
   Timestamp,
   getDocs,
+  getDoc,
   writeBatch,
   arrayUnion,
   arrayRemove
@@ -104,7 +105,9 @@ import {
 import QRCode from 'qrcode';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { PackingChecklist } from './PackingChecklist';
-import { formatPrintResult, getPrintSection, requestPrintLabels, isShopeeImportAvailable, requestShopeeOrders, cancelShopeeImport } from '../lib/auto-ship';
+import { formatPrintResult, getPrintSection, requestPrintLabels, isShopeeImportAvailable, requestShopeeOrders, cancelShopeeImport, isIopenOrderAvailable } from '../lib/auto-ship';
+import { isIopenOrderCandidate, buildIopenOrderRequest } from '../lib/iopen-order';
+import { runIopenOrder, IOPEN_AUTO_SETTINGS_DOC, type IopenAutoSettings } from '../lib/iopen-auto-order';
 import { buildShopeeDraft, shopeeIdsToLearn, shopeeListingKey, normalizeTitle, matchBookByShopeeId } from '../lib/shopee-import';
 import { createCatalogBook } from '../lib/catalog-create';
 
@@ -679,6 +682,9 @@ export const SalesTab: React.FC = () => {
   const [isBulkProcessOpen, setIsBulkProcessOpen] = useState(false);
   const [isPullingShopee, setIsPullingShopee] = useState(false);
   const [shopeePullProgress, setShopeePullProgress] = useState('');
+  // Auto Order iOPEN (SO Direct Order 7-Eleven COD): saklar otomatis + proses manual per SO
+  const [iopenAutoSettings, setIopenAutoSettings] = useState<IopenAutoSettings | null>(null);
+  const [iopenBusy, setIopenBusy] = useState<{ id: string; text: string } | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [recoOrderData, setRecoOrderData] = useState<{ bookIds: string[], categories: string[] } | null>(null);
@@ -2317,6 +2323,11 @@ export const SalesTab: React.FC = () => {
           partnerProfitShare: partnerProfitShareVal,
           updatedAt: Timestamp.now()
         };
+        // Nomor Order bisa diisi Auto Order iOPEN selagi form ini terbuka: jangan ditimpa kosong
+        if (!updatePayload.orderNumber.trim() && !editingOrder.orderNumber?.trim()) {
+          const latest = (await getDoc(orderRef)).data();
+          if (latest?.orderNumber && latest.orderNumber === latest.iopenAutoOrder?.orderNo) updatePayload.orderNumber = latest.orderNumber;
+        }
         await updateDoc(orderRef, updatePayload);
         rememberShopeeIds(cartItems);
         setIsNewOrderOpen(false);
@@ -3031,6 +3042,67 @@ export const SalesTab: React.FC = () => {
       safeAlert(err.message || 'Gagal mencetak resi');
     } finally {
       setPrintingResiOrderId(null);
+    }
+  };
+
+  useEffect(() => onSnapshot(doc(db, 'settings', IOPEN_AUTO_SETTINGS_DOC), (snap) => setIopenAutoSettings(snap.exists() ? (snap.data() as IopenAutoSettings) : null)), []);
+
+  // Saklar Auto Order iOPEN. Saat dinyalakan, activeFrom = sekarang: SO yang dibuat sebelumnya tidak ikut diproses.
+  const handleToggleIopenAuto = async () => {
+    const enabling = !iopenAutoSettings?.enabled;
+    const msg = enabling
+      ? 'Nyalakan Auto Order iOPEN?\n\nMulai sekarang, setiap SO baru yang Direct Order + 7-Eleven + COD + Nomor Order kosong langsung dibuatkan order di iOPEN Mall (selama ERP terbuka di Chrome ini dengan extension KBI). SO yang sudah ada tidak ikut diproses.'
+      : 'Matikan Auto Order iOPEN? SO baru tidak lagi dibuatkan order iOPEN otomatis (tombol per SO tetap bisa dipakai).';
+    if (!window.confirm(msg)) return;
+    await setDoc(doc(db, 'settings', IOPEN_AUTO_SETTINGS_DOC), {
+      enabled: enabling,
+      ...(enabling ? { activeFrom: Timestamp.now() } : {}),
+      updatedAt: Timestamp.now(),
+      updatedBy: user?.uid || '',
+    }, { merge: true });
+  };
+
+  // Buat order iOPEN untuk satu SO (dryRun = latihan: berhenti sebelum 前往結帳 terakhir, tidak ada order).
+  const handleIopenOrder = async (o: SalesOrder, dryRun: boolean) => {
+    if (iopenBusy) return;
+    if (!isIopenOrderAvailable()) {
+      safeAlert('Extension KBI Auto 出貨 versi 1.13.0 belum terpasang atau perlu di-reload di Chrome ini.');
+      return;
+    }
+    let req;
+    try {
+      req = buildIopenOrderRequest(o);
+    } catch (err: any) {
+      safeAlert(`Data SO belum bisa dipakai untuk order iOPEN: ${err.message}`);
+      return;
+    }
+    const info = (o as any).iopenAutoOrder;
+    const summary = `SO ${req.soCode}\nTotal: NT$${req.amount}\nNama: ${req.name}\nHP: ${req.phone}\nToko 7-11: ${req.store.id ? `門市店號 ${req.store.id}` : `門市名稱 ${req.store.names[0]}`}`;
+    let force = false;
+    if (!dryRun) {
+      if (info?.state === 'running' || info?.state === 'unknown') {
+        if (!window.confirm(`⚠️ SO ini tercatat "${info.state === 'running' ? 'sedang diproses' : 'perlu dicek'}" (${info.error || 'tanpa keterangan'}).\n\nOrder iOPEN MUNGKIN SUDAH TERBUAT. Pastikan dulu di iOPEN bahwa belum ada order dengan 備註 ${req.soCode}.\n\nTetap buat order baru?`)) return;
+        force = true;
+      }
+      if (!window.confirm(`Buat order iOPEN Mall sungguhan?\n\n${summary}`)) return;
+    }
+    setIopenBusy({ id: o.id, text: dryRun ? 'Latihan…' : 'Membuat order…' });
+    try {
+      const r = await runIopenOrder(o, { trigger: 'manual', dryRun, force, onProgress: (t) => setIopenBusy({ id: o.id, text: t }) });
+      if (dryRun) {
+        const p = r.preview || {};
+        safeAlert(r.ok
+          ? `✅ Latihan berhasil (tidak ada order dibuat, keranjang dikosongkan lagi).\n\nProduk: ${(r.items || []).join(', ')}\nNama: ${p.name}\nHP: ${p.phone}\nToko: ${p.store}\nAlamat: ${p.address}\nBayar: ${p.payment} NT$${p.total}\nOPENPOINT: ${p.openpoint}\n備註: ${p.remarks}`
+          : `❌ Latihan gagal: ${r.error}`);
+      } else if (r.state === 'done') {
+        safeAlert(`✅ Order iOPEN ${r.orderNo} dibuat dan diisi ke Nomor Order ${req.soCode}.\nProduk: ${(r.items || []).join(', ')}`);
+      } else {
+        safeAlert(`${r.state === 'unknown' ? '⚠️ Perlu dicek' : '❌ Gagal'}: ${r.error}`);
+      }
+    } catch (err: any) {
+      safeAlert(err.message || 'Gagal membuat order iOPEN');
+    } finally {
+      setIopenBusy(null);
     }
   };
 
@@ -5027,6 +5099,34 @@ export const SalesTab: React.FC = () => {
                     </button>
                   )}
                 </div>
+                {(() => {
+                  const info = (o as any).iopenAutoOrder;
+                  const candidate = isIopenOrderCandidate(o);
+                  if (!info && !candidate) return null;
+                  const busyHere = iopenBusy?.id === o.id;
+                  const label: Record<string, string> = { running: 'Auto Order iOPEN: sedang diproses', done: `Auto Order iOPEN: ${info?.orderNo || 'selesai'}`, failed: 'Auto Order iOPEN gagal', unknown: 'Auto Order iOPEN perlu dicek' };
+                  const color = info?.state === 'done' ? 'text-emerald-600' : info?.state === 'running' ? 'text-sky-600' : 'text-red-600';
+                  return (
+                    <div className="mt-1 space-y-1 text-[11.5px] font-['Inter']" onClick={(e) => e.stopPropagation()}>
+                      {info && (
+                        <div className={color} title={(info.items || []).join(', ')}>
+                          {label[info.state] || info.state}{info.error ? ` – ${info.error}` : ''}
+                        </div>
+                      )}
+                      {busyHere && <div className="text-sky-600">{iopenBusy!.text}</div>}
+                      {candidate && isStaffValue && !busyHere && (
+                        <div className="flex gap-1.5">
+                          <button type="button" disabled={!!iopenBusy} onClick={() => handleIopenOrder(o, true)} className="px-2 py-0.5 rounded border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50 cursor-pointer" title="Jalankan semua langkah di iOPEN sampai sebelum 前往結帳 terakhir, tanpa membuat order">
+                            Latihan
+                          </button>
+                          <button type="button" disabled={!!iopenBusy} onClick={() => handleIopenOrder(o, false)} className="px-2 py-0.5 rounded border border-orange-300 text-orange-700 dark:border-orange-800 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950 disabled:opacity-50 cursor-pointer" title="Buat order di iOPEN Mall dan isi Nomor Order">
+                            Buat Order iOPEN
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="icell">
@@ -5561,6 +5661,16 @@ export const SalesTab: React.FC = () => {
                 <ShoppingBag className="w-[15px] h-[15px]" />
                 {isPullingShopee ? (shopeePullProgress || 'Menarik…') : 'Tarik Shopee'}
               </button>
+              {profile?.role === 'owner' && (
+                <button
+                  id="iopen-auto-toggle"
+                  onClick={handleToggleIopenAuto}
+                  className={`h-[34px] px-3 rounded-[8px] border transition flex items-center gap-1.5 shrink-0 cursor-pointer text-[12.5px] font-medium ${iopenAutoSettings?.enabled ? 'bg-orange-50 dark:bg-orange-950 border-orange-300 dark:border-orange-800 text-orange-700 dark:text-orange-300' : 'bg-white dark:bg-neutral-900 border-[#E7E1D2] dark:border-neutral-800 text-[#6b7280] dark:text-neutral-300'}`}
+                  title="SO baru Direct Order + 7-Eleven + COD otomatis dibuatkan order di iOPEN Mall (ERP harus terbuka di Chrome dengan extension KBI)"
+                >
+                  Auto iOPEN: {iopenAutoSettings?.enabled ? 'ON' : 'OFF'}
+                </button>
+              )}
               {isPullingShopee && !shopeePullProgress.startsWith('Menyimpan') && (
                 <button
                   id="cancel-pull-shopee-button"

@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { MobileNav } from './components/MobileNav';
 import { initMobilePresentation } from './lib/mobile-presentation';
 import { Lock, Sparkles, BookOpen } from 'lucide-react';
+import { IopenAutoOrderWatcher } from './components/IopenAutoOrderWatcher';
 
 // Setiap tab dimuat on-demand. Tanpa ini seluruh modul (termasuk library berat
 // seperti xlsx/exceljs/jspdf/recharts yang cuma dipakai beberapa tab) ikut masuk
@@ -273,6 +274,9 @@ const MainAppContent: React.FC = () => {
         theme={theme}
         toggleTheme={toggleTheme}
       />
+
+      {/* Auto Order iOPEN untuk SO 7-Eleven COD (butuh extension KBI di Chrome ini) */}
+      {profile?.role === 'owner' && <IopenAutoOrderWatcher />}
       
       {/* Main panel viewport content wrapper */}
       <main className="kbi-main flex-1 p-3 sm:p-6 md:p-8 lg:p-10 max-w-full px-4 sm:px-6 md:px-8 space-y-6 overflow-y-auto h-[calc(100vh-57px)] md:h-screen relative z-10 bg-[#FAF8F3] dark:bg-[#0c0a12] pb-28 md:pb-10">

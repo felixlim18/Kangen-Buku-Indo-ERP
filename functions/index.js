@@ -291,3 +291,21 @@ exports.notifyReturnOnWrite = onDocumentWritten(
     }
   },
 );
+
+// Hasil Auto Order iOPEN (SO 7-Eleven COD dibuatkan order di iOPEN Mall oleh extension KBI lewat ERP):
+// pesan ke owner LINE setiap kali satu percobaan selesai (berhasil / gagal / perlu dicek).
+exports.notifyIopenAutoOrderOnWrite = onDocumentWritten(
+  { document: "salesOrders/{orderId}", database: ERP_DATABASE, region: "asia-east1", timeoutSeconds: 60, memory: "256MiB" },
+  async (event) => {
+    const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+    const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+    const info = after && after.iopenAutoOrder;
+    if (!info || !info.finishedAt || !["done", "failed", "unknown"].includes(info.state)) return;
+    const prev = before && before.iopenAutoOrder;
+    const ms = (t) => (t && typeof t.toMillis === "function" ? t.toMillis() : 0);
+    if (prev && prev.state === info.state && ms(prev.finishedAt) === ms(info.finishedAt)) return;
+    if (await require("./lineWebhook").notifyIopenAutoOrder({ id: event.params.orderId, ...after })) {
+      logger.info(`Auto Order iOPEN dikabari: ${event.params.orderId} (${info.state})`);
+    }
+  },
+);

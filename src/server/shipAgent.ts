@@ -687,3 +687,25 @@ export async function sendDailyReturnReminder(): Promise<{ count: number } | nul
   await pushLine(token, s.ownerUserId, msgs);
   return { count: orders.length };
 }
+
+// ---- Auto Order iOPEN ---------------------------------------------------------
+// Dipanggil trigger saat SO.iopenAutoOrder selesai (done / failed / unknown, finishedAt berubah).
+// Pesan teks ke owner: nomor order iOPEN, atau alasan gagal / perlu dicek.
+export async function notifyIopenAutoOrder(order: any): Promise<boolean> {
+  const info = order?.iopenAutoOrder;
+  if (!info || !['done', 'failed', 'unknown'].includes(info.state)) return false;
+  const s = (await db().doc('settings/line').get()).data() || {};
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN || s.channelAccessToken;
+  if (!s.enabled || s.notifyIopenAutoOrder === false || !s.ownerUserId || !token) return false;
+  const code = order.orderCode || order.id;
+  const items = (info.items || []).length ? `\nProduk iOPEN: ${info.items.join(', ')}` : '';
+  const buyer = `${order.customerName || '-'} · ${order.pickupDetails || '-'} · ${fmtNTD((order.subtotal || 0) - (order.discount || 0))}`;
+  const text =
+    info.state === 'done'
+      ? `✅ Order iOPEN ${info.orderNo} dibuat untuk SO ${code}\n${buyer}${items}${info.error ? `\n⚠️ ${info.error}` : ''}`
+      : info.state === 'unknown'
+        ? `⚠️ Auto Order iOPEN SO ${code} PERLU DICEK: ${info.error || '-'}\nOrder iOPEN mungkin sudah terbuat. Cek di iOPEN (備註 ${code}) sebelum mencoba lagi.\n${buyer}${items}`
+        : `❌ Auto Order iOPEN SO ${code} gagal: ${info.error || '-'}\n${buyer}\nPerbaiki SO lalu tekan "Buat Order iOPEN" di ERP.`;
+  await pushLine(token, s.ownerUserId, [{ type: 'text', text: text.slice(0, 4900) }]);
+  return true;
+}

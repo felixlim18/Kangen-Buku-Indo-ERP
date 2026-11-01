@@ -551,3 +551,6 @@ function finishImport(job, overall, result) {
   sendResult(job, result);
   pumpImport();
 }
+
+// Auto Order iOPEN Mall (order pembeli untuk SO 7-Eleven COD)
+importScripts('iopen-order-bg.js');

@@ -7,7 +7,9 @@ document.documentElement.dataset.kbiFamilymartPayment = '1'; // cek pelunasan Fa
 
 document.documentElement.dataset.kbiShopeeImport = '2'; // tarik order 待出貨 Shopee ke Sales Orders (2 = progres + Batal)
 
-const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS', 'SHOPEE_PAYMENT', 'IOPEN_PAYMENT', 'FAMILYMART_PAYMENT', 'SHOPEE_IMPORT', 'SHOPEE_IMPORT_CANCEL'];
+document.documentElement.dataset.kbiIopenOrder = '1'; // Auto Order iOPEN Mall untuk SO 7-Eleven COD (iopen-order-bg.js)
+
+const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS', 'SHOPEE_PAYMENT', 'IOPEN_PAYMENT', 'FAMILYMART_PAYMENT', 'SHOPEE_IMPORT', 'SHOPEE_IMPORT_CANCEL', 'IOPEN_ORDER', 'IOPEN_ORDER_PENDING', 'IOPEN_ORDER_ACK'];
 
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;

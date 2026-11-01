@@ -224,3 +224,59 @@ export const requestShopeeOrders = async (skip: string[], onProgress?: (text: st
 export const cancelShopeeImport = (): void => {
   if (currentImportId) window.postMessage({ source: 'kbi-erp', type: 'SHOPEE_IMPORT_CANCEL', id: currentImportId }, '*');
 };
+
+export const isIopenOrderAvailable = (): boolean =>
+  isAutoShipExtensionInstalled() && document.documentElement.dataset.kbiIopenOrder === '1';
+
+/** Hasil Auto Order iOPEN dari extension (lihat iopen-order-bg.js) */
+export interface IopenOrderResult {
+  ok: boolean;
+  state: 'done' | 'failed' | 'unknown';
+  orderNo?: string;
+  error?: string;
+  items?: string[];
+  /** Tombol 前往結帳 terakhir sudah ditekan */
+  submitted?: boolean;
+  dryRun?: boolean;
+  /** Isian checkout yang terbaca ulang (nama, HP, toko, 備註, total) */
+  preview?: Record<string, string | number>;
+  soCode?: string;
+}
+
+const IOPEN_ORDER_TIMEOUT_MS = 12 * 60000; // termasuk antre di belakang order lain
+
+/**
+ * Buat order di toko iOPEN Mall lewat extension. `dryRun` berhenti sebelum 前往結帳 terakhir
+ * (keranjang dikosongkan lagi) dan mengembalikan isian checkout di `preview`.
+ */
+export const requestIopenOrder = async (
+  soId: string,
+  req: import('./iopen-order').IopenOrderRequest,
+  opts: { dryRun?: boolean; onProgress?: (text: string) => void } = {}
+): Promise<IopenOrderResult> => {
+  const msg = await callExtension('IOPEN_ORDER', { soId, req, dryRun: !!opts.dryRun }, IOPEN_ORDER_TIMEOUT_MS, 'Timeout menunggu iOPEN Mall', {
+    onProgress: opts.onProgress,
+  });
+  return {
+    ok: !!msg.ok,
+    state: msg.state || (msg.ok ? 'done' : 'failed'),
+    orderNo: msg.orderNo,
+    error: msg.error,
+    items: msg.items,
+    submitted: msg.submitted,
+    dryRun: msg.dryRun,
+    preview: msg.preview,
+    soCode: msg.soCode,
+  };
+};
+
+/** Hasil order sungguhan yang disimpan extension tapi belum dikonfirmasi tercatat di SO (per id SO). */
+export const fetchPendingIopenResults = async (): Promise<{ results: Record<string, IopenOrderResult>; busySoId: string | null }> => {
+  const msg = await callExtension('IOPEN_ORDER_PENDING', {}, 15000, 'Timeout membaca hasil Auto Order iOPEN');
+  return { results: msg.results || {}, busySoId: msg.busy || null };
+};
+
+/** Hasil sudah tercatat di SO: extension boleh melupakannya. */
+export const ackIopenResult = (soId: string): void => {
+  window.postMessage({ source: 'kbi-erp', type: 'IOPEN_ORDER_ACK', soId }, '*');
+};
