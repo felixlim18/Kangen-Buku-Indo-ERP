@@ -173,14 +173,19 @@ async function runAdd(job) {
   const beforeQty = await serverCartQty(item.no);
   pageClick(btn);
   // Masuk keranjang: angka 購物車(n) di header berubah, atau (header tidak tampil) jumlah di keranjang server bertambah
+  // (iOPEN membalas "系統忙碌中 (W01)" kalau sesi terlalu sering meminta halaman: cek server paling sering tiap 3 detik)
   let added = false;
+  let lastServerCheck = Date.now();
   for (const end = Date.now() + 20000; !added && Date.now() < end; ) {
     await sleep(700);
     const extra = document.getElementById('box_button'); // "不需優惠，直接加入購物車" kalau muncul
     if (visible(extra)) pageClick(extra);
     const now = headerCartCount();
     if (before != null && now != null) added = now !== before;
-    else added = (await serverCartQty(item.no)) > beforeQty;
+    else if (Date.now() - lastServerCheck >= 3000) {
+      lastServerCheck = Date.now();
+      added = (await serverCartQty(item.no)) > beforeQty;
+    }
   }
   if (!added) {
     const alerts = capturedAlerts();
@@ -332,20 +337,50 @@ async function runFill(job) {
   // masih utuh = form ditolak sebelum dikirim, jadi pasti tidak ada order.
   const btn = g('btn_submit');
   const rejected = !!alerts && !!btn?.getAttribute('onclick') && !/請稍候/.test(btn.value || btn.textContent || '');
-  await step('result', {
-    ok: false,
-    rejected,
-    error: alerts ? `iOPEN menolak saat 前往結帳: ${alerts.join(' | ')}` : 'Halaman tidak berpindah setelah 前往結帳 ditekan.',
-  });
+  const error = alerts ? `iOPEN menolak saat 前往結帳: ${alerts.join(' | ')}` : 'Halaman tidak berpindah setelah 前往結帳 ditekan.';
+  if (rejected) await step('result', { ok: false, rejected, error });
+  else await settleByOrderList(job, error);
+}
+
+// Cari order di 我的訂單 yang 備註-nya kode SO dan dibuat dalam 15 menit terakhir (3 order terbaru).
+// Dipakai kalau halaman setelah 前往結帳 tidak menampilkan 訂單編號 (mis. 系統忙碌中 W01).
+async function findOrderBySo(soCode) {
+  const parse = async (url) => new DOMParser().parseFromString(await (await fetch(url, { credentials: 'include' })).text(), 'text/html');
+  const list = await parse(`${location.origin}/member/index.php?action=order_inquiry`);
+  const links = [...new Set([...list.querySelectorAll('a[href*="action=order_detail"]')].map((a) => a.href))].slice(0, 3);
+  if (!links.length) throw new Error('Daftar 我的訂單 tidak terbaca');
+  for (const url of links) {
+    await sleep(1500);
+    const t = (await parse(url)).body.textContent.replace(/\s+/g, ' ');
+    const no = t.match(/訂單編號 (\d{6,12})/)?.[1];
+    const at = t.match(/(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)/)?.[1];
+    const remark = t.match(/備註 (\S+) 發票是否捐贈/)?.[1];
+    if (!no || !at) continue;
+    if (Date.now() - new Date(at.replace(' ', 'T')).getTime() > 15 * 60000) break;
+    if (remark === soCode) return no;
+  }
+  return null;
+}
+
+// Hasil tidak jelas setelah 前往結帳: tanya 我的訂單. Ada order dengan 備註 kode SO = berhasil; tidak ada = pasti gagal.
+async function settleByOrderList(job, reason) {
+  await sleep(4000);
+  let orderNo;
+  try {
+    orderNo = await findOrderBySo(job.soCode);
+  } catch (err) {
+    await step('result', { ok: false, error: `${reason}; 我的訂單 tidak bisa dicek (${err.message})` });
+    return;
+  }
+  if (orderNo) await step('result', { ok: true, orderNo });
+  else await step('result', { ok: false, rejected: true, error: `${reason}; tidak ada order dengan 備註 ${job.soCode} di 我的訂單` });
 }
 
 async function runResult(job) {
-  if (pageAction() !== 'shopping_checkout_ok') {
-    const alerts = capturedAlerts();
-    throw new Error(`Kembali ke checkout setelah 前往結帳${alerts.length ? `: ${alerts.join(' | ')}` : ''}.`);
-  }
+  const alerts = () => (capturedAlerts().length ? `: ${capturedAlerts().join(' | ')}` : '');
+  if (pageAction() !== 'shopping_checkout_ok') return settleByOrderList(job, `Kembali ke checkout setelah 前往結帳${alerts()}`);
   const m = await waitFor(() => document.body.innerText.match(/訂單編號\s*[:：]\s*(\d{6,12})/), 15000);
-  if (!m) throw new Error('Halaman 完成訂購 tampil, tapi 訂單編號 tidak terbaca.');
+  if (!m) return settleByOrderList(job, `Halaman 完成訂購 tanpa 訂單編號${alerts()}`);
   await step('result', { ok: true, orderNo: m[1] });
 }
 
