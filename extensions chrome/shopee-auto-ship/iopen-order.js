@@ -366,6 +366,7 @@ async function searchStore(tabId, inputId, keyword) {
 
 async function runEmap(job) {
   if (job.phase !== 'emap') throw new Error(`Halaman peta 7-11 terbuka di langkah "${job.phase}".`);
+  progress('peta 7-11 terbuka');
   await waitFor(() => document.getElementById('frmMain') || document.getElementById('submit_butn'), 15000);
 
   // Halaman konfirmasi terakhir (取貨地點確認): pastikan tokonya sama, lalu 確認

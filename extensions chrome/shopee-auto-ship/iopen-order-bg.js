@@ -107,6 +107,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const job = ioCurrent && ioCurrent.tabId === tabId ? ioCurrent : null;
       if (job) {
         job.pageReady = true;
+        ioTrace(job, sender.url);
         clearTimeout(job.readyTimer);
       }
       sendResponse({ job: job ? ioJobView(job) : null });
@@ -128,7 +129,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     }
     case 'IO_PROGRESS':
-      if (ioCurrent && ioCurrent.tabId === tabId) ioProgress(ioCurrent, msg.text);
+      if (ioCurrent && ioCurrent.tabId === tabId) {
+        ioCurrent.lastNote = msg.text;
+        ioProgress(ioCurrent, msg.text);
+      }
       return;
     case 'IO_SHOW_TAB':
       if (ioCurrent && ioCurrent.tabId === tabId) {
@@ -145,6 +149,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   const job = ioCurrent && ioCurrent.tabId === tabId ? ioCurrent : null;
   if (!job) return;
+  if (info.url) ioTrace(job, info.url);
   if (info.status === 'loading') {
     job.pageReady = false;
     clearTimeout(job.readyTimer);
@@ -166,12 +171,32 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 function ioProgress(job, text) {
+  job.lastNote = text;
   chrome.tabs.sendMessage(job.erpTabId, { type: 'PROGRESS', id: job.id, text: `${job.req.soCode}: ${text}` }).catch(() => {});
 }
 
+// Jejak halaman tab kerja (tanpa query) + catatan terakhir dari halaman, untuk pesan timeout
+const ioShortUrl = (u) => {
+  try {
+    const x = new URL(u);
+    const action = x.searchParams.get('action');
+    return `${x.hostname}${x.pathname}${action ? `?action=${action}` : ''}`;
+  } catch {
+    return String(u || '').split('?')[0];
+  }
+};
+function ioTrace(job, url) {
+  const s = ioShortUrl(url);
+  job.trail = job.trail || [];
+  if (job.trail[job.trail.length - 1] !== s) job.trail.push(s);
+  if (job.trail.length > 6) job.trail.shift();
+}
+const ioTrailText = (job) =>
+  `halaman: ${(job.trail || []).join(' → ') || '-'}${job.pageReady ? '' : ' (skrip belum aktif)'}${job.lastNote ? `; terakhir: ${job.lastNote}` : ''}`;
+
 function ioArm(job, ms = IO_PHASE_TIMEOUT_MS) {
   clearTimeout(job.timer);
-  job.timer = setTimeout(() => ioFail(job, `Timeout di langkah "${job.phase}"`), ms);
+  job.timer = setTimeout(() => ioFail(job, `Timeout di langkah "${job.phase}" (${ioTrailText(job)})`), ms);
 }
 
 function ioGo(job, phase, url) {
