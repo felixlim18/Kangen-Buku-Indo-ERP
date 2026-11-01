@@ -28,6 +28,13 @@ const capturedAlerts = () => {
   }
 };
 
+// Klik elemen. Link javascript: diklik lewat iopen-order-main.js (dunia halaman) di frame tempat elemen itu berada.
+function pageClick(el) {
+  if (!/^\s*javascript:/i.test(el.getAttribute?.('href') || '')) return el.click();
+  el.setAttribute('data-kbi-click', '1');
+  (el.ownerDocument.defaultView || window).dispatchEvent(new Event('kbi-page-click'));
+}
+
 function setValue(el, value) {
   el.focus();
   el.value = '';
@@ -147,10 +154,10 @@ async function runAdd(job) {
   setValue(qty, String(item.qty));
   if (qty.value !== String(item.qty)) throw new Error(`Jumlah ${item.name} tidak bisa diisi ${item.qty} (terbaca ${qty.value}).`);
   const before = headerCartCount();
-  btn.click();
+  pageClick(btn);
   const added = await waitFor(() => {
     const extra = document.getElementById('box_button'); // "不需優惠，直接加入購物車" kalau muncul
-    if (visible(extra)) extra.click();
+    if (visible(extra)) pageClick(extra);
     const now = headerCartCount();
     return now != null && now !== before;
   }, 15000);
@@ -194,7 +201,7 @@ async function runCart(job) {
   );
   if (!go) throw new Error('Tombol 前往結帳 di keranjang tidak ditemukan.');
   const r = await step('cart', { ok: true });
-  if (r?.proceed) go.click();
+  if (r?.proceed) pageClick(go);
 }
 
 async function runStore(job) {
@@ -202,7 +209,7 @@ async function runStore(job) {
   if (!link) throw new Error('Link 請選擇取貨門市 tidak ditemukan di checkout.');
   if (!/常溫7-ELEVEN店到店取貨付款/.test(document.body.innerText)) throw new Error('Pengiriman 常溫7-ELEVEN店到店取貨付款 tidak tersedia di checkout.');
   const r = await step('store', { ok: true });
-  if (r?.proceed) link.click();
+  if (r?.proceed) pageClick(link);
 }
 
 // Nilai uang di teks halaman checkout, mis. semua "總金額 $ 570"
@@ -297,7 +304,7 @@ async function runFill(job) {
 
   document.documentElement.dataset.kbiAlerts = '[]';
   document.documentElement.dataset.kbiAllowConfirm = '1';
-  g('btn_submit').click();
+  pageClick(g('btn_submit'));
   // Kalau berhasil, halaman pindah ke 完成訂購 (skrip ini berhenti). Kalau masih di sini -> ditolak / macet.
   const alerts = await waitFor(() => (capturedAlerts().length ? capturedAlerts() : null), 30000, 500);
   await step('result', {
@@ -338,7 +345,8 @@ const popupInfo = () => {
 
 async function searchStore(tabId, inputId, keyword) {
   // Tab pencarian memuat ulang iframe frmMain (byID.aspx / byName.aspx), jadi hasil lama ikut hilang
-  document.getElementById(tabId)?.click();
+  const tab = document.getElementById(tabId);
+  if (tab) pageClick(tab);
   await sleep(1200);
   const input = await waitFor(() => {
     const d = frameDoc();
@@ -347,7 +355,8 @@ async function searchStore(tabId, inputId, keyword) {
   if (!input) throw new Error(`Kolom pencarian 7-11 (${inputId}) tidak muncul.`);
   const d = frameDoc();
   setValue(input, keyword);
-  d.getElementById('send')?.click();
+  const send = d.getElementById('send');
+  if (send) pageClick(send);
   await sleep(500);
   const done = await waitFor(() => {
     const fd = frameDoc();
@@ -375,12 +384,12 @@ async function runEmap(job) {
     if (!box) throw new Error('Halaman 取貨地點確認 tidak muncul.');
     if (!job.picked || !text(box).includes(job.picked.id)) throw new Error(`Halaman 取貨地點確認 bukan toko ${job.picked?.id}: ${text(box).slice(0, 80)}`);
     const r = await step('emap', { ok: true });
-    if (r?.proceed) document.getElementById('submit_butn').click();
+    if (r?.proceed) pageClick(document.getElementById('submit_butn'));
   };
   const acceptStage = async () => {
     const accept = await waitFor(() => (visible(document.getElementById('AcceptBtn')) ? document.getElementById('AcceptBtn') : null), 15000);
     if (!accept) throw new Error('Tombol 同意 di peta 7-11 tidak muncul.');
-    accept.click();
+    pageClick(accept);
     await confirmStage();
   };
   if (visible(document.getElementById('submit_butn'))) return confirmStage();
@@ -415,12 +424,12 @@ async function runEmap(job) {
     if (!match.usable) throw new Error(`Toko 7-11 ${match.name} tidak melayani pengambilan (灰底).`);
   }
 
-  match.li.click();
+  pageClick(match.li);
   let info = await waitFor(popupInfo, 12000);
   if (!info) {
     // Peta kadang tidak dirender di tab latar belakang: tampilkan tab sebentar lalu coba lagi
     await chrome.runtime.sendMessage({ type: 'IO_SHOW_TAB' }).catch(() => null);
-    match.li.click();
+    pageClick(match.li);
     info = await waitFor(popupInfo, 12000);
   }
   if (!info) throw new Error('Info toko di peta 7-11 tidak muncul.');
@@ -430,6 +439,6 @@ async function runEmap(job) {
   const r = await step('emap', { ok: true, picked: { id: info.id, name: info.name, address: info.address } });
   if (!r?.proceed) return;
   job.picked = { id: info.id, name: info.name, address: info.address };
-  document.getElementById('sevenDataBtn').click();
+  pageClick(document.getElementById('sevenDataBtn'));
   await acceptStage();
 }

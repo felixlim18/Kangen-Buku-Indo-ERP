@@ -46,5 +46,15 @@
     });
   };
   wrap('alert', window.alert, () => thenable);
+
+  // Link "javascript:..." (mis. 請選擇取貨門市 = javascript: seven_type(1)) tidak jalan kalau diklik dari skrip
+  // extension, jadi iopen-order.js menandai elemennya dan klik dilakukan di sini, di dunia halaman.
+  window.addEventListener('kbi-page-click', () => {
+    if (!active()) return;
+    const el = document.querySelector('[data-kbi-click]');
+    if (!el) return;
+    el.removeAttribute('data-kbi-click');
+    el.click();
+  });
   wrap('confirm', window.confirm, () => root().dataset.kbiAllowConfirm === '1');
 })();
