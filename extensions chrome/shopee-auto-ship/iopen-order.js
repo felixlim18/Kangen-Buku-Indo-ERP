@@ -55,7 +55,8 @@ function setValue(el, value) {
 
 // ---------------- mall.iopenmall.tw ----------------
 const pageAction = () => new URL(location.href).searchParams.get('action') || 'index';
-const isLoggedIn = () => /登出/.test(document.body?.innerText || '');
+// Header (會員中心 / 登出) dibuat skrip situs setelah halaman dimuat, jadi ditunggu dulu
+const isLoggedIn = () => !!document.querySelector('li.logout a') || /登出/.test(document.body?.innerText || '');
 const headerCartCount = () => {
   const m = (document.body?.innerText || '').match(/購物車\s*\(\s*(\d+)\s*\)/);
   return m ? Number(m[1]) : null;
@@ -64,7 +65,7 @@ const cartRows = () => [...document.querySelectorAll('input[name="check_product[
 
 async function runMall(job) {
   await waitFor(() => document.body, 10000);
-  if (!isLoggedIn()) throw new Error('Akun pembeli iOPEN Mall belum login di Chrome ini (tidak ada tombol 登出).');
+  if (!(await waitFor(isLoggedIn, 15000))) throw new Error('Akun pembeli iOPEN Mall belum login di Chrome ini (tidak ada tombol 登出).');
   const action = pageAction();
   const expect = {
     catalog: ['index'],
