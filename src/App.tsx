@@ -38,6 +38,7 @@ const OngkosKirimTab = lazyNamed(() => import('./components/OngkosKirimTab'), 'O
 const IncomeTab = lazyNamed(() => import('./components/IncomeTab'), 'IncomeTab');
 const PiutangTab = lazyNamed(() => import('./components/PiutangTab'), 'PiutangTab');
 const UserManagementTab = lazyNamed(() => import('./components/UserManagementTab'), 'UserManagementTab');
+const CsAiTab = lazyNamed(() => import('./components/CsAiTab'), 'CsAiTab');
 const BusinessPartnerTab = lazyNamed(() => import('./components/BusinessPartnerTab'), 'BusinessPartnerTab');
 const BankKasTab = lazyNamed(() => import('./components/BankKasTab'), 'BankKasTab');
 const SettingsTab = lazyNamed(() => import('./components/SettingsTab'), 'SettingsTab');
@@ -64,7 +65,7 @@ const MainAppContent: React.FC = () => {
   const hasPerm = (key: string) => {
     if (key === 'settings') return true;
     if (profile?.role === 'owner') return true;
-    if (key === 'user-management') return false;
+    if (key === 'user-management' || key === 'cs-ai') return false;
     if (key === 'financial') return !!profile?.permissions?.['financial'];
     if (key === 'partners') return !!profile?.permissions?.['financial.partners'];
     if (key === 'expenses') return !!profile?.permissions?.['perlengkapan'] || !!profile?.permissions?.['iklan'] || !!profile?.permissions?.['financial.partners'];
@@ -315,6 +316,7 @@ const MainAppContent: React.FC = () => {
             {activeTab === 'report-user-activity' && <UserActivityTab />}
             {activeTab === 'daily-report' && <DailyReportTab />}
             {activeTab === 'user-management' && <UserManagementTab />}
+            {activeTab === 'cs-ai' && <CsAiTab />}
             {activeTab === 'settings' && <SettingsTab />}
           </Suspense>
         ) : (

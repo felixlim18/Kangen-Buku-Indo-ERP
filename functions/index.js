@@ -239,6 +239,13 @@ exports.lineCsWebhook = onRequest(
   (req, res) => require("./lineWebhook").lineCsWebhookHandler(req, res),
 );
 
+// Tab "CS AI" di ERP (khusus owner): latihan chat dengan agent CS & buat usulan pelajaran sekarang.
+// Hosting me-rewrite /api/cs/** ke fungsi ini (firebase.json).
+exports.csAdmin = onRequest(
+  { region: "asia-east1", secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 120, memory: "512MiB", invoker: "public" },
+  (req, res) => require("./lineWebhook").csAdminHandler(req, res),
+);
+
 // Card "SO siap dikirim" ke owner LINE (src/server/shipAgent.ts): SO Pending yang stoknya cukup,
 // sudah waktunya kirim dan (kalau Transfer) sudah lunas. Dikirim langsung saat SO baru jadi Pending,
 // lalu dicek ulang tiap 30 menit (24 jam) untuk SO yang baru siap belakangan. Tiap SO paling banyak
@@ -287,6 +294,16 @@ exports.dailyOrderReport = onSchedule(
     } catch (err) {
       logger.error("Pengingat SO return gagal:", err);
     }
+  },
+);
+
+// Usulan pelajaran AI CS (src/server/csAgent.ts): tiap malam Claude membaca chat 24 jam terakhir dan
+// mengusulkan maks 5 pelajaran ke owner LINE (Setujui/Ubah/Tolak). Hanya yang disetujui dipakai AI.
+exports.csDailyLessons = onSchedule(
+  { schedule: "every day 21:00", timeZone: "Asia/Taipei", region: "asia-east1", secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 300, memory: "512MiB" },
+  async () => {
+    const { count } = await require("./lineWebhook").csDailyLessons();
+    logger.info(`Usulan pelajaran AI CS: ${count}`);
   },
 );
 

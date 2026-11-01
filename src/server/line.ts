@@ -5,7 +5,7 @@ import { isExpenseAgentUser, handleExpenseAgentEvent } from './expenseAgent';
 import { isShipAgentUser, handleShipAgentEvent } from './shipAgent';
 import { handleCsOwnerEvent } from './csAgent';
 
-export { lineCsWebhookHandler } from './csAgent';
+export { lineCsWebhookHandler, csAdminHandler, csDailyLessons } from './csAgent';
 
 export { notifyReadyToShip, isShipCandidate, sendDailyOrderReport, notifyReturn, sendDailyReturnReminder, notifyIopenAutoOrder } from './shipAgent';
 

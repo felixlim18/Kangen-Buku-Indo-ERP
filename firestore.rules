@@ -64,8 +64,20 @@ service cloud.firestore {
 
     // Pengaturan. settings/line berisi token & secret LINE -> owner saja.
     match /settings/{id} {
-      allow read: if id == 'line' ? isOwner() : member();
-      allow write: if isOwner() || (id != 'line' && member());
+      allow read: if id in ['line', 'csAgent'] ? isOwner() : member();
+      allow write: if isOwner() || (!(id in ['line', 'csAgent']) && member());
+    }
+
+    // Agent AI CS (src/server/csAgent.ts, tab CS AI): pengetahuan, pelajaran, riwayat chat pelanggan
+    // (berisi nama/HP pelanggan) -> owner saja. Server menulis lewat firebase-admin.
+    match /csAgentLessons/{id} {
+      allow read, write: if isOwner();
+    }
+    match /lineCsChats/{id} {
+      allow read, write: if isOwner();
+    }
+    match /lineCsDrafts/{id} {
+      allow read: if isOwner();
     }
 
     // Gaji: data sensitif.

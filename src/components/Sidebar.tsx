@@ -26,7 +26,8 @@ import {
   LineChart,
   Receipt,
   TrendingUp,
-  ShieldCheck
+  ShieldCheck,
+  Bot
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -97,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const hasPerm = (key: string) => {
     if (key === 'settings') return true;
     if (profile?.role === 'owner') return true;
-    if (key === 'user-management') return false;
+    if (key === 'user-management' || key === 'cs-ai') return false;
     if (key === 'financial') return !!profile?.permissions?.['financial'];
     if (key === 'partners') return !!profile?.permissions?.['financial.partners'];
     if (key === 'expenses') return !!profile?.permissions?.['perlengkapan'] || !!profile?.permissions?.['iklan'] || !!profile?.permissions?.['financial.partners'] || !!profile?.permissions?.['beban-lainnya'];
@@ -679,6 +680,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </AnimatePresence>
         </div>
+        )}
+
+        {/* CS AI (khusus owner): latih agent AI LINE CS */}
+        {hasPerm('cs-ai') && (
+        <button
+          id="nav-cs-ai"
+          onClick={() => setTab('cs-ai')}
+          className={sidebarHidden
+            ? `h-10 w-10 flex items-center justify-center rounded-lg transition duration-200 select-text relative mt-1 ${
+                currentTab === 'cs-ai'
+                  ? 'bg-emerald-50/50 dark:bg-emerald-950/15 text-emerald-600 dark:text-emerald-400 border border-emerald-200/55 dark:border-emerald-900/30 shadow-xs'
+                  : 'text-neutral-550 dark:text-neutral-400 hover:bg-neutral-100/50 dark:hover:bg-neutral-850/45 hover:text-neutral-900 dark:hover:text-white'
+              }`
+            : `relative w-full flex items-center gap-3 py-2.5 rounded-r-full text-sm transition duration-200 select-text mt-1 ${
+                currentTab === 'cs-ai'
+                  ? 'pl-6 pr-3 font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-900/15'
+                  : 'px-3 font-medium text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100/50 dark:hover:bg-neutral-850/40 hover:text-neutral-950 dark:hover:text-white'
+              }`
+          }
+          title={sidebarHidden ? 'CS AI' : undefined}
+        >
+          {!sidebarHidden && currentTab === 'cs-ai' && (
+            <div className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-gradient bg-gradient-to-b from-emerald-500 via-emerald-500 to-emerald-600" style={{ width: '4px' }} />
+          )}
+          <Bot className={`h-4.5 w-4.5 transition duration-150 ${currentTab === 'cs-ai' ? 'text-emerald-500 dark:text-emerald-400' : 'text-neutral-400 group-hover:text-neutral-900 dark:group-hover:text-white'}`} />
+          {!sidebarHidden && <span>CS AI</span>}
+        </button>
         )}
 
         {/* Standalone User Management Section */}

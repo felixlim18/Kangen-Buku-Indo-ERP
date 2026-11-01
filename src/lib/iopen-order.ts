@@ -42,14 +42,18 @@ const logisticsKey = (v: unknown) => {
   return k === '711' || k === 'seveneleven' || k === '統一超商' ? '7eleven' : k;
 };
 
-/** Syarat data SO (tanpa syarat waktu/aktif fitur): Direct Order, 7-Eleven, COD, Nomor Order kosong, Draft/Pending. */
+/**
+ * Syarat data SO (tanpa syarat waktu/aktif fitur): Direct Order, 7-Eleven, COD, Nomor Order kosong, Pending.
+ * SO Draft (isDraft, mis. buatan AI CS dari chat LINE) tidak pernah diproses: harus disimpan owner dulu jadi Pending.
+ */
 export const isIopenOrderCandidate = (o: any): boolean =>
   !!o &&
   o.buyerType === 'langsung' &&
   logisticsKey(o.pickupLogistics) === '7eleven' &&
   o.paymentMethod === 'COD' &&
   !String(o.orderNumber ?? '').trim() &&
-  (!o.status || o.status === 'draft');
+  (!o.status || o.status === 'draft') &&
+  !o.isDraft;
 
 /** Tombol manual "Buat Order iOPEN": syarat sama, tapi Nomor Order boleh sudah terisi (diganti nomor baru). */
 export const isIopenManualCandidate = (o: any): boolean => !!o && isIopenOrderCandidate({ ...o, orderNumber: '' });
@@ -59,7 +63,8 @@ export const iopenOrderBlockReason = (o: any): string | null => {
   if (!o || o.buyerType !== 'langsung') return 'Bukan Direct Order';
   if (logisticsKey(o.pickupLogistics) !== '7eleven') return 'Pengiriman bukan 7-Eleven';
   if (o.paymentMethod !== 'COD') return 'Pembayaran bukan COD';
-  if (o.status && o.status !== 'draft') return 'Status SO bukan Draft/Pending';
+  if (o.status && o.status !== 'draft') return 'Status SO bukan Pending';
+  if (o.isDraft) return 'SO masih Draft, simpan dulu jadi Pending';
   return null;
 };
 

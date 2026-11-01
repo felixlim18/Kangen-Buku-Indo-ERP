@@ -42,9 +42,9 @@ async function claim(soId: string, trigger: 'auto' | 'manual'): Promise<any> {
     if (!snap.exists()) throw new IopenOrderBlocked('SO tidak ditemukan');
     const o: any = { id: snap.id, ...snap.data() };
     if (trigger === 'manual') {
-      if (!isIopenManualCandidate(o)) throw new IopenOrderBlocked('SO tidak memenuhi syarat (Direct Order, 7-Eleven, COD, Draft/Pending)');
+      if (!isIopenManualCandidate(o)) throw new IopenOrderBlocked('SO tidak memenuhi syarat (Direct Order, 7-Eleven, COD, Pending)');
     } else {
-      if (!isIopenOrderCandidate(o)) throw new IopenOrderBlocked('SO tidak memenuhi syarat (Direct Order, 7-Eleven, COD, Nomor Order kosong, Draft/Pending)');
+      if (!isIopenOrderCandidate(o)) throw new IopenOrderBlocked('SO tidak memenuhi syarat (Direct Order, 7-Eleven, COD, Nomor Order kosong, Pending)');
       if (o.iopenAutoOrder?.state) throw new IopenOrderBlocked(`SO sudah diproses Auto Order iOPEN (status: ${o.iopenAutoOrder.state})`);
     }
     const info: IopenAutoOrderInfo = { state: 'running', startedAt: Timestamp.now(), trigger };

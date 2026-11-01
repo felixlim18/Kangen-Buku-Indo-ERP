@@ -17,6 +17,7 @@ import {
   Building,
   BarChart3,
   Users,
+  Bot,
   Settings,
   Sun,
   Moon,
@@ -106,7 +107,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   const hasPerm = (key: string) => {
     if (key === 'settings') return true;
     if (profile?.role === 'owner') return true;
-    if (key === 'user-management') return false;
+    if (key === 'user-management' || key === 'cs-ai') return false;
     if (key === 'financial') return !!profile?.permissions?.['financial'];
     if (key === 'partners') return !!profile?.permissions?.['financial.partners'];
     if (key === 'expenses') return !!profile?.permissions?.['perlengkapan'] || !!profile?.permissions?.['iklan'] || !!profile?.permissions?.['financial.partners'] || !!profile?.permissions?.['beban-lainnya'];
@@ -177,6 +178,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       case 'report-sales-detail': return 'Laporan Rincian Penjualan';
       case 'report-user-activity': return 'Kegiatan User';
       case 'user-management': return 'Manajemen Pengguna';
+      case 'cs-ai': return 'CS AI';
       case 'settings': return 'Pengaturan Usaha';
       default: return 'KangenBukuIndo ERP';
     }
@@ -240,12 +242,13 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   const heroFreight = hasPerm('freight-in') && matches('Freight In');
   const showLaporan = (hasPerm('report-sales-detail') && matches('Laporan Rincian Penjualan')) || (hasPerm('report-user-activity') && matches('Kegiatan User'));
   const showUsers = hasPerm('user-management') && matches('Manajemen User');
+  const showCsAi = hasPerm('cs-ai') && matches('CS AI');
   const showSettings = matches('Pengaturan Usaha');
 
   const nothingFound =
     !heroCatalog && !heroFreight && operasional.length === 0 && biaya.length === 0 &&
     transaksi.length === 0 && laporanKeuangan.length === 0 && doubleEntry.length === 0 &&
-    !showLaporan && !showUsers && !showSettings;
+    !showLaporan && !showUsers && !showCsAi && !showSettings;
 
   const dockTouchStartX = React.useRef(0);
 
@@ -703,7 +706,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
               )}
 
               {/* Pengaturan & Sistem */}
-              {(showUsers || showSettings) && (
+              {(showUsers || showCsAi || showSettings) && (
                 <div style={{ ['--m-legend' as any]: 'var(--m-ink-3)' }}>
                   <div className="kbi-msheet__legend">Pengaturan &amp; Sistem</div>
                   <div className="kbi-msheet__grid">
@@ -715,6 +718,16 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                       >
                         <span className="kbi-mtile__glyph"><Users className="w-4 h-4" /></span>
                         <span className="kbi-mtile__label">Manajemen User</span>
+                      </button>
+                    )}
+                    {showCsAi && (
+                      <button
+                        type="button"
+                        onClick={() => handleNavigate('cs-ai')}
+                        className={`kbi-mtile t-forest ${currentTab === 'cs-ai' ? 'is-active' : ''}`}
+                      >
+                        <span className="kbi-mtile__glyph"><Bot className="w-4 h-4" /></span>
+                        <span className="kbi-mtile__label">CS AI</span>
                       </button>
                     )}
                     {showSettings && (

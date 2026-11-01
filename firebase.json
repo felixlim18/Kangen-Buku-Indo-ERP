@@ -44,6 +44,13 @@
         }
       },
       {
+        "source": "/api/cs/**",
+        "function": {
+          "functionId": "csAdmin",
+          "region": "asia-east1"
+        }
+      },
+      {
         "source": "/api/line/cs-webhook",
         "function": {
           "functionId": "lineCsWebhook",
