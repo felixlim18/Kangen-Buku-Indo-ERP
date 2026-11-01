@@ -11,9 +11,11 @@
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
     "build:functions": "esbuild src/server/line.ts --bundle --platform=node --target=node22 --format=cjs --external:firebase-admin --external:@google/genai --outfile=functions/lineWebhook.js",
-    "line-cs:setup": "bash scripts/set-line-cs.sh"
+    "line-cs:setup": "bash scripts/set-line-cs.sh",
+    "anthropic:setup": "bash scripts/set-anthropic-key.sh"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@babel/core": "^8.0.1",
     "@babel/preset-react": "^8.0.1",
     "@babel/preset-typescript": "^8.0.1",

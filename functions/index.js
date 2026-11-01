@@ -232,9 +232,10 @@ exports.lineWebhook = onRequest(
 );
 
 // Webhook LINE OA "Kangenbukuindo CS": AI membuat draft balasan chat pelanggan, owner menyetujui
-// lewat bot ERP (src/server/csAgent.ts). Secret: npm run line-cs:setup.
+// lewat bot ERP (src/server/csAgent.ts). Secret: npm run line-cs:setup & npm run anthropic:setup.
+const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 exports.lineCsWebhook = onRequest(
-  { region: "asia-east1", secrets: [LINE_CS_CHANNEL_SECRET, LINE_CS_CHANNEL_ACCESS_TOKEN, GEMINI_API_KEY], timeoutSeconds: 120, memory: "512MiB", invoker: "public" },
+  { region: "asia-east1", secrets: [LINE_CS_CHANNEL_SECRET, LINE_CS_CHANNEL_ACCESS_TOKEN, ANTHROPIC_API_KEY], timeoutSeconds: 120, memory: "512MiB", invoker: "public" },
   (req, res) => require("./lineWebhook").lineCsWebhookHandler(req, res),
 );
 

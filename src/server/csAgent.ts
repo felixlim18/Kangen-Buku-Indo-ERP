@@ -1,6 +1,6 @@
 // Agent AI balas chat pelanggan di LINE OA "Kangenbukuindo CS" (channel terpisah dari bot ERP).
 //
-// Mode DRAFT: pelanggan chat ke bot CS -> Gemini menyusun balasan dari katalog (harga & stok) dan
+// Mode DRAFT: pelanggan chat ke bot CS -> Claude Sonnet menyusun balasan dari katalog (harga & stok) dan
 // riwayat chat -> owner menerima draft lewat bot ERP (settings/line.ownerUserId) dengan tombol
 // ✅ Kirim / ✏️ Ubah / ❌ Abaikan -> baru setelah "Kirim" balasan di-push ke pelanggan lewat bot CS.
 // Tidak ada pesan yang sampai ke pelanggan tanpa persetujuan owner.
@@ -11,13 +11,15 @@
 
 import crypto from 'crypto';
 import { Request, Response } from 'express';
-import { GoogleGenAI } from '@google/genai';
+import Anthropic from '@anthropic-ai/sdk';
+import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
+import { z } from 'zod';
 import { getDb, isAdminConfigured, Timestamp } from './firestore-admin';
 import { getPhysicalOnHandStockForBook } from '../lib/inventory-utils';
 
 type LineMessage = { type: string; [key: string]: any };
 
-const AGENT_MODELS = ['gemini-3.6-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash-lite'];
+const CS_MODEL = 'claude-sonnet-5-5';
 const HISTORY_LIMIT = 12;              // pesan terakhir yang disimpan & dikirim ke AI
 const MAX_CANDIDATE_BOOKS = 12;
 const EDIT_TTL_MS = 15 * 60 * 1000;
@@ -98,14 +100,14 @@ export async function findCandidateBooks(chatText: string) {
   }));
 }
 
-// ---- Gemini -------------------------------------------------------------------------------------
+// ---- Claude -------------------------------------------------------------------------------------
 
-export interface CsDraft { balasan: string; perluOwner?: boolean; catatanOwner?: string }
+const CsDraftSchema = z.object({ balasan: z.string(), perluOwner: z.boolean(), catatanOwner: z.string() });
+export type CsDraft = z.infer<typeof CsDraftSchema>;
 
 export async function draftReply(history: Array<{ from: 'pelanggan' | 'toko'; text: string }>, books: any[], storeInfo: string): Promise<CsDraft> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY belum dikonfigurasi di server.');
-  const ai = new GoogleGenAI({ apiKey });
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY belum dikonfigurasi di server.');
+  const client = new Anthropic({ timeout: 45_000 });
 
   const systemInstruction = `Anda customer service toko buku "KangenBukuIndo" di Taiwan yang menjual buku-buku Indonesia.
 Pelanggan umumnya orang Indonesia di Taiwan. Tulis balasan untuk pesan TERAKHIR pelanggan, dengan konteks riwayat chat.
@@ -125,33 +127,23 @@ Aturan:
 - Pelanggan mau pesan -> konfirmasi judul, jumlah, dan total harga buku, lalu minta data pengiriman sesuai info toko.
 - Buku tidak ada di data -> minta judul/penulis yang lebih lengkap, atau bilang admin akan cek dulu.
 - Pertanyaan status pesanan, pembayaran, komplain, retur, atau apa pun yang tidak ada datanya -> jawab sopan bahwa admin akan cek, dan set perluOwner = true.
-- Jawab dengan SATU objek JSON: {"balasan": string, "perluOwner": boolean, "catatanOwner": string}
-  catatanOwner = catatan singkat untuk owner (mis. apa yang perlu dicek), kosongkan jika tidak ada.`;
+- balasan = teks yang dikirim ke pelanggan. catatanOwner = catatan singkat untuk owner (mis. apa yang perlu dicek), string kosong jika tidak ada.`;
 
   const transcript = history.map((h) => `${h.from === 'pelanggan' ? 'Pelanggan' : 'Toko'}: ${h.text}`).join('\n');
-  let response: any;
-  let lastErr: any;
-  for (const model of AGENT_MODELS) {
-    try {
-      response = await ai.models.generateContent({
-        model,
-        contents: [{ role: 'user', parts: [{ text: `RIWAYAT CHAT:\n${transcript}` }] }],
-        config: { systemInstruction, temperature: 0.3, responseMimeType: 'application/json', abortSignal: AbortSignal.timeout(20000) },
-      });
-      break;
-    } catch (e: any) {
-      lastErr = e;
-      console.warn(`Gemini ${model} gagal (${e.status || e.name}), coba model berikutnya.`);
-    }
-  }
-  if (!response) throw new Error(`Gemini sedang tidak tersedia. (${lastErr?.status || lastErr?.message})`);
-  let parsed = JSON.parse(response.text || '{}');
-  if (Array.isArray(parsed)) parsed = parsed[0] || {};
-  return {
-    balasan: String(parsed.balasan || '').trim(),
-    perluOwner: parsed.perluOwner === true,
-    catatanOwner: String(parsed.catatanOwner || '').trim(),
-  };
+  // fallbacks "default": kalau Sonnet menolak (safety classifier), server mengulang di model cadangan.
+  const response = await client.beta.messages.parse({
+    model: CS_MODEL,
+    max_tokens: 4000,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    system: systemInstruction,
+    messages: [{ role: 'user', content: `RIWAYAT CHAT:\n${transcript}` }],
+    output_config: { effort: 'low', format: betaZodOutputFormat(CsDraftSchema) },
+  });
+  if (response.stop_reason === 'refusal') throw new Error('Claude menolak membuat draft untuk chat ini.');
+  const parsed = response.parsed_output;
+  if (!parsed?.balasan.trim()) throw new Error(`Claude tidak mengembalikan draft (${response.stop_reason}).`);
+  return { balasan: parsed.balasan.trim(), perluOwner: parsed.perluOwner, catatanOwner: parsed.catatanOwner.trim() };
 }
 
 // ---- Card draft untuk owner ---------------------------------------------------------------------
