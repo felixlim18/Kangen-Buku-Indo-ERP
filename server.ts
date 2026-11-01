@@ -8,7 +8,8 @@ import {
   lineWebhookHandler, 
   lineNotifyOrderEndpoint, 
   lineSendTestEndpoint, 
-  lineGetRecentUsersEndpoint 
+  lineGetRecentUsersEndpoint,
+  lineCsWebhookHandler
 } from './src/server/line';
 import { adminAuth, getDb, isAdminConfigured } from './src/server/firestore-admin';
 import tailwindcss from '@tailwindcss/vite';
@@ -52,6 +53,7 @@ async function startServer() {
 
   // LINE Messaging API Webhook Route (handles POST, GET, OPTIONS, HEAD with/without trailing slash)
   app.use('/api/line/webhook', lineWebhookHandler);
+  app.use('/api/line/cs-webhook', lineCsWebhookHandler);
 
   app.use('/api', requireErpUser);
   app.post('/api/import-po', importPoHandler);

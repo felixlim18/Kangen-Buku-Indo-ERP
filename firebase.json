@@ -44,6 +44,13 @@
         }
       },
       {
+        "source": "/api/line/cs-webhook",
+        "function": {
+          "functionId": "lineCsWebhook",
+          "region": "asia-east1"
+        }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

@@ -221,10 +221,21 @@ const { onRequest } = require("firebase-functions/v2/https");
 const LINE_CHANNEL_SECRET = defineSecret("LINE_CHANNEL_SECRET");
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
+const LINE_CS_CHANNEL_SECRET = defineSecret("LINE_CS_CHANNEL_SECRET");
+const LINE_CS_CHANNEL_ACCESS_TOKEN = defineSecret("LINE_CS_CHANNEL_ACCESS_TOKEN");
+
 exports.lineWebhook = onRequest(
-  { region: "asia-east1", secrets: [LINE_CHANNEL_SECRET, GEMINI_API_KEY], timeoutSeconds: 120, memory: "512MiB", invoker: "public" },
+  // LINE_CS_CHANNEL_ACCESS_TOKEN: tombol "Kirim" draft CS mengirim balasan lewat bot CS.
+  { region: "asia-east1", secrets: [LINE_CHANNEL_SECRET, GEMINI_API_KEY, LINE_CS_CHANNEL_ACCESS_TOKEN], timeoutSeconds: 120, memory: "512MiB", invoker: "public" },
   // req.rawBody disediakan Cloud Functions; dipakai verifikasi signature LINE.
   (req, res) => require("./lineWebhook").lineWebhookHandler(req, res),
+);
+
+// Webhook LINE OA "Kangenbukuindo CS": AI membuat draft balasan chat pelanggan, owner menyetujui
+// lewat bot ERP (src/server/csAgent.ts). Secret: npm run line-cs:setup.
+exports.lineCsWebhook = onRequest(
+  { region: "asia-east1", secrets: [LINE_CS_CHANNEL_SECRET, LINE_CS_CHANNEL_ACCESS_TOKEN, GEMINI_API_KEY], timeoutSeconds: 120, memory: "512MiB", invoker: "public" },
+  (req, res) => require("./lineWebhook").lineCsWebhookHandler(req, res),
 );
 
 // Card "SO siap dikirim" ke owner LINE (src/server/shipAgent.ts): SO Pending yang stoknya cukup,

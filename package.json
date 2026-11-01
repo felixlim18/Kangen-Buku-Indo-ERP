@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit",
-    "build:functions": "esbuild src/server/line.ts --bundle --platform=node --target=node22 --format=cjs --external:firebase-admin --external:@google/genai --outfile=functions/lineWebhook.js"
+    "build:functions": "esbuild src/server/line.ts --bundle --platform=node --target=node22 --format=cjs --external:firebase-admin --external:@google/genai --outfile=functions/lineWebhook.js",
+    "line-cs:setup": "bash scripts/set-line-cs.sh"
   },
   "dependencies": {
     "@babel/core": "^8.0.1",

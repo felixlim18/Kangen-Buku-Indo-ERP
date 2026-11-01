@@ -3,6 +3,9 @@ import { Request, Response } from 'express';
 import { getDb, isAdminConfigured, doc, setDoc, getDoc, getDocs, collection } from './firestore-admin';
 import { isExpenseAgentUser, handleExpenseAgentEvent } from './expenseAgent';
 import { isShipAgentUser, handleShipAgentEvent } from './shipAgent';
+import { handleCsOwnerEvent } from './csAgent';
+
+export { lineCsWebhookHandler } from './csAgent';
 
 export { notifyReadyToShip, isShipCandidate, sendDailyOrderReport, notifyReturn, sendDailyReturnReminder, notifyIopenAutoOrder } from './shipAgent';
 
@@ -157,8 +160,24 @@ export async function lineWebhookHandler(req: Request, res: Response) {
           }
         }
 
+        // Owner: tombol draft AI CS (Kirim/Ubah/Abaikan) & teks ubahan draft didahulukan (lihat csAgent.ts).
+        const isOwner = !!db && await isShipAgentUser(userId).catch(() => false);
+        if (accessToken && event.replyToken && isOwner) {
+          let replies;
+          try {
+            replies = await handleCsOwnerEvent(event);
+          } catch (agentErr: any) {
+            console.error('Error in CS agent:', agentErr);
+            replies = [{ type: 'text', text: `⚠️ Agent CS gagal memproses: ${agentErr.message}` }];
+          }
+          if (replies) {
+            if (replies.length) await sendLineReplyMessage(accessToken, event.replyToken, replies);
+            continue;
+          }
+        }
+
         // Owner: agent SO siap kirim (tombol card & input resi) didahulukan, sisanya agent pencatat biaya.
-        if (db && accessToken && event.replyToken && await isShipAgentUser(userId).catch(() => false)) {
+        if (accessToken && event.replyToken && isOwner) {
           let replies;
           try {
             replies = await handleShipAgentEvent(event);
