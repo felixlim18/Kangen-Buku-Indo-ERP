@@ -20,7 +20,7 @@
         "*.local"
       ],
       "predeploy": [
-        "npm --prefix \"$PROJECT_DIR\" run build:functions"
+        "sh \"$PROJECT_DIR/scripts/build-functions.sh\""
       ]
     }
   ],
