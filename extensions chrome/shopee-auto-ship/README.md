@@ -66,6 +66,11 @@ Tab yang dialog cetaknya siap ditampilkan; kalau ada dialog lain yang masih terb
 ditampilkan setelah dialog itu selesai. Halaman cetak dibuka di tab itu (bukan popup), jadi tidak perlu
 mengizinkan pop-up. Tab label 7-11 & iOPEN tertutup sendiri setelah dialog cetak selesai.
 
+### Label 7-ELEVEN: 1 label per halaman
+Halaman 7-11 交貨便服務單 otomatis disusun ulang dari grid 2 kolom menjadi 1 label per halaman, kertas 100x150 mm
+([711-label-layout.js](711-label-layout.js)). Ini berlaku juga saat 下載所選文件 ditekan manual di Shopee:
+dialog cetak terbuka sendiri, tekan **Print**. Ukuran kertas & besar label diatur di konstanta awal file itu.
+
 ## Pasang / update
 1. Buka `chrome://extensions`, aktifkan **Developer mode**.
 2. **Load unpacked** → pilih folder `extensions chrome/shopee-auto-ship`

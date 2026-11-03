@@ -57,8 +57,11 @@ async function printHtmlPage() {
   window.print(); // menunggu sampai dialog ditutup (Print / Cancel)
 }
 
+let stepReceived = false;
+
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type !== 'PRINT_STEP') return;
+  stepReceived = true;
   const run = location.pathname.startsWith('/awbprint') ? printShopeeAwb : printHtmlPage;
   run()
     // Tab label HTML ditutup setelah dialog selesai; tab PDF Shopee dibiarkan (selesainya dialog tidak pasti)
@@ -70,4 +73,13 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => chrome.runtime.sendMessage({ type: 'READY' }), { once: true });
 } else {
   chrome.runtime.sendMessage({ type: 'READY' });
+}
+
+// 7-11 dibuka manual dari tombol 下載所選文件 (bukan Print Resi ERP): tidak ada PRINT_STEP, buka dialog cetak sendiri
+if (location.hostname === 'epayment.7-11.com.tw') {
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      if (!stepReceived && !printStarted) window.print();
+    }, 2500);
+  }, { once: true });
 }
