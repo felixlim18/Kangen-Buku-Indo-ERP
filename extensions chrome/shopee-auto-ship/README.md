@@ -71,6 +71,12 @@ Halaman 7-11 交貨便服務單 otomatis disusun ulang dari grid 2 kolom menjadi
 ([711-label-layout.js](711-label-layout.js)). Ini berlaku juga saat 下載所選文件 ditekan manual di Shopee:
 dialog cetak terbuka sendiri, tekan **Print**. Ukuran kertas & besar label diatur di konstanta awal file itu.
 
+### Label 全家 (FamilyMart): penuh tanpa atur scale
+Halaman 全家店到店寄件單 berisi bitmap di canvas. [familymart-label-layout.js](familymart-label-layout.js) memotong label
+dari garis potongnya, memaskannya ke kertas 4x6 in, dan menggambar ulang QR sebagai vektor (sedikit lebih besar, selama
+tidak menabrak teks). Kalau pola QR tidak terbaca jelas, QR asli dibiarkan. Dialog cetak dibuka oleh halamannya sendiri
+dan penyusunan terjadi tepat sebelum dialog tampil; Scale cukup **Default**.
+
 ## Pasang / update
 1. Buka `chrome://extensions`, aktifkan **Developer mode**.
 2. **Load unpacked** → pilih folder `extensions chrome/shopee-auto-ship`
