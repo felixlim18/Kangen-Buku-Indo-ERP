@@ -10,7 +10,7 @@ import { useSidebar } from '../lib/sidebar-context';
 import { ImagePreviewModal } from './ui/ImagePreviewModal';
 import { useModalEsc } from '../lib/use-modal-esc';
 import { getEffectiveOrderLogistics, sanitizeResiNumber } from '../lib/sales-logistics-utils';
-import { AUTO_SHIP_LABELS, PRINT_SECTION_LABELS, autoShipConcurrency, formatPrintResult, getAutoShipPlatform, getPrintSection, requestPrintLabels, requestTrackingNumber, type AutoShipPlatform, type PrintSection } from '../lib/auto-ship';
+import { AUTO_SHIP_LABELS, PRINT_SECTION_LABELS, autoShipConcurrency, formatPrintResult, getAutoShipPlatform, getPrintSection, publishShipOrder, requestPrintLabels, requestTrackingNumber, type AutoShipPlatform, type PrintSection } from '../lib/auto-ship';
 
 interface BulkProcessModalProps {
   isOpen: boolean;
@@ -498,6 +498,12 @@ export const BulkProcessModal: React.FC<BulkProcessModalProps> = ({
       prev?.focus();
     }
   };
+
+  // Urutan label di Shopee mengikuti urutan modal ini
+  const shipOrderKey = rows.map(r => r.orderNo).join('\n');
+  useEffect(() => {
+    if (isOpen && shipOrderKey) publishShipOrder(shipOrderKey.split('\n'));
+  }, [isOpen, shipOrderKey]);
 
   // Action: "Urutkan Pengiriman"
   const handleSortShipping = () => {

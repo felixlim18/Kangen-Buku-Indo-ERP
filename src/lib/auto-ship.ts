@@ -134,6 +134,11 @@ export const getPrintSection = (orderNo: string, resi: string): PrintSection | n
   return null;
 };
 
+/** Beri tahu extension urutan order di modal, supaya label dari 下載所選文件 Shopee tersusun sama. */
+export const publishShipOrder = (orderNos: string[]): void => {
+  window.postMessage({ source: 'kbi-erp', type: 'SHIP_ORDER', orders: orderNos.map(no => no.trim().toUpperCase()).filter(Boolean) }, '*');
+};
+
 /** Cetak label untuk order-order ini; tiap bagian berjalan bersamaan di tab sendiri. */
 export const requestPrintLabels = async (orders: { orderNo: string; section: PrintSection }[]): Promise<PrintLabelsResult> => {
   const sections: Record<PrintSection, string[]> = { 'shopee-store': [], 'shopee-711': [], iopen: [] };

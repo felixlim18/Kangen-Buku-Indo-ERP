@@ -77,6 +77,11 @@ dari garis potongnya, memaskannya ke kertas 4x6 in, dan menggambar ulang QR seba
 tidak menabrak teks). Kalau pola QR tidak terbaca jelas, QR asli dibiarkan. Dialog cetak dibuka oleh halamannya sendiri
 dan penyusunan terjadi tepat sebelum dialog tampil; Scale cukup **Default**.
 
+### Urutan label mengikuti modal ERP
+Setiap urutan modal *Proses Massal Pesanan Dikemas* berubah (termasuk lewat **Urutkan Pengiriman**), ERP mengirimnya ke
+extension. Saat 下載所選文件 ditekan di Shopee, daftar order di permintaan `create_sd_jobs` disusun mengikuti urutan itu,
+dan Shopee membuat label sesuai urutan daftar (蝦皮店到店, 7-ELEVEN, 全家, dll.). Order di luar modal ditaruh di belakang.
+
 ## Pasang / update
 1. Buka `chrome://extensions`, aktifkan **Developer mode**.
 2. **Load unpacked** → pilih folder `extensions chrome/shopee-auto-ship`

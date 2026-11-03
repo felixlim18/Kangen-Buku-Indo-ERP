@@ -14,7 +14,12 @@ const FORWARDED = ['AUTO_SHIP', 'PRINT_LABELS', 'SHOPEE_PAYMENT', 'IOPEN_PAYMENT
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
   const msg = event.data;
-  if (!msg || msg.source !== 'kbi-erp' || !FORWARDED.includes(msg.type)) return;
+  if (!msg || msg.source !== 'kbi-erp') return;
+  if (msg.type === 'SHIP_ORDER') {
+    chrome.storage.local.set({ kbiShipOrder: msg.orders || [] }); // urutan modal ERP, dipakai saat 下載所選文件 di Shopee
+    return;
+  }
+  if (!FORWARDED.includes(msg.type)) return;
   const { source, ...payload } = msg;
   chrome.runtime.sendMessage(payload).catch((err) => {
     window.postMessage({ source: 'kbi-ext', type: 'KBI_RESULT', id: msg.id, ok: false, error: `Extension error: ${err.message}` }, '*');

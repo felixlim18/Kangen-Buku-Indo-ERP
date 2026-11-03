@@ -13,6 +13,13 @@ async function waitFor(fn, timeoutMs, intervalMs = 300) {
   return null;
 }
 
+// Urutan modal ERP untuk kbi-main.js (dunia halaman tidak bisa membaca chrome.storage)
+const publishShipOrder = (orders) => { document.documentElement.dataset.kbiShipOrder = JSON.stringify(orders || []); };
+chrome.storage.local.get('kbiShipOrder').then((r) => publishShipOrder(r.kbiShipOrder));
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.kbiShipOrder) publishShipOrder(changes.kbiShipOrder.newValue);
+});
+
 const rowOrderNo = (row) => text(row.querySelector('.order-id-wrapper a'));
 const docCheckbox = (name) => [...document.querySelectorAll('label.eds-checkbox')].find((l) => text(l) === name);
 
